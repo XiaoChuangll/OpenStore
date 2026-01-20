@@ -14,10 +14,10 @@
 
 <div style="display: flex; gap: 10px;">
   <a href="https://github.com/XiaoChuangll" title="XiaoChuangll">
-    <img src="https://wsrv.nl/?url=github.com/XiaoChuangll.png&w=60&h=60&mask=circle" width="60" alt="XiaoChuangll"/>
+    <img src="https://wsrv.nl/?url=github.com/XiaoChuangll.png&w=400&h=400&mask=circle" width="60" alt="XiaoChuangll"/>
   </a>
   <a href="https://github.com/shenjackyuanjie" title="shenjackyuanjie">
-    <img src="https://wsrv.nl/?url=github.com/shenjackyuanjie.png&w=60&h=60&mask=circle" width="60" alt="shenjackyuanjie"/>
+    <img src="https://wsrv.nl/?url=github.com/shenjackyuanjie.png&w=400&h=400&mask=circle" width="60" alt="shenjackyuanjie"/>
   </a>
 </div>
 
