@@ -6,7 +6,7 @@
 
 <p align="center">
   <img 
-    src="https://cloud.beta-next.icu/f/o83cx/%E5%90%88_9%20%E4%BC%81%E4%B8%9A%E6%8A%A5%E8%A1%A8.svg" 
+    src="/public/favicon.ico" 
     alt="Project Favicon" 
     width="96" 
     height="96" >
