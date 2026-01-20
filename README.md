@@ -116,16 +116,23 @@ npm run test
 </p>
 
 
+<style>
+.contributor-avatar {
+  border-radius: 50% !important;
+  overflow: hidden;
+}
+</style>
+
 ## ❤️ 鸣谢
 
 感谢以下贡献者对本项目的支持：
 
-<div style="display: flex; gap: 10px; align-items: center; justify-content: center;">
+<div style="display: flex; gap: 10px;">
   <a href="https://github.com/XiaoChuangll" title="XiaoChuangll">
-    <img src="https://avatars.githubusercontent.com/u/110847566?v=4" width="60" height="60" style="border-radius: 50%; object-fit: cover;" alt="XiaoChuangll"/>
+    <img src="https://github.com/XiaoChuangll.png" width="60" class="contributor-avatar" alt="XiaoChuangll"/>
   </a>
   <a href="https://github.com/shenjackyuanjie" title="shenjackyuanjie">
-    <img src="https://avatars.githubusercontent.com/u/76535849?v=4" width="60" height="60" style="border-radius: 50%; object-fit: cover;" alt="shenjackyuanjie"/>
+    <img src="https://github.com/shenjackyuanjie.png" width="60" class="contributor-avatar" alt="shenjackyuanjie"/>
   </a>
 </div>
 
