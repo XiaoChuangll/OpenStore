@@ -1,0 +1,29 @@
+node_modules
+dist
+.env
+.DS_Store
+*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Server secrets and uploads
+server/secret.key
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

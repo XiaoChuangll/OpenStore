@@ -1,0 +1,52 @@
+{
+  "name": "vue-uptime-monitor",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"node server/index.cjs\" \"vite --port 3000 --host\"",
+    "build": "vue-tsc -b && vite build && node scripts/generate-sitemap.js",
+    "preview": "vite preview",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "@vueup/vue-quill": "^1.2.0",
+    "@vueuse/core": "^14.1.0",
+    "axios": "^1.13.2",
+    "bcryptjs": "^3.0.3",
+    "concurrently": "^9.2.1",
+    "cors": "^2.8.5",
+    "device-detector-js": "^3.0.3",
+    "dotenv": "^17.2.3",
+    "echarts": "^5.5.1",
+    "element-plus": "^2.9.1",
+    "express": "^5.2.1",
+    "geoip-lite": "^1.4.10",
+    "github-markdown-css": "^5.8.1",
+    "jsonwebtoken": "^9.0.3",
+    "markdown-it": "^14.1.0",
+    "marked": "^17.0.1",
+    "multer": "^2.0.2",
+    "pinia": "^2.3.0",
+    "quill": "^2.0.3",
+    "sqlite3": "^5.1.7",
+    "ua-parser-js": "^2.0.6",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "ws": "^8.18.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.10.1",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/test-utils": "^2.4.6",
+    "jsdom": "^25.0.1",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.1",
+    "vite-plugin-compression2": "^2.4.0",
+    "vitest": "^2.1.8",
+    "vue-tsc": "^2.1.10"
+  }
+}

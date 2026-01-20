@@ -1,0 +1,713 @@
+<template>
+  <div class="about-view">
+    <el-card class="about-card mb-4" v-if="showContent">
+      <div 
+        class="about-content" 
+        :class="{ 'ql-editor': !aboutData.content_markdown, 'markdown-body': !!aboutData.content_markdown }"
+        v-html="aboutData.content_html"
+      ></div>
+    </el-card>
+
+    <el-card class="about-card mb-4">
+      <template #header>
+        <div class="card-header">
+          <span>关于作者</span>
+        </div>
+      </template>
+      <div class="about-content">
+        <div class="info-row">
+          <span class="label">开发者</span>
+          <div class="developer-info">
+            <span class="value">{{ aboutData.author_name || 'ChuEng' }}</span>
+            <div class="author-info" v-if="aboutData.author_avatar">
+              <el-image 
+                :src="aboutData.author_avatar" 
+                fit="cover" 
+                class="author-avatar"
+                :preview-src-list="[aboutData.author_avatar]"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="info-row">
+          <div class="flex items-center">
+            <span class="label mr-2">Github</span>
+            <a v-if="repoStars !== null" :href="`https://github.com/${getRepoName(aboutData.github_repo)}/stargazers`" target="_blank" class="value link star-link">
+              <el-icon class="mr-1 text-yellow-500"><StarFilled /></el-icon> {{ repoStars }}
+            </a>
+          </div>
+          <div class="flex items-center">
+            <a :href="aboutData.author_github || 'https://github.com/XiaoChuangll'" target="_blank" class="value link">
+              {{ getGithubUsername(aboutData.author_github) || 'XiaoChuangll' }} <el-icon><Link /></el-icon>
+            </a>
+          </div>
+        </div>
+      </div>
+    </el-card>
+
+    <el-card class="about-card mb-4">
+      <template #header>
+        <div class="card-header">
+          <span>技术栈</span>
+        </div>
+      </template>
+      <div class="tech-stack">
+        <el-tag 
+          v-for="tech in techStack" 
+          :key="tech.name"
+          :type="tech.type"
+          effect="light"
+          class="tech-tag"
+          size="large"
+        >
+          {{ tech.name }}
+        </el-tag>
+      </div>
+    </el-card>
+
+    <el-card class="about-card mb-4">
+      <template #header>
+        <div class="card-header cursor-pointer select-none flex items-center justify-between" @click="toggleChangelogs">
+          <div class="flex items-center">
+            <span class="mr-2">更新日志</span>
+            <el-tag size="small" effect="light" type="primary" round>{{ latestChangelogVersion }}</el-tag>
+          </div>
+          <el-icon :class="{ 'rotate-90': changelogsExpanded }"><ArrowRight /></el-icon>
+        </div>
+      </template>
+      <el-collapse-transition>
+        <div v-show="changelogsExpanded">
+          <div v-loading="changelogsLoading" class="changelogs-list">
+            <div v-for="item in changelogs" :key="item.id" class="changelog-item">
+              <div class="changelog-info">
+                <div class="changelog-title">
+                  <el-tag size="small" effect="light" type="primary">{{ item.version }}</el-tag>
+                  <span class="changelog-date">{{ formatTime(item.release_date) }}</span>
+                </div>
+                <div class="changelog-content markdown-body" v-html="getChangelogHtml(item)"></div>
+              </div>
+            </div>
+            <div v-if="changelogsFetched && changelogs.length === 0 && !changelogsLoading" class="text-center text-gray-400 py-4">
+              暂无更新日志
+            </div>
+          </div>
+        </div>
+      </el-collapse-transition>
+    </el-card>
+
+    <el-card class="about-card mb-4" v-if="aboutData.github_repo">
+      <template #header>
+        <div class="card-header cursor-pointer select-none flex items-center justify-between" @click="toggleCommits">
+          <div class="flex items-center">
+            <span class="mr-2">最近提交 ({{ getRepoName(aboutData.github_repo) }})</span>
+          </div>
+          <el-icon :class="{ 'rotate-90': commitsExpanded }"><ArrowRight /></el-icon>
+        </div>
+      </template>
+      <el-collapse-transition>
+        <div v-show="commitsExpanded">
+          <div v-loading="commitsLoading" class="commits-list">
+            <div v-for="commit in commits" :key="commit.sha" class="commit-item">
+              <div class="commit-info">
+                <div class="commit-msg" :title="commit.commit.message">{{ commit.commit.message }}</div>
+                <div class="commit-meta">
+                  <div class="commit-user">
+                    <el-avatar :size="16" :src="commit.author?.avatar_url" v-if="commit.author?.avatar_url" />
+                    <span>{{ commit.commit.author.name }}</span>
+                  </div>
+                  <span class="commit-time">{{ new Date(commit.commit.author.date).toLocaleString() }}</span>
+                </div>
+              </div>
+              <a :href="commit.html_url" target="_blank" class="commit-link">
+                <el-icon><Link /></el-icon>
+              </a>
+            </div>
+            <div v-if="commits.length === 0 && !commitsLoading" class="text-center text-gray-400 py-4">
+              暂无提交记录或无法获取
+            </div>
+          </div>
+        </div>
+      </el-collapse-transition>
+    </el-card>
+
+    <div class="footer-info">
+      <p>Version {{ aboutData.version || '1.0.0' }}</p>
+      <p>&copy; {{ new Date().getFullYear() }} BetaHub Tech. All rights reserved.</p>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { onMounted, onUnmounted, ref, computed } from 'vue';
+import { useLayoutStore } from '../stores/layout';
+import { Link, ArrowRight, StarFilled } from '@element-plus/icons-vue';
+import { getAboutPage, getPublicChangelogs, type AboutPage, type Changelog } from '../services/api';
+import axios from 'axios';
+import MarkdownIt from 'markdown-it';
+import '@vueup/vue-quill/dist/vue-quill.snow.css'; // Import Quill styles for content rendering
+import 'github-markdown-css/github-markdown.css';
+
+const layoutStore = useLayoutStore();
+const aboutData = ref<AboutPage>({ id: 0, version: '', author_name: '', author_avatar: '', author_github: '', github_repo: '', content_html: '', content_markdown: '' });
+const commits = ref<any[]>([]);
+const commitsLoading = ref(false);
+const commitsExpanded = ref(false);
+const repoStars = ref<number | null>(null);
+const changelogs = ref<Changelog[]>([]);
+const changelogsLoading = ref(false);
+const changelogsExpanded = ref(false);
+const changelogsFetched = ref(false);
+
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  typographer: true,
+  breaks: true,
+});
+
+const techStack = [
+  { name: 'Vue 3', type: 'success' },
+  { name: 'TypeScript', type: 'primary' },
+  { name: 'Vite', type: 'warning' },
+  { name: 'Element Plus', type: 'primary' },
+  { name: 'Pinia', type: 'warning' },
+  { name: 'Apache ECharts', type: 'danger' },
+  { name: 'Node.js', type: 'success' },
+  { name: 'Express', type: 'info' },
+  { name: 'SQLite', type: 'info' },
+  { name: 'Font Awesome', type: 'primary' }
+] as const;
+
+const showContent = computed(() => {
+  const html = aboutData.value.content_html;
+  if (!html) return false;
+  // Check for common empty states
+  if (html === '<p><br></p>') return false;
+  // Check if it contains only whitespace tags
+  const text = html.replace(/<[^>]*>/g, '').trim();
+  // If text is empty, check for images or iframes
+  if (!text && !html.includes('<img') && !html.includes('<iframe') && !html.includes('<video')) {
+    return false;
+  }
+  return true;
+});
+
+const formatTime = (time?: string) => {
+  if (!time) return '';
+  return new Date(time).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+};
+
+const getChangelogHtml = (item: Changelog) => {
+  if (item.content_html) return item.content_html;
+  if (item.content_markdown) return md.render(item.content_markdown);
+  return '';
+};
+
+const getChangelogTimeMs = (item: Changelog) => {
+  const raw = item?.release_date || item?.created_at || 0;
+  const ms = new Date(raw).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+};
+
+const latestChangelog = computed(() => {
+  const list = Array.isArray(changelogs.value) ? changelogs.value.slice() : [];
+  list.sort((a, b) => getChangelogTimeMs(b) - getChangelogTimeMs(a));
+  return list[0] || null;
+});
+
+const latestChangelogVersion = computed(() => {
+  return latestChangelog.value?.version || aboutData.value.version || '1.0.0';
+});
+
+const fetchChangelogs = async () => {
+  changelogsLoading.value = true;
+  try {
+    changelogs.value = await getPublicChangelogs();
+  } catch (error) {
+    console.error('Failed to fetch changelogs', error);
+  } finally {
+    changelogsFetched.value = true;
+    changelogsLoading.value = false;
+  }
+};
+
+const toggleChangelogs = () => {
+  changelogsExpanded.value = !changelogsExpanded.value;
+  if (changelogsExpanded.value && !changelogsFetched.value) {
+    fetchChangelogs();
+  }
+};
+
+const toggleCommits = () => {
+  commitsExpanded.value = !commitsExpanded.value;
+  if (commitsExpanded.value && commits.value.length === 0) {
+    if (aboutData.value.github_repo) {
+      fetchCommits(aboutData.value.github_repo);
+    }
+  }
+};
+
+const fetchCommits = async (repoInput: string) => {
+  if (!repoInput) return;
+  
+  // Clean up repo string if it's a full URL
+  let repo = repoInput;
+  try {
+    const urlObj = new URL(repoInput);
+    if (urlObj.hostname === 'github.com') {
+      repo = urlObj.pathname.substring(1); // Remove leading slash
+    }
+  } catch (e) {
+    // Not a URL, assume it's already owner/repo format
+    repo = repoInput;
+  }
+  
+  // Remove .git suffix if present
+  repo = repo.replace(/\.git$/, '');
+
+  commitsLoading.value = true;
+  try {
+    const response = await axios.get(`https://api.github.com/repos/${repo}/commits?per_page=5`);
+    commits.value = response.data;
+  } catch (error) {
+    console.error('Failed to fetch commits', error);
+  } finally {
+    commitsLoading.value = false;
+  }
+};
+
+const getGithubUsername = (url?: string) => {
+  if (!url) return '';
+  const parts = url.split('/');
+  return parts[parts.length - 1] || 'GitHub';
+};
+
+const getRepoName = (repoInput?: string) => {
+  if (!repoInput) return '';
+  let repo = repoInput;
+  try {
+    const urlObj = new URL(repoInput);
+    if (urlObj.hostname === 'github.com') {
+      repo = urlObj.pathname.substring(1);
+    }
+  } catch (e) {
+    // Not a URL
+  }
+  return repo.replace(/\.git$/, '');
+};
+
+// Scroll Handler
+let ticking = false;
+
+const checkScrollPosition = () => {
+  // Use window.scrollY directly for more robust detection
+  // When scrolled down more than 60px (header height), switch to sticky header
+  layoutStore.setHeaderState(window.scrollY > 60);
+};
+
+const handleScroll = () => {
+  if (!ticking) {
+    window.requestAnimationFrame(() => {
+      checkScrollPosition();
+      ticking = false;
+    });
+    ticking = true;
+  }
+};
+
+const fetchRepoStars = async (repoInput: string) => {
+  if (!repoInput) return;
+  const repo = getRepoName(repoInput);
+  try {
+    const response = await axios.get(`https://api.github.com/repos/${repo}`);
+    repoStars.value = response.data.stargazers_count;
+  } catch (error) {
+    console.error('Failed to fetch repo stars', error);
+  }
+};
+
+const fetchData = async () => {
+  const data = await getAboutPage();
+  if (data && Object.keys(data).length > 0) {
+    aboutData.value = data;
+    if (data.github_repo) {
+      fetchRepoStars(data.github_repo);
+    }
+    // Don't auto fetch commits, wait for expand
+  } else {
+    // Default fallback if no data in DB yet
+    aboutData.value = {
+      id: 0,
+      content_html: `
+        <h2>OpenStore - 鸿蒙应用数据面板</h2>
+        <p>这是一个基于现代 Web 技术栈构建的鸿蒙应用数据探索与分析平台。</p>
+        <p><strong>技术栈：</strong></p>
+        <ul>
+          <li><strong>前端框架：</strong>Vue 3 (Composition API)</li>
+          <li><strong>开发语言：</strong>TypeScript</li>
+          <li><strong>构建工具：</strong>Vite</li>
+          <li><strong>UI 组件库：</strong>Element Plus</li>
+          <li><strong>状态管理：</strong>Pinia</li>
+          <li><strong>数据可视化：</strong>Apache ECharts</li>
+          <li><strong>图标系统：</strong>Font Awesome & Element Plus Icons</li>
+        </ul>
+        <p><strong>核心功能：</strong></p>
+        <ul>
+          <li><strong>应用看板：</strong>实时监控鸿蒙应用下载量与增长趋势</li>
+          <li><strong>排行榜单：</strong>多维度应用下载榜单、增长对比榜</li>
+          <li><strong>数据分析：</strong>应用详情深度解析与历史数据回溯</li>
+          <li><strong>探索发现：</strong>发现最新上架与热门更新的鸿蒙应用</li>
+          <li><strong>投稿中心：</strong>支持用户自主提交优质应用与专题内容</li>
+        </ul>
+      `,
+      author_name: 'ChuEng',
+      author_github: 'https://github.com/XiaoChuangll',
+      version: '1.0.0'
+    };
+  }
+};
+
+onMounted(async () => {
+  window.scrollTo(0, 0);
+  window.addEventListener('scroll', handleScroll);
+  layoutStore.setPageInfo('关于', false);
+  // Initial check
+  checkScrollPosition();
+  await fetchData();
+  fetchChangelogs();
+});
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll);
+  layoutStore.setHeaderState(false);
+});
+</script>
+
+<style scoped>
+.about-view {
+  max-width: 800px;
+  margin: 0 auto;
+}
+.mb-4 {
+  margin-bottom: 20px;
+}
+.about-card {
+  border-radius: 12px;
+}
+.about-content {
+  line-height: 1.6;
+}
+.about-content.ql-editor,
+.about-content.markdown-body {
+  padding: 0;
+  overflow-y: visible;
+  height: auto;
+}
+.card-header {
+  font-weight: 600;
+  font-size: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+.developer-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.author-info {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+}
+.author-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--el-border-color);
+}
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  padding-bottom: 12px;
+}
+.info-row:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.info-row .label {
+  color: var(--el-text-color-secondary);
+}
+.commits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.changelogs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.commit-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.changelog-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.commit-item:last-child {
+  border-bottom: none;
+}
+.changelog-item:last-child {
+  border-bottom: none;
+}
+.commit-info {
+  flex: 1;
+  min-width: 0;
+  margin-right: 12px;
+}
+.changelog-info {
+  flex: 1;
+  min-width: 0;
+}
+.commit-msg {
+  font-weight: 500;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.changelog-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+}
+.changelog-date {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.changelog-content {
+  margin-top: 8px;
+  padding: 0;
+}
+.commit-meta {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  gap: 12px;
+}
+.commit-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.commit-link {
+  color: var(--el-color-primary);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+}
+.commit-link:hover {
+  color: var(--el-color-primary-light-3);
+}
+.info-row .value {
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+}
+.info-row .link {
+  color: var(--el-color-primary);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.info-row .link:hover {
+  text-decoration: underline;
+}
+.tech-stack {
+  padding: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.tech-tag {
+  flex-grow: 1;
+  justify-content: center;
+  transition: all 0.3s ease;
+  cursor: default;
+  border: none;
+  font-weight: 500;
+}
+.tech-tag:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+.mr-2 { margin-right: 12px; }
+.mb-2 { margin-bottom: 12px; }
+
+h2 {
+  margin-bottom: 20px;
+  color: var(--el-text-color-primary);
+}
+p, ul {
+  color: var(--el-text-color-regular);
+  margin-bottom: 16px;
+}
+ul {
+  padding-left: 20px;
+}
+li {
+  margin-bottom: 8px;
+}
+.footer-info {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--el-border-color-light);
+  text-align: center;
+  color: var(--el-text-color-secondary);
+  font-size: 0.9rem;
+}
+.rotate-90 {
+  transform: rotate(90deg);
+  transition: transform 0.3s;
+}
+.el-icon {
+  transition: transform 0.3s;
+}
+.text-yellow-500 {
+  color: #e6a23c;
+}
+.flex {
+  display: flex;
+}
+.items-center {
+  align-items: center;
+}
+.justify-between {
+  justify-content: space-between;
+}
+.star-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  transition: opacity 0.2s;
+}
+.star-link:hover {
+  opacity: 0.8;
+  text-decoration: none;
+}
+
+/* Dark Mode & Theme Adaptation */
+.about-content {
+  color: var(--el-text-color-primary);
+}
+
+/* Markdown Adaptation */
+.markdown-body {
+  background-color: transparent !important;
+  color: var(--el-text-color-primary) !important;
+}
+
+:deep(.markdown-body) {
+  /* Variable mapping for github-markdown-css */
+  --color-canvas-default: transparent;
+  --color-fg-default: var(--el-text-color-primary);
+  --color-fg-muted: var(--el-text-color-secondary);
+  --color-accent-fg: var(--el-color-primary);
+  --color-canvas-subtle: var(--el-fill-color-light);
+  --color-border-default: var(--el-border-color);
+  --color-border-muted: var(--el-border-color-lighter);
+  --color-neutral-muted: var(--el-fill-color-lighter);
+}
+
+:deep(.markdown-body a) {
+  color: var(--el-color-primary) !important;
+}
+
+:deep(.markdown-body h1),
+:deep(.markdown-body h2),
+:deep(.markdown-body h3),
+:deep(.markdown-body h4),
+:deep(.markdown-body h5),
+:deep(.markdown-body h6) {
+  color: var(--el-text-color-primary) !important;
+  border-bottom-color: var(--el-border-color-lighter) !important;
+}
+
+:deep(.markdown-body blockquote) {
+  color: var(--el-text-color-secondary) !important;
+  border-left-color: var(--el-border-color) !important;
+}
+
+:deep(.markdown-body table tr) {
+  background-color: transparent !important;
+  border-top-color: var(--el-border-color-lighter) !important;
+}
+
+:deep(.markdown-body table tr:nth-child(2n)) {
+  background-color: var(--el-fill-color-lighter) !important;
+}
+
+:deep(.markdown-body code),
+:deep(.markdown-body tt) {
+  background-color: var(--el-fill-color-light) !important;
+  border-radius: 4px;
+}
+
+:deep(.markdown-body pre) {
+  background-color: var(--el-fill-color-light) !important;
+}
+
+/* Quill Editor Adaptation */
+.ql-editor {
+  color: var(--el-text-color-primary) !important;
+  background-color: transparent;
+}
+
+:deep(.ql-editor p),
+:deep(.ql-editor ol),
+:deep(.ql-editor ul),
+:deep(.ql-editor pre),
+:deep(.ql-editor blockquote),
+:deep(.ql-editor h1),
+:deep(.ql-editor h2),
+:deep(.ql-editor h3),
+:deep(.ql-editor h4),
+:deep(.ql-editor h5),
+:deep(.ql-editor h6) {
+  color: var(--el-text-color-primary) !important;
+}
+
+:deep(.ql-editor a) {
+  color: var(--el-color-primary) !important;
+}
+
+:deep(.ql-editor blockquote) {
+  border-left-color: var(--el-border-color) !important;
+  color: var(--el-text-color-secondary) !important;
+}
+
+:deep(.ql-editor code),
+:deep(.ql-editor pre) {
+  background-color: var(--el-fill-color-light) !important;
+  color: var(--el-text-color-primary) !important;
+}
+</style>
