@@ -6,7 +6,7 @@
 
 <p align="center">
   <img 
-    src="/public/favicon.ico" 
+    src="/public/favicon.svg" 
     alt="Project Favicon" 
     width="96" 
     height="96" >
