@@ -10,19 +10,27 @@
           :xs="24"
           class="site-card-col"
         >
-          <el-card class="site-card" shadow="hover">
+          <el-card class="site-card" :class="{ 'music-card-wrapper': card.key === 'music' }" shadow="hover">
             <template #header>
               <div class="site-card-header">
                 <div class="header-left">
-                  <div class="accent-bar" :class="getCardStyle(card).accent"></div>
+                  <div class="accent-bar" :class="card.key === 'music' ? 'bg-red' : getCardStyle(card).accent"></div>
                   <span class="card-title">{{ card.title }}</span>
                 </div>
-                <el-button v-if="card.key === 'music'" type="primary" link @click="goMusic">打开</el-button>
+                <el-button v-if="card.key === 'music'" type="primary" link @click="goMusic" class="hidden-btn">打开</el-button>
               </div>
             </template>
 
             <template v-if="card.key === 'music'">
-              <div class="card-desc">在线播放与歌单功能</div>
+              <div class="music-card-content" @click.stop="goMusic">
+                <div class="music-actions">
+                  <div class="music-action-btn">每日推荐</div>
+                  <div class="music-action-btn">雷达歌单</div>
+                  <div class="music-action-btn">推荐歌单</div>
+                  <div class="music-action-btn">排行榜单</div>
+                </div>
+                <img src="/music.png" class="music-card-img" alt="Music" />
+              </div>
             </template>
 
             <template v-else-if="card.key === 'friend_links'">
@@ -80,14 +88,15 @@
 
             <template v-else-if="card.key === 'apps'">
               <div v-if="publicApps.length > 0" class="apps-list" @click="router.push({ name: 'app-cards' })">
-                <div 
-                  v-for="item in publicApps" 
-                  :key="item.id" 
-                  class="app-item"
-                  :title="item.name"
-                >
-                  <img v-if="item.icon_url" :src="item.icon_url" class="app-icon" alt="" />
-                </div>
+                <template v-for="item in publicApps" :key="item.id">
+                  <img
+                    v-if="item.icon_url"
+                    :src="item.icon_url"
+                    class="app-icon"
+                    :title="item.name"
+                    alt=""
+                  />
+                </template>
               </div>
               <div v-else class="empty-text">暂无应用</div>
             </template>
@@ -493,6 +502,12 @@ onMounted(() => {
   border-radius: 8px;
   object-fit: cover;
   display: block;
+  transition: all 0.25s ease;
+}
+
+.app-icon:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 .empty-text {
@@ -535,5 +550,76 @@ onMounted(() => {
     width: 100%;
     flex-basis: 100%;
   }
+}
+
+.music-card-wrapper {
+  cursor: pointer;
+}
+
+.music-card-wrapper :deep(.el-card__header) {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+
+.music-card-wrapper :deep(.card-title) {
+  font-size: 18px;
+}
+
+.music-card-wrapper .hidden-btn {
+  display: none;
+}
+
+.music-card-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 100%;
+  position: relative;
+  min-height: 90px;
+  z-index: 10;
+  cursor: pointer;
+}
+
+.music-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  z-index: 2;
+}
+
+.music-action-btn {
+  padding: 6px 16px;
+  background: var(--el-fill-color);
+  border-radius: 20px;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+  transition: all 0.3s;
+  white-space: nowrap;
+  border: 1px solid var(--el-border-color-lighter);
+}
+
+.music-action-btn:hover {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light-5);
+}
+
+.music-card-img {
+  height: 120px;
+  width: auto;
+  object-fit: contain;
+  position: absolute;
+  right: -10px;
+  bottom: -10px;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 20;
+  transform-origin: top center;
+}
+
+.music-card-img:hover {
+  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.2)) brightness(1.1);
+  transform: scale(1.1);
 }
 </style>

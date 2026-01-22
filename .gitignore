@@ -4,6 +4,8 @@ dist
 .DS_Store
 *.local
 
+nginx
+
 # Database
 *.db
 *.sqlite

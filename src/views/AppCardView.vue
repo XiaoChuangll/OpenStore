@@ -49,7 +49,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { Monitor, Download } from '@element-plus/icons-vue';
-import { getPublicApps, type AppItem } from '../services/admin';
+import { getPublicApps } from '../services/admin';
 import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
 
