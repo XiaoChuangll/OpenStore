@@ -99,7 +99,13 @@ const router = createRouter({
       path: '/rank/growth',
       name: 'growth-rank',
       component: GrowthRankView,
-      meta: { title: '增长榜', description: '发现近期增长最快的应用，把握市场趋势。' }
+      meta: { title: '飙升榜', description: '查看OpenStore应用飙升榜，发现潜力应用。' }
+    },
+    {
+      path: '/system-status',
+      name: 'system-status',
+      component: () => import('../views/SystemStatusView.vue'),
+      meta: { title: '系统状态', description: '监控系统核心服务与接口状态。' }
     },
     {
       path: '/rank/history',

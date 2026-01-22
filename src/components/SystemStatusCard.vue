@@ -2,7 +2,7 @@
   <el-card class="system-status-card" shadow="hover">
     <template #header>
       <div class="card-header">
-        <span>系统状态监控</span>
+        <span class="header-title" @click="goToDetail">系统状态监控</span>
         <div class="status-summary">
           <el-tag :type="isSystemOnline ? 'success' : 'danger'" size="small" effect="light" class="online-tag">
             <span class="tag-content">
@@ -143,8 +143,15 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { Connection, Loading, CircleCheck, Refresh } from '@element-plus/icons-vue';
 import { hmApi } from '../services/hm-api';
+
+const router = useRouter();
+
+const goToDetail = () => {
+  router.push({ name: 'system-status' });
+};
 
 interface SyncStatus {
   nextSyncTime: string;
@@ -341,6 +348,15 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.header-title {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.header-title:hover {
+  color: var(--el-color-primary);
 }
 .status-item {
   display: flex;
