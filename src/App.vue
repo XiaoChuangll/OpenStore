@@ -382,7 +382,7 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
   padding: 0 16px;
   position: sticky;
   top: 0;
-  z-index: 2000;
+  z-index: 2100;
   height: 60px;
 }
 
@@ -448,7 +448,7 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 2000;
+  z-index: 2100;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -611,7 +611,7 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
     position: fixed;
     bottom: 24px;
     right: 24px;
-    z-index: 2000;
+    z-index: 2100;
   }
 
   .mobile-trigger-btn {
