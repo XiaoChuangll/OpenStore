@@ -1,19 +1,17 @@
 <template>
   <div class="apps-view">
-    <el-page-header ref="pageHeaderRef" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 应用列表 </span>
-      </template>
-    </el-page-header>
+    <div class="page-header mb-4" ref="pageHeaderRef">
+      <h1 class="text-large font-600 mr-3">{{ pageTitle }}</h1>
+    </div>
 
     <el-skeleton :loading="loading" animated>
       <template #template>
         <el-skeleton-item variant="rect" style="width: 100%; height: 200px" />
       </template>
       <template #default>
-        <el-row :gutter="20">
-          <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="(item, idx) in items" :key="idx" class="mb-4">
-            <el-card class="app-card" shadow="hover">
+        <el-row :gutter="20" :class="{ 'detail-row': isDetail }">
+          <el-col :xs="24" :sm="isDetail ? 24 : 12" :md="isDetail ? 24 : 8" :lg="isDetail ? 24 : 6" v-for="(item, idx) in items" :key="idx" class="mb-4">
+            <el-card class="app-card" shadow="hover" :class="{ 'detail-card': isDetail }">
               <div class="app-card-bg" v-if="bgUrl(item)" :style="{ backgroundImage: `url(${bgUrl(item)})` }"></div>
               <div class="app-card-content">
                 <div class="card-header">
@@ -28,7 +26,10 @@
                   <el-icon v-else :size="24" class="app-icon-fallback"><Monitor /></el-icon>
                   <div class="app-title">{{ item.name || '应用' }}</div>
                 </div>
-                <div class="app-desc" v-if="item.provider">{{ item.provider }}</div>
+                <div class="app-desc" v-if="item.provider || item.developer_name">{{ item.provider || item.developer_name }}</div>
+                <div class="app-desc" v-if="isDetail && (item.description || item.intro)">
+                   {{ item.description || item.intro }}
+                </div>
                 <div class="app-actions">
                   <el-button
                     class="app-download-btn glass-btn"
@@ -49,22 +50,33 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { Monitor, Download } from '@element-plus/icons-vue';
 import { getPublicApps, type AppItem } from '../services/admin';
+import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
 
 const router = useRouter();
+const route = useRoute();
 const layoutStore = useLayoutStore();
 const loading = ref(false);
-const items = ref<AppItem[]>([]);
+const items = ref<any[]>([]);
 const pageHeaderRef = ref<HTMLElement | null>(null);
+
+const isDetail = computed(() => !!route.params.id);
+const pageTitle = computed(() => isDetail.value ? '应用详情' : '应用列表');
 
 const fetchApps = async () => {
   loading.value = true;
   try {
-    items.value = await getPublicApps();
+    if (isDetail.value) {
+      const id = route.params.id as string;
+      const res = await getAppDetail(id);
+      items.value = res ? [res] : [];
+    } else {
+      items.value = await getPublicApps();
+    }
   } finally {
     loading.value = false;
   }
@@ -95,7 +107,7 @@ const download = (item: any) => {
 };
 
 const goBack = () => {
-  router.push('/');
+  router.back();
 };
 
 // Scroll Handler
@@ -123,7 +135,8 @@ const handleScroll = () => {
 onMounted(() => {
   fetchApps();
   window.addEventListener('scroll', handleScroll);
-  layoutStore.setPageInfo('应用列表', true, goBack);
+  // Disable global back button
+  layoutStore.setPageInfo(pageTitle.value, false);
 });
 
 onUnmounted(() => {
@@ -134,6 +147,14 @@ onUnmounted(() => {
 
 <style scoped>
 .mb-4 { margin-bottom: 20px; }
+.page-header {
+  display: flex;
+  align-items: center;
+}
+.text-large { font-size: 1.5rem; }
+.font-600 { font-weight: 600; }
+.mr-3 { margin-right: 0.75rem; }
+
 .app-card { 
   background-color: var(--el-bg-color); 
   border-radius: 16px; 
@@ -142,6 +163,14 @@ onUnmounted(() => {
   overflow: hidden;
   border: none;
 }
+.detail-card {
+  max-width: 800px;
+  margin: 0 auto;
+}
+.detail-row {
+  justify-content: center;
+}
+
 .app-card-bg {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
