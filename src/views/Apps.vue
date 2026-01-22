@@ -135,8 +135,8 @@ const handleScroll = () => {
 onMounted(() => {
   fetchApps();
   window.addEventListener('scroll', handleScroll);
-  // Disable global back button
-  layoutStore.setPageInfo(pageTitle.value, false);
+  // Enable global back button
+  layoutStore.setPageInfo(pageTitle.value, true, goBack);
 });
 
 onUnmounted(() => {
