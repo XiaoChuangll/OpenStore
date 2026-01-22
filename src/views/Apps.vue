@@ -1,9 +1,5 @@
 <template>
   <div class="apps-view">
-    <div class="page-header mb-4" ref="pageHeaderRef">
-      <h1 class="text-large font-600 mr-3">{{ pageTitle }}</h1>
-    </div>
-
     <el-skeleton :loading="loading" animated>
       <template #template>
         <el-skeleton-item variant="rect" style="width: 100%; height: 200px" />
