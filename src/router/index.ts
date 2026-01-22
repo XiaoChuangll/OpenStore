@@ -9,6 +9,7 @@ const HistoryRankView = () => import('../views/HistoryRankView.vue');
 const NonHuaweiRankView = () => import('../views/NonHuaweiRankView.vue');
 const AppDashboardView = () => import('../views/AppDashboardView.vue');
 const NextAppDetailView = () => import('../views/NextAppDetailView.vue');
+const AppsDetail = () => import('../views/Apps.vue');
 const AppsView = () => import('../views/AppsView.vue');
 const UpdatesView = () => import('../views/UpdatesView.vue');
 const UpdatesAppDetailView = () => import('../views/UpdatesAppDetailView.vue');
@@ -45,6 +46,18 @@ const router = createRouter({
       name: 'next-app-detail',
       component: NextAppDetailView,
       meta: { title: '应用详情', description: '查看应用详细信息、评分、评论和更新历史。' }
+    },
+    {
+      path: '/app/:id',
+      name: 'app-card-detail',
+      component: AppsDetail,
+      meta: { title: '应用详情', description: '应用卡片详情页面' }
+    },
+    {
+      path: '/app-cards',
+      name: 'app-cards',
+      component: AppsDetail,
+      meta: { title: '应用列表', description: '应用卡片列表' }
     },
     {
       path: '/updates',

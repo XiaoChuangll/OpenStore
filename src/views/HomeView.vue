@@ -79,13 +79,12 @@
             </template>
 
             <template v-else-if="card.key === 'apps'">
-              <div v-if="publicApps.length > 0" class="apps-list">
+              <div v-if="publicApps.length > 0" class="apps-list" @click="router.push({ name: 'app-cards' })">
                 <div 
                   v-for="item in publicApps" 
                   :key="item.id" 
                   class="app-item"
                   :title="item.name"
-                  @click="item.download_url && window.open(item.download_url, '_blank')"
                 >
                   <img v-if="item.icon_url" :src="item.icon_url" class="app-icon" alt="" />
                 </div>
@@ -467,6 +466,7 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  cursor: pointer;
 }
 
 .app-item {
@@ -475,7 +475,7 @@ onMounted(() => {
   justify-content: center;
   padding: 10px;
   border-radius: 12px;
-  border: 1px solid var(--el-border-color-lighter);
+  border: none;
   background: var(--el-bg-color);
   cursor: pointer;
   transition: all 0.3s;
