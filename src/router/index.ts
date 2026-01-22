@@ -9,7 +9,7 @@ const HistoryRankView = () => import('../views/HistoryRankView.vue');
 const NonHuaweiRankView = () => import('../views/NonHuaweiRankView.vue');
 const AppDashboardView = () => import('../views/AppDashboardView.vue');
 const NextAppDetailView = () => import('../views/NextAppDetailView.vue');
-const AppsDetail = () => import('../views/Apps.vue');
+const AppsDetail = () => import('../views/AppCardView.vue');
 const AppsView = () => import('../views/AppsView.vue');
 const UpdatesView = () => import('../views/UpdatesView.vue');
 const UpdatesAppDetailView = () => import('../views/UpdatesAppDetailView.vue');
