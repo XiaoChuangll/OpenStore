@@ -80,26 +80,17 @@
 
             <template v-else-if="card.key === 'apps'">
               <div v-if="publicApps.length > 0" class="apps-list">
-                <div v-for="item in publicApps" :key="item.id" class="app-item">
-                  <div class="app-left">
-                    <img v-if="item.icon_url" :src="item.icon_url" class="app-icon" alt="" />
-                    <div class="app-meta">
-                      <div class="app-name">{{ item.name }}</div>
-                      <div v-if="item.provider" class="app-provider">{{ item.provider }}</div>
-                    </div>
-                  </div>
-                  <a
-                    v-if="item.download_url"
-                    class="app-download"
-                    :href="item.download_url"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <el-button size="small" type="primary">下载</el-button>
-                  </a>
+                <div 
+                  v-for="item in publicApps" 
+                  :key="item.id" 
+                  class="app-item"
+                  :title="item.name"
+                  @click="item.download_url && window.open(item.download_url, '_blank')"
+                >
+                  <img v-if="item.icon_url" :src="item.icon_url" class="app-icon" alt="" />
                 </div>
               </div>
-              <div v-else class="empty-text">暂无群聊</div>
+              <div v-else class="empty-text">暂无应用</div>
             </template>
 
             <template v-else>
@@ -474,59 +465,34 @@ onMounted(() => {
 
 .apps-list {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
 .app-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
+  justify-content: center;
+  padding: 10px;
   border-radius: 12px;
   border: 1px solid var(--el-border-color-lighter);
   background: var(--el-bg-color);
+  cursor: pointer;
+  transition: all 0.3s;
 }
 
-.app-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
+.app-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--el-color-primary-light-5);
 }
 
 .app-icon {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 8px;
   object-fit: cover;
-  flex: 0 0 auto;
-}
-
-.app-meta {
-  min-width: 0;
-}
-
-.app-name {
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.app-provider {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.app-download {
-  flex: 0 0 auto;
-  text-decoration: none;
+  display: block;
 }
 
 .empty-text {
