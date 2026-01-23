@@ -71,6 +71,19 @@ export interface Incident {
   updated_at: number;
 }
 
+export interface AppSubmissionPayload {
+  name: string;
+  provider: string;
+  bg_url: string;
+  icon_url: string;
+  download_url: string;
+}
+
+export const submitAppSubmission = async (payload: AppSubmissionPayload) => {
+  const { data } = await apiClient.post('/submissions', payload);
+  return data as { id: number };
+};
+
 export const getActiveIncidents = async (): Promise<Incident[]> => {
   try {
     const response = await apiClient.get('/public/incidents/active');

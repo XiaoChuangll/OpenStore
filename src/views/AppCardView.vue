@@ -7,35 +7,7 @@
       <template #default>
         <el-row :gutter="20" :class="{ 'detail-row': isDetail }">
           <el-col :xs="24" :sm="isDetail ? 24 : 12" :md="isDetail ? 24 : 8" :lg="isDetail ? 24 : 6" v-for="(item, idx) in items" :key="idx" class="mb-4">
-            <el-card class="app-card" shadow="hover" :class="{ 'detail-card': isDetail }">
-              <div class="app-card-bg" v-if="bgUrl(item)" :style="{ backgroundImage: `url(${bgUrl(item)})` }"></div>
-              <div class="app-card-content">
-                <div class="card-header">
-                  <div class="accent-bar bg-green"></div>
-                  <h3 class="card-title">{{ item.name || '应用' }}</h3>
-                </div>
-                <div class="app-banner" v-if="bgUrl(item)">
-                  <img :src="bgUrl(item)" class="app-banner-img" alt="banner" />
-                </div>
-                <div class="app-header">
-                  <img v-if="iconUrl(item)" :src="iconUrl(item)" class="app-icon" alt="icon" />
-                  <el-icon v-else :size="24" class="app-icon-fallback"><Monitor /></el-icon>
-                  <div class="app-title">{{ item.name || '应用' }}</div>
-                </div>
-                <div class="app-desc" v-if="item.provider || item.developer_name">{{ item.provider || item.developer_name }}</div>
-                <div class="app-desc" v-if="isDetail && (item.description || item.intro)">
-                   {{ item.description || item.intro }}
-                </div>
-                <div class="app-actions">
-                  <el-button
-                    class="app-download-btn glass-btn"
-                    round
-                    :icon="Download"
-                    @click="download(item)"
-                  >下载</el-button>
-                </div>
-              </div>
-            </el-card>
+            <AppDetailCard :item="item" :is-detail="isDetail" />
           </el-col>
         </el-row>
         <el-empty v-if="!loading && items.length === 0" description="暂无应用数据" />
@@ -48,10 +20,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { Monitor, Download } from '@element-plus/icons-vue';
 import { getPublicApps } from '../services/admin';
 import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
+import AppDetailCard from '../components/AppDetailCard.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -76,30 +48,6 @@ const fetchApps = async () => {
   } finally {
     loading.value = false;
   }
-};
-
-const iconUrl = (item: any) => {
-  if (item.icon_url) return item.icon_url;
-  const direct = (item as any).icon || (item as any).logo;
-  if (direct) return direct;
-  const link = (item as any).url || (item as any).link || (item as any).homepage;
-  if (!link) return null;
-  try {
-    const u = new URL(link);
-    return `${u.origin}/favicon.ico`;
-  } catch {
-    return null;
-  }
-};
-
-const bgUrl = (item: any) => {
-  return item.bg_url || (item as any).banner || (item as any).cover || (item as any).image || (item as any).thumbnail || (item as any).screenshot || null;
-};
-
-const download = (item: any) => {
-  const d = item.download_url || (item as any).downloadLink || (item as any).download || (item as any).apk || (item as any).file || (item as any).pkg || (item as any).dmg || (item as any).deb || (item as any).rpm;
-  const link = d || (item as any).url || (item as any).link || (item as any).homepage;
-  if (link) window.open(link, '_blank');
 };
 
 const goBack = () => {

@@ -9,40 +9,72 @@
       <el-button type="primary" :icon="Plus" @click="openCreate">新增应用</el-button>
     </div>
 
-    <el-table :data="items" stripe style="width: 100%">
-      <el-table-column label="应用" min-width="140">
-        <template #default="{ row }">
-          <div class="app-info-cell">
-            <img v-if="row.icon_url" :src="row.icon_url" class="app-icon" alt="icon" loading="lazy" />
-            <el-icon v-else :size="32" class="app-icon-placeholder"><Monitor /></el-icon>
-            <span class="app-name">{{ row.name }}</span>
-          </div>
-        </template>
-      </el-table-column>
-      
-      <el-table-column label="管理" width="160">
-        <template #default="{ row }">
-          <div class="action-cell">
-            <el-switch 
-              :model-value="row.enabled === 1" 
-              @update:model-value="(v: boolean) => toggleEnabled(row, v)" 
-              style="margin-right: 12px"
-            />
-            <el-button link type="primary" :icon="Edit" @click="editRow(row)" />
-            <el-button link type="danger" :icon="Delete" @click="remove(row)" />
-          </div>
-        </template>
-      </el-table-column>
+    <el-tabs v-model="activeTab" type="border-card">
+      <el-tab-pane label="应用列表" name="apps">
+        <el-table :data="items" stripe style="width: 100%">
+          <el-table-column label="应用" min-width="140">
+            <template #default="{ row }">
+              <div class="app-info-cell">
+                <img v-if="row.icon_url" :src="row.icon_url" class="app-icon" alt="icon" loading="lazy" />
+                <el-icon v-else :size="32" class="app-icon-placeholder"><Monitor /></el-icon>
+                <span class="app-name">{{ row.name }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          
+          <el-table-column label="管理" width="160">
+            <template #default="{ row }">
+              <div class="action-cell">
+                <el-switch 
+                  :model-value="row.enabled === 1" 
+                  @update:model-value="(v: boolean) => toggleEnabled(row, v)" 
+                  style="margin-right: 12px"
+                />
+                <el-button link type="primary" :icon="Edit" @click="editRow(row)" />
+                <el-button link type="danger" :icon="Delete" @click="remove(row)" />
+              </div>
+            </template>
+          </el-table-column>
 
-      <el-table-column v-if="!isMobile" prop="provider" label="提供者" width="150" show-overflow-tooltip />
-      <el-table-column v-if="!isMobile" prop="download_url" label="下载链接" show-overflow-tooltip />
-      <el-table-column v-if="!isMobile" label="背景" width="160">
-        <template #default="{ row }">
-          <img v-if="row.bg_url" :src="row.bg_url" class="banner" alt="bg" loading="lazy" />
-          <el-tag v-else type="info">无</el-tag>
-        </template>
-      </el-table-column>
-    </el-table>
+          <el-table-column v-if="!isMobile" prop="provider" label="提供者" width="150" show-overflow-tooltip />
+          <el-table-column v-if="!isMobile" prop="download_url" label="下载链接" show-overflow-tooltip />
+          <el-table-column v-if="!isMobile" label="背景" width="160">
+            <template #default="{ row }">
+              <img v-if="row.bg_url" :src="row.bg_url" class="banner" alt="bg" loading="lazy" />
+              <el-tag v-else type="info">无</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+      <el-tab-pane label="待审核应用" name="pending">
+        <el-table :data="pendingItems" stripe style="width: 100%">
+          <el-table-column label="应用" min-width="160">
+            <template #default="{ row }">
+              <div class="app-info-cell">
+                <img v-if="row.icon_url" :src="row.icon_url" class="app-icon" alt="icon" loading="lazy" />
+                <el-icon v-else :size="32" class="app-icon-placeholder"><Monitor /></el-icon>
+                <span class="app-name">{{ row.name }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="120">
+            <template #default="{ row }">
+              <el-tag :type="getSubmissionStatusType(row.status)">{{ getSubmissionStatusText(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="!isMobile" prop="provider" label="提供者" width="160" show-overflow-tooltip />
+          <el-table-column v-if="!isMobile" prop="download_url" label="下载链接" show-overflow-tooltip />
+          <el-table-column v-if="!isMobile" prop="created_at" label="提交时间" width="180" />
+          <el-table-column label="操作" width="260">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" @click="editPending(row)" :disabled="row.loading">编辑</el-button>
+              <el-button size="small" type="success" @click="approve(row)" :loading="row.loading">通过</el-button>
+              <el-button size="small" type="danger" @click="reject(row)" :loading="row.loading">拒绝</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+    </el-tabs>
 
     <el-dialog v-model="showDialog" :title="dialogTitle" :width="isMobile ? '90%' : '600px'">
       <el-form :model="form" :label-width="isMobile ? 'auto' : '120px'" :label-position="isMobile ? 'top' : 'right'">
@@ -117,13 +149,15 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { Plus, Monitor, Edit, Delete } from '@element-plus/icons-vue';
-import { getApps, createApp, updateApp, deleteApp, uploadFile, type AppItem } from '../../services/admin';
+import { getApps, createApp, updateApp, deleteApp, uploadFile, getAppSubmissions, approveAppSubmission, rejectAppSubmission, updateAppSubmission, type AppItem, type AppSubmission } from '../../services/admin';
 import { useRouter } from 'vue-router';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
 const router = useRouter();
 const items = ref<AppItem[]>([]);
+const pendingItems = ref<Array<AppSubmission & { loading?: boolean }>>([]);
+const activeTab = ref<'apps' | 'pending'>('apps');
 const isMobile = ref(window.innerWidth < 768);
 
 const checkMobile = () => {
@@ -132,6 +166,7 @@ const checkMobile = () => {
 
 onMounted(() => {
   fetchList();
+  fetchPending();
   window.addEventListener('resize', checkMobile);
 });
 onUnmounted(() => {
@@ -139,7 +174,8 @@ onUnmounted(() => {
 });
 const showDialog = ref(false);
 const dialogTitle = ref('新增应用');
-const editingId = ref<number | null>(null);
+const editingTargetId = ref<number | null>(null);
+const editingTargetType = ref<'app' | 'submission'>('app');
 const saving = ref(false);
 const form = ref<{ name: string; provider?: string | null; bg_url?: string | null; icon_url?: string | null; download_url?: string | null; enabledSwitch: boolean }>({
   name: '',
@@ -158,21 +194,38 @@ const fetchList = async () => {
   }
 };
 
+const fetchPending = async () => {
+  try {
+    pendingItems.value = await getAppSubmissions({ status: 'pending' });
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '加载待审核列表失败');
+  }
+};
+
 const openCreate = () => {
   dialogTitle.value = '新增应用';
-  editingId.value = null;
+  editingTargetId.value = null;
+  editingTargetType.value = 'app';
   form.value = { name: '', provider: '', bg_url: '', icon_url: '', download_url: '', enabledSwitch: true };
   showDialog.value = true;
 };
 const editRow = (row: AppItem) => {
   dialogTitle.value = '编辑应用';
-  editingId.value = row.id;
+  editingTargetId.value = row.id;
+  editingTargetType.value = 'app';
   form.value = { name: row.name, provider: row.provider || '', bg_url: row.bg_url || '', icon_url: row.icon_url || '', download_url: row.download_url || '', enabledSwitch: row.enabled === 1 };
+  showDialog.value = true;
+};
+const editPending = (row: AppSubmission) => {
+  dialogTitle.value = '编辑投稿';
+  editingTargetId.value = row.id;
+  editingTargetType.value = 'submission';
+  form.value = { name: row.name, provider: row.provider || '', bg_url: row.bg_url || '', icon_url: row.icon_url || '', download_url: row.download_url || '', enabledSwitch: true };
   showDialog.value = true;
 };
 const save = async () => {
   if (saving.value) return;
-  const payload: Partial<AppItem> = {
+  const payload = {
     name: (form.value.name || '').trim(),
     provider: form.value.provider || null,
     bg_url: form.value.bg_url || null,
@@ -183,15 +236,22 @@ const save = async () => {
   if (!payload.name) { ElMessage.error('请输入名称'); return; }
   saving.value = true;
   try {
-    if (editingId.value) {
-      await updateApp(editingId.value, payload);
+    if (editingTargetType.value === 'submission') {
+      if (!editingTargetId.value) { ElMessage.error('投稿不存在'); return; }
+      await updateAppSubmission(editingTargetId.value, payload);
       ElMessage.success('保存成功');
+      fetchPending();
     } else {
-      await createApp(payload);
-      ElMessage.success('创建成功');
+      if (editingTargetId.value) {
+        await updateApp(editingTargetId.value, payload);
+        ElMessage.success('保存成功');
+      } else {
+        await createApp(payload);
+        ElMessage.success('创建成功');
+      }
+      fetchList();
     }
     showDialog.value = false;
-    fetchList();
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error || '保存失败');
   } finally {
@@ -213,6 +273,55 @@ const toggleEnabled = async (row: AppItem, v: boolean) => {
   } catch (e: any) {
     row.enabled = prev;
     ElMessage.error(e?.response?.data?.error || '切换失败');
+  }
+};
+
+const getSubmissionStatusType = (status?: string | null) => {
+  const s = String(status || '').trim();
+  if (s === 'approved') return 'success';
+  if (s === 'rejected') return 'danger';
+  if (s === 'pending') return 'warning';
+  return 'info';
+};
+
+const getSubmissionStatusText = (status?: string | null) => {
+  const s = String(status || '').trim();
+  if (s === 'approved') return '已通过';
+  if (s === 'rejected') return '已拒绝';
+  if (s === 'pending') return '待审核';
+  return s || '待审核';
+};
+
+const approve = async (row: AppSubmission & { loading?: boolean }) => {
+  try {
+    await ElMessageBox.confirm('确认通过该投稿？', '提示', { type: 'warning' });
+    row.loading = true;
+    await approveAppSubmission(row.id);
+    ElMessage.success('已通过');
+    fetchList();
+    fetchPending();
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e?.response?.data?.error || '操作失败');
+    }
+  } finally {
+    row.loading = false;
+  }
+};
+
+const reject = async (row: AppSubmission & { loading?: boolean }) => {
+  try {
+    await ElMessageBox.confirm('确认拒绝该投稿？', '提示', { type: 'warning' });
+    row.loading = true;
+    await rejectAppSubmission(row.id);
+    ElMessage.success('已拒绝');
+    fetchPending();
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e?.response?.data?.error || '操作失败');
+    }
+  } finally {
+    row.loading = false;
   }
 };
 const onUploadBg = async (opts: any) => {

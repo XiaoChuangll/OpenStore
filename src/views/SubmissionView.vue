@@ -1,13 +1,15 @@
 <template>
   <div class="submission-view">
-    <el-card class="submission-card">
-      <template #header>
-        <div class="card-header">
-          <h2>提交收录</h2>
-        </div>
-      </template>
+    <el-card class="submission-card" :body-style="{ padding: '0px' }">
+      <el-collapse v-model="activeNames">
+        <el-collapse-item name="collection">
+          <template #title>
+            <div class="card-header">
+              <h2>提交收录</h2>
+            </div>
+          </template>
       
-      <el-form :model="form" label-position="top">
+          <el-form :model="form" label-position="top">
         <el-form-item label="提交类型">
           <el-radio-group v-model="form.type">
             <el-radio-button label="app">应用</el-radio-button>
@@ -166,7 +168,65 @@
           </el-form-item>
         </template>
 
-      </el-form>
+          </el-form>
+        </el-collapse-item>
+      </el-collapse>
+    </el-card>
+    <el-card class="submission-card" :body-style="{ padding: '0px' }">
+      <el-collapse v-model="activeNames">
+        <el-collapse-item name="submission">
+          <template #title>
+            <div class="card-header">
+              <h2>应用投稿</h2>
+            </div>
+          </template>
+          <el-form :model="submitForm" label-position="top" v-if="submissionStep === 'edit'">
+        <el-form-item label="投稿类型">
+          <el-tag type="warning" size="large">侧载/测试类型</el-tag>
+        </el-form-item>
+        <el-form-item label="应用名称">
+          <el-input v-model="submitForm.name" placeholder="请输入应用名称" clearable />
+        </el-form-item>
+        <el-form-item label="应用提供者">
+          <el-input v-model="submitForm.provider" placeholder="请输入应用提供者" clearable />
+        </el-form-item>
+        <el-form-item label="背景URL">
+          <el-input v-model="submitForm.bg_url" placeholder="请输入背景URL" clearable />
+        </el-form-item>
+        <el-form-item label="图标URL">
+          <el-input v-model="submitForm.icon_url" placeholder="请输入图标URL" clearable />
+        </el-form-item>
+        <el-form-item label="下载链接">
+          <el-input v-model="submitForm.download_url" placeholder="请输入下载链接" clearable />
+        </el-form-item>
+        <div class="submit-actions">
+          <el-button type="primary" @click="saveForPreview">保存并预览</el-button>
+          <span class="form-tip">每5分钟仅可提交一次</span>
+        </div>
+          </el-form>
+
+          <div v-else class="preview-section">
+            <el-alert
+              title="请确认投稿信息"
+              type="info"
+              description="请仔细检查下方应用卡片预览效果，确认无误后点击提交。"
+              show-icon
+              :closable="false"
+              style="margin-bottom: 20px;"
+            />
+            
+            <div class="preview-card-wrapper">
+               <AppDetailCard :item="previewData" :is-detail="true" />
+            </div>
+
+            <div class="submit-actions" style="margin-top: 24px; justify-content: center;">
+              <el-button :icon="Back" @click="backToEdit">返回修改</el-button>
+              <el-button type="primary" :loading="submitting" :icon="Check" @click="submitApp">确认提交</el-button>
+            </div>
+          </div>
+
+        </el-collapse-item>
+      </el-collapse>
     </el-card>
   </div>
 </template>
@@ -174,9 +234,10 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Link, Picture } from '@element-plus/icons-vue';
+import { Link, Picture, Back, Check } from '@element-plus/icons-vue';
 import { hmApi } from '../services/hm-api';
-import { getTopicDetail } from '../services/api';
+import { getTopicDetail, submitAppSubmission } from '../services/api';
+import AppDetailCard from '../components/AppDetailCard.vue';
 
 type SubmittedAppInfo = {
   icon_url?: string;
@@ -199,6 +260,7 @@ type SubmittedAppInfo = {
 
 const parsing = ref(false);
 const topicParsing = ref(false);
+const activeNames = ref<string[]>([]);
 
 const form = reactive({
   type: 'app',
@@ -214,6 +276,9 @@ const appForm = reactive({
 const submittedAppInfo = ref<SubmittedAppInfo | null>(null);
 const parsedSubstance = ref<any | null>(null);
 const topicApps = ref<SubmittedAppInfo[]>([]);
+const submitting = ref(false);
+const submissionStep = ref<'edit' | 'preview'>('edit');
+const previewData = ref<any>(null);
 
 let debounceTimer: number | undefined;
 let requestSeq = 0;
@@ -221,6 +286,14 @@ let lastFetchKey = '';
 let substanceDebounceTimer: number | undefined;
 let substanceRequestSeq = 0;
 let lastSubstanceKey = '';
+
+const submitForm = reactive({
+  name: '',
+  provider: '',
+  bg_url: '',
+  icon_url: '',
+  download_url: ''
+});
 
 const getStatusTagType = (raw: any) => {
   const s = String(raw || '').trim();
@@ -395,6 +468,64 @@ const parseSubstanceComment = (raw: any) => {
   }
 
   return { remark: text, platform: '', user: '' };
+};
+
+const normalizeSubmitPayload = () => ({
+  name: String(submitForm.name || '').trim(),
+  provider: String(submitForm.provider || '').trim(),
+  bg_url: String(submitForm.bg_url || '').trim(),
+  icon_url: String(submitForm.icon_url || '').trim(),
+  download_url: String(submitForm.download_url || '').trim()
+});
+
+const validateSubmitPayload = (payload: ReturnType<typeof normalizeSubmitPayload>) => {
+  if (!payload.name) return '请输入应用名称';
+  if (!payload.provider) return '请输入应用提供者';
+  if (!payload.bg_url) return '请输入背景URL';
+  if (!payload.icon_url) return '请输入图标URL';
+  if (!payload.download_url) return '请输入下载链接';
+  return '';
+};
+
+const saveForPreview = () => {
+  const payload = normalizeSubmitPayload();
+  const error = validateSubmitPayload(payload);
+  if (error) {
+    ElMessage.error(error);
+    return;
+  }
+  previewData.value = payload;
+  submissionStep.value = 'preview';
+};
+
+const backToEdit = () => {
+  submissionStep.value = 'edit';
+};
+
+const submitApp = async () => {
+  if (submitting.value) return;
+  const payload = previewData.value || normalizeSubmitPayload(); // Use preview data if available
+  const error = validateSubmitPayload(payload);
+  if (error) {
+    ElMessage.error(error);
+    return;
+  }
+  submitting.value = true;
+  try {
+    await submitAppSubmission(payload);
+    ElMessage.success('提交成功，等待审核');
+    submitForm.name = '';
+    submitForm.provider = '';
+    submitForm.bg_url = '';
+    submitForm.icon_url = '';
+    submitForm.download_url = '';
+    submissionStep.value = 'edit';
+    previewData.value = null;
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '提交失败');
+  } finally {
+    submitting.value = false;
+  }
 };
 
 const runPool = async <T>(items: T[], limit: number, worker: (item: T) => Promise<void>) => {
@@ -730,7 +861,9 @@ const handleSubstanceInput = (value: string) => {
 <style scoped>
 .submission-view {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
   padding: 40px 20px;
 }
 
@@ -765,5 +898,30 @@ const handleSubstanceInput = (value: string) => {
   flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
+}
+
+.submit-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+:deep(.el-collapse) {
+  border-top: none;
+  border-bottom: none;
+}
+
+:deep(.el-collapse-item__header) {
+  padding: 0 20px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+:deep(.el-collapse-item__wrap) {
+  border-bottom: none;
+}
+
+:deep(.el-collapse-item__content) {
+  padding: 20px;
+  padding-bottom: 20px;
 }
 </style>

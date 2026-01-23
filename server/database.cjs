@@ -163,6 +163,23 @@ db.serialize(() => {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS app_submissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    provider TEXT,
+    bg_url TEXT,
+    icon_url TEXT,
+    download_url TEXT,
+    type TEXT DEFAULT 'sideload',
+    status TEXT DEFAULT 'pending',
+    user_id INTEGER,
+    user_ip TEXT,
+    review_note TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at DATETIME,
+    reviewer_id INTEGER
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS site_cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     key TEXT NOT NULL UNIQUE,
@@ -224,6 +241,7 @@ db.serialize(() => {
   ensureColumn('about_page', 'author_avatar', 'TEXT');
   ensureColumn('about_page', 'author_github', 'TEXT');
   ensureColumn('about_page', 'content_markdown', 'TEXT');
+  ensureColumn('app_submissions', 'review_note', 'TEXT');
 });
 
 module.exports = db;

@@ -107,7 +107,7 @@ const goBack = () => {
 const targets = ref({
   api: {
     url: import.meta.env.VITE_API_TARGET,
-    proxyPath: '/api/v0', // 通过本站代理访问
+    proxyPath: '/api/v0/charts/rating', // 通过本站代理访问
     online: false,
     latency: 0,
     lastCheck: '',

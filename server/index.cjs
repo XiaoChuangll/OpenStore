@@ -185,6 +185,15 @@ app.get('/api/public/track', (req, res) => {
   res.json({ ok: true });
 });
 
+// Health check endpoints for System Monitor
+app.get('/api/v0/charts/rating', (req, res) => {
+  res.json({ status: 'ok', version: 'v0' });
+});
+
+app.get('/next-api/apps/devices', (req, res) => {
+  res.json({ status: 'ok', service: 'next-api' });
+});
+
 // API Proxy for debugging
 app.post('/api/proxy-request', async (req, res) => {
   const { url, method = 'GET', headers = {}, data = null, body = null } = req.body;
@@ -961,47 +970,198 @@ app.delete('/api/changelogs/:id', requireAuth, (req, res) => {
   });
 });
 
-// Apps CRUD
-app.get('/api/apps', requireAuth, (req, res) => {
-  db.all(`SELECT * FROM apps ORDER BY id DESC`, [], (err, rows) => {
+const getClientIp = (req) => {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+  let cleanIp = ip.toString().split(',')[0].trim();
+  if (cleanIp.startsWith('::ffff:')) {
+    cleanIp = cleanIp.substring(7);
+  } else if (cleanIp === '::1') {
+    cleanIp = '127.0.0.1';
+  }
+  return cleanIp;
+};
+
+const normalizeSubmission = (body) => {
+  const toText = (v) => String(v ?? '').trim();
+  const name = toText(body?.name);
+  const provider = toText(body?.provider);
+  const bg_url = toText(body?.bg_url);
+  const icon_url = toText(body?.icon_url);
+  const download_url = toText(body?.download_url);
+  return { name, provider, bg_url, icon_url, download_url };
+};
+
+const validateSubmission = (payload) => {
+  if (!payload.name) return '应用名称不能为空';
+  if (!payload.provider) return '应用提供者不能为空';
+  if (!payload.bg_url) return '背景URL不能为空';
+  if (!payload.icon_url) return '图标URL不能为空';
+  if (!payload.download_url) return '下载链接不能为空';
+  return '';
+};
+
+app.post('/api/submissions', (req, res) => {
+  const payload = normalizeSubmission(req.body || {});
+  const error = validateSubmission(payload);
+  if (error) return res.status(400).json({ error });
+  const user_ip = getClientIp(req);
+  let user_id = null;
+  let actor = user_ip || 'guest';
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (token) {
+    try {
+      const data = jwt.verify(token, JWT_SECRET);
+      user_id = data?.uid || null;
+      if (data?.username) actor = data.username;
+    } catch {}
+  }
+  const params = [];
+  let whereSql = '';
+  if (user_id) {
+    whereSql = '(user_id = ? OR user_ip = ?)';
+    params.push(user_id, user_ip);
+  } else {
+    whereSql = 'user_ip = ?';
+    params.push(user_ip);
+  }
+  db.get(
+    `SELECT COUNT(*) as count FROM app_submissions WHERE ${whereSql} AND created_at > datetime('now', '-10 minutes')`,
+    params,
+    (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (row && row.count >= 5) return res.status(429).json({ error: '提交过于频繁，10分钟内最多允许提交5次' });
+      
+      db.get(`SELECT id FROM apps WHERE name = ?`, [payload.name], (e_dup1, row_dup1) => {
+        if (e_dup1) return res.status(500).json({ error: e_dup1.message });
+        if (row_dup1) return res.status(400).json({ error: '该应用已收录，请勿重复提交' });
+
+        db.get(`SELECT id FROM app_submissions WHERE name = ? AND status = 'pending'`, [payload.name], (e_dup2, row_dup2) => {
+          if (e_dup2) return res.status(500).json({ error: e_dup2.message });
+          if (row_dup2) return res.status(400).json({ error: '该应用已在审核中，请勿重复提交' });
+
+          db.run(
+            `INSERT INTO app_submissions (name, provider, bg_url, icon_url, download_url, type, status, user_id, user_ip) VALUES (?,?,?,?,?,?,?,?,?)`,
+            [payload.name, payload.provider, payload.bg_url, payload.icon_url, payload.download_url, 'sideload', 'pending', user_id, user_ip],
+            function(e2) {
+              if (e2) return res.status(500).json({ error: e2.message });
+              logAction(actor, 'submit', 'app_submissions', this.lastID, { name: payload.name });
+              db.all(`SELECT * FROM app_submissions ORDER BY created_at DESC`, [], (e3, rows) => {
+                if (!e3) broadcast('submissions:update', rows);
+              });
+              res.json({ id: this.lastID });
+            }
+          );
+        });
+      });
+    }
+  );
+});
+
+app.get('/api/submissions', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const status = String(req.query.status || '').trim();
+  const params = [];
+  let whereSql = '';
+  if (status) {
+    whereSql = 'WHERE status = ?';
+    params.push(status);
+  }
+  db.all(`SELECT * FROM app_submissions ${whereSql} ORDER BY created_at DESC`, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ items: rows });
   });
 });
-app.post('/api/apps', requireAuth, (req, res) => {
-  const { name, provider, bg_url, download_url, enabled = 1 } = req.body;
-  db.run(`INSERT INTO apps (name, provider, bg_url, download_url, enabled) VALUES (?,?,?,?,?)`, [name, provider || '', bg_url || '', download_url || '', enabled], function(err){
-    if (err) return res.status(500).json({ error: err.message });
-    const id = this.lastID;
-    logAction(req.user?.username, 'create', 'apps', id, { name, provider, bg_url, download_url, enabled });
-    db.all(`SELECT * FROM apps WHERE enabled=1 ORDER BY id DESC`, [], (e2, rows) => { if (!e2) broadcast('apps:update', rows); });
-    res.json({ id });
-  });
-});
-app.put('/api/apps/:id', requireAuth, (req, res) => {
+
+app.put('/api/submissions/:id', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
   const id = Number(req.params.id);
-  const { name, provider, bg_url, download_url, enabled = 1 } = req.body;
-  db.run(`UPDATE apps SET name=?, provider=?, bg_url=?, download_url=?, enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, [name, provider || '', bg_url || '', download_url || '', enabled, id], function(err){
+  const { name, provider, bg_url, icon_url, download_url } = req.body || {};
+  db.get(`SELECT * FROM app_submissions WHERE id=?`, [id], (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
-    logAction(req.user?.username, 'update', 'apps', id, { name, provider, bg_url, download_url, enabled });
-    db.all(`SELECT * FROM apps WHERE enabled=1 ORDER BY id DESC`, [], (e2, rows) => { if (!e2) broadcast('apps:update', rows); });
-    res.json({ changed: this.changes });
+    if (!row) return res.status(404).json({ error: '投稿不存在' });
+    if (row.status !== 'pending') return res.status(400).json({ error: '投稿已处理' });
+
+    const toText = (v) => (typeof v === 'string' ? v.trim() : v);
+    const normalized = {
+      name: toText(name),
+      provider: toText(provider),
+      bg_url: toText(bg_url),
+      icon_url: toText(icon_url),
+      download_url: toText(download_url),
+    };
+    if (typeof normalized.name !== 'undefined' && !normalized.name) return res.status(400).json({ error: '应用名称不能为空' });
+    if (typeof normalized.provider !== 'undefined' && !normalized.provider) return res.status(400).json({ error: '应用提供者不能为空' });
+    if (typeof normalized.bg_url !== 'undefined' && !normalized.bg_url) return res.status(400).json({ error: '背景URL不能为空' });
+    if (typeof normalized.icon_url !== 'undefined' && !normalized.icon_url) return res.status(400).json({ error: '图标URL不能为空' });
+    if (typeof normalized.download_url !== 'undefined' && !normalized.download_url) return res.status(400).json({ error: '下载链接不能为空' });
+
+    const sets = [];
+    const params = [];
+    if (typeof normalized.name !== 'undefined') { sets.push('name=?'); params.push(normalized.name); }
+    if (typeof normalized.provider !== 'undefined') { sets.push('provider=?'); params.push(normalized.provider); }
+    if (typeof normalized.bg_url !== 'undefined') { sets.push('bg_url=?'); params.push(normalized.bg_url); }
+    if (typeof normalized.icon_url !== 'undefined') { sets.push('icon_url=?'); params.push(normalized.icon_url); }
+    if (typeof normalized.download_url !== 'undefined') { sets.push('download_url=?'); params.push(normalized.download_url); }
+    if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+    db.run(`UPDATE app_submissions SET ${sets.join(', ')} WHERE id=?`, [...params, id], function(e2) {
+      if (e2) return res.status(500).json({ error: e2.message });
+      logAction(req.user?.username, 'update', 'app_submissions', id, { name: normalized.name });
+      db.all(`SELECT * FROM app_submissions ORDER BY created_at DESC`, [], (e3, rows) => { if (!e3) broadcast('submissions:update', rows); });
+      res.json({ changed: this.changes });
+    });
   });
 });
-app.delete('/api/apps/:id', requireAuth, (req, res) => {
+
+app.post('/api/submissions/:id/approve', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
   const id = Number(req.params.id);
-  db.run(`DELETE FROM apps WHERE id=?`, [id], function(err){
+  const { note } = req.body || {};
+  db.get(`SELECT * FROM app_submissions WHERE id=?`, [id], (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
-    logAction(req.user?.username, 'delete', 'apps', id);
-    db.all(`SELECT * FROM apps WHERE enabled=1 ORDER BY id DESC`, [], (e2, rows) => { if (!e2) broadcast('apps:update', rows); });
-    res.json({ deleted: this.changes });
+    if (!row) return res.status(404).json({ error: '投稿不存在' });
+    if (row.status !== 'pending') return res.status(400).json({ error: '投稿已处理' });
+    db.run(
+      `INSERT INTO apps (name, provider, bg_url, icon_url, download_url, enabled) VALUES (?,?,?,?,?,?)`,
+      [row.name, row.provider || '', row.bg_url || '', row.icon_url || '', row.download_url || '', 1],
+      function(e2) {
+        if (e2) return res.status(500).json({ error: e2.message });
+        const appId = this.lastID;
+        db.run(
+          `UPDATE app_submissions SET status='approved', reviewed_at=CURRENT_TIMESTAMP, reviewer_id=?, review_note=? WHERE id=?`,
+          [req.user?.uid || null, note ? String(note).trim() : null, id],
+          function(e3) {
+            if (e3) return res.status(500).json({ error: e3.message });
+            logAction(req.user?.username, 'approve', 'app_submissions', id, { app_id: appId });
+            db.all(`SELECT * FROM apps WHERE enabled=1 ORDER BY id DESC`, [], (e4, rows) => { if (!e4) broadcast('apps:update', rows); });
+            db.all(`SELECT * FROM app_submissions ORDER BY created_at DESC`, [], (e5, rows) => { if (!e5) broadcast('submissions:update', rows); });
+            res.json({ id, app_id: appId });
+          }
+        );
+      }
+    );
   });
 });
-// Public apps
-app.get('/api/public/apps', (req, res) => {
-  db.all(`SELECT * FROM apps WHERE enabled=1 ORDER BY id DESC`, [], (err, rows) => {
+
+app.post('/api/submissions/:id/reject', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const id = Number(req.params.id);
+  const { note } = req.body || {};
+  db.get(`SELECT * FROM app_submissions WHERE id=?`, [id], (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
-    res.json({ items: rows });
+    if (!row) return res.status(404).json({ error: '投稿不存在' });
+    if (row.status !== 'pending') return res.status(400).json({ error: '投稿已处理' });
+    db.run(
+      `UPDATE app_submissions SET status='rejected', reviewed_at=CURRENT_TIMESTAMP, reviewer_id=?, review_note=? WHERE id=?`,
+      [req.user?.uid || null, note ? String(note).trim() : null, id],
+      function(e2) {
+        if (e2) return res.status(500).json({ error: e2.message });
+        logAction(req.user?.username, 'reject', 'app_submissions', id);
+        db.all(`SELECT * FROM app_submissions ORDER BY created_at DESC`, [], (e3, rows) => { if (!e3) broadcast('submissions:update', rows); });
+        res.json({ id });
+      }
+    );
   });
 });
 

@@ -222,6 +222,40 @@ export const deleteApp = async (id: number) => {
   await api.delete(`/apps/${id}`);
 };
 
+export interface AppSubmission {
+  id: number;
+  name: string;
+  provider?: string | null;
+  bg_url?: string | null;
+  icon_url?: string | null;
+  download_url?: string | null;
+  type?: string | null;
+  status?: string | null;
+  user_id?: number | null;
+  user_ip?: string | null;
+  review_note?: string | null;
+  created_at?: string | null;
+  reviewed_at?: string | null;
+  reviewer_id?: number | null;
+}
+
+export const getAppSubmissions = async (params: { status?: string } = {}) => {
+  const { data } = await api.get('/submissions', { params });
+  return data.items as AppSubmission[];
+};
+
+export const approveAppSubmission = async (id: number, note?: string) => {
+  await api.post(`/submissions/${id}/approve`, note ? { note } : {});
+};
+
+export const rejectAppSubmission = async (id: number, note?: string) => {
+  await api.post(`/submissions/${id}/reject`, note ? { note } : {});
+};
+
+export const updateAppSubmission = async (id: number, payload: Partial<AppSubmission>) => {
+  await api.put(`/submissions/${id}`, payload);
+};
+
 // ENV management
 export type EnvItem = { key: string; value: string; secure: boolean; updated_at: string | null };
 export type EnvMap = Record<string, EnvItem[]>;
