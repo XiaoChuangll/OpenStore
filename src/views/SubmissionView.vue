@@ -201,7 +201,6 @@
         </el-form-item>
         <div class="submit-actions">
           <el-button type="primary" @click="saveForPreview">保存并预览</el-button>
-          <span class="form-tip">每5分钟仅可提交一次</span>
         </div>
           </el-form>
 
@@ -865,6 +864,7 @@ const handleSubstanceInput = (value: string) => {
   align-items: center;
   gap: 20px;
   padding: 40px 20px;
+  overflow-x: hidden;
 }
 
 .submission-card {
@@ -873,10 +873,22 @@ const handleSubstanceInput = (value: string) => {
   border-radius: 12px;
 }
 
+.card-header {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
 .card-header h2 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .form-tip {
@@ -909,11 +921,29 @@ const handleSubstanceInput = (value: string) => {
 :deep(.el-collapse) {
   border-top: none;
   border-bottom: none;
+  width: 100%;
 }
 
 :deep(.el-collapse-item__header) {
+  display: flex;
+  align-items: center;
   padding: 0 20px;
   border-bottom: 1px solid var(--el-border-color-lighter);
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+:deep(.el-collapse-item__title) {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+:deep(.el-collapse-item__arrow) {
+  flex: 0 0 auto;
+  margin-left: 8px;
 }
 
 :deep(.el-collapse-item__wrap) {
@@ -923,5 +953,14 @@ const handleSubstanceInput = (value: string) => {
 :deep(.el-collapse-item__content) {
   padding: 20px;
   padding-bottom: 20px;
+}
+
+:deep(.el-card__body) {
+  overflow-x: hidden;
+}
+
+:deep(.el-input__wrapper),
+:deep(.el-input) {
+  max-width: 100%;
 }
 </style>

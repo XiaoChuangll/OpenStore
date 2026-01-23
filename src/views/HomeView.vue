@@ -17,8 +17,7 @@
                   <div class="accent-bar" :class="card.key === 'music' ? 'bg-red' : getCardStyle(card).accent"></div>
                   <span class="card-title">{{ card.title }}</span>
                 </div>
-                <el-button v-if="card.key === 'music'" type="primary" link @click="goMusic" class="hidden-btn">打开</el-button>
-              </div>
+               </div>
             </template>
 
             <template v-if="card.key === 'music'">
@@ -621,5 +620,41 @@ onMounted(() => {
 .music-card-img:hover {
   filter: drop-shadow(0 8px 16px rgba(0,0,0,0.2)) brightness(1.1);
   transform: scale(1.1);
+}
+
+/* Mobile adaptation for Music Card */
+@media (max-width: 768px) {
+  .music-card-wrapper .hidden-btn {
+    display: inline-flex;
+  }
+  .music-card-content {
+    min-height: 100px;
+    padding-right: 88px;
+  }
+  .music-actions {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    gap: 8px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+  }
+  .music-actions::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+  .music-action-btn {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  .music-card-img {
+    height: 80px;
+    right: 0;
+    bottom: 0;
+    opacity: 0.9;
+    z-index: 0;
+    pointer-events: none;
+  }
 }
 </style>

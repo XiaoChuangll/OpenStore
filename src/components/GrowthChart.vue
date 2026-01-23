@@ -44,6 +44,7 @@ const timeRange = ref(30);
 const pageSize = ref(30);
 const metricType = ref('increase');
 const chartData = ref<any[]>([]);
+const excludedPkgs = new Set<string>(['com.leisu.yuan']);
 
 const goToRank = () => {
   if (route.path !== '/rank/growth') {
@@ -186,7 +187,10 @@ const fetchData = async () => {
         limit: pageSize.value,
         days: timeRange.value
       });
-      apps = response.data || [];
+      apps = (response.data || []).filter((item: any) => {
+        const pkg = item?.pkg_name || item?.app?.pkg_name || '';
+        return !excludedPkgs.has(String(pkg));
+      });
     } catch (e) {
       console.warn('Failed to fetch growth data, falling back to apps/list');
     }
@@ -199,7 +203,12 @@ const fetchData = async () => {
         desc: true
       });
       // Adapt list data to growth data structure
-      apps = (listResponse.data?.data || []).map((item: any) => ({
+      apps = (listResponse.data?.data || [])
+        .filter((item: any) => {
+          const pkg = item?.pkg_name || '';
+          return !excludedPkgs.has(String(pkg));
+        })
+        .map((item: any) => ({
         ...item,
         current_download_count: item.download_count,
         prior_download_count: item.download_count,
