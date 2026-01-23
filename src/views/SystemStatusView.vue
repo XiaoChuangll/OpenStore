@@ -4,7 +4,7 @@
       <el-page-header @back="goBack" class="page-header">
         <template #content>
           <div class="page-header-content">
-            <span class="page-title"> 系统状态详细监控 </span>
+            <span class="page-title"> 系统状态监控 </span>
             <el-tag :type="isSystemHealthy ? 'success' : 'danger'" class="status-tag">
               {{ isSystemHealthy ? '系统正常' : '部分异常' }}
             </el-tag>
@@ -162,17 +162,21 @@ const checkTarget = async (key: 'api' | 'nextApi') => {
     clearTimeout(timeoutId);
     
     const endTime = performance.now();
-    target.latency = Math.round(endTime - startTime);
+    const duration = Math.round(endTime - startTime);
     
     // 只要有响应且状态码正常，视为在线
     if (response.ok) {
       target.online = true;
+      target.latency = duration;
       target.statusText = '连接正常';
     } else {
       // 即使是非200响应，只要不是5xx服务器错误，通常也意味着服务进程在运行
       // 但为了准确性，我们显示具体状态
       target.online = response.status < 500;
       target.statusText = `状态异常: ${response.status}`;
+      
+      // 如果判定为离线（例如 502/504），则重置响应时间为 0
+      target.latency = target.online ? duration : 0;
     }
   } catch (error) {
     target.online = false;
