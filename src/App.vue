@@ -3,12 +3,15 @@ import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useThemeStore } from './stores/theme';
 import { useLayoutStore } from './stores/layout';
+import { usePlayerStore } from './stores/player';
 import { useRouter, useRoute } from 'vue-router';
+import MiniPlayer from './components/MiniPlayer.vue';
 import { Moon, Sunny, ArrowLeft, Compass, Menu, Refresh, ArrowDown, UserFilled, Collection, Close, Monitor, Edit, InfoFilled } from '@element-plus/icons-vue';
 import { useAuthStore } from './stores/auth';
 
 const themeStore = useThemeStore();
 const layoutStore = useLayoutStore();
+const playerStore = usePlayerStore();
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
@@ -45,6 +48,11 @@ const sliderStyle = ref({
 
 const isScrolling = ref(false);
 let scrollTimer: number | undefined;
+
+const playProgress = computed(() => {
+  if (!playerStore.duration || !playerStore.currentTrack) return 0;
+  return (playerStore.currentTime / playerStore.duration) * 100;
+});
 
 const updateSlider = () => {
   const activeIndex = navItems.findIndex(item => item.path === activeTab.value);
@@ -255,7 +263,15 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
       <router-view />
     </el-main>
     <div class="dock-wrapper desktop-nav" @mouseenter="isDockHovered = true" @mouseleave="isDockHovered = false">
+      <MiniPlayer />
       <div class="footer-nav">
+        <!-- Dock Progress Bar -->
+        <div 
+          class="dock-progress-bar" 
+          :style="{ width: `${playProgress}%` }"
+          v-if="playerStore.currentTrack"
+        ></div>
+
         <div class="nav-slider" :style="sliderStyle"></div>
         <div 
           v-for="(item, index) in navItems"
@@ -472,6 +488,18 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
   border: 1px solid var(--el-border-color);
   border-radius: 50px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  overflow: hidden; /* Ensure progress bar doesn't overflow rounded corners */
+}
+
+.dock-progress-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--el-color-primary) 15%, transparent);
+  pointer-events: none;
+  z-index: 0;
+  transition: width 0.2s linear;
 }
 
 .sub-dock-nav {

@@ -1,15 +1,6 @@
 <template>
   <div class="music-view" :style="{ paddingBottom: (playerStore.showPlayer && playerStore.currentTrack) ? (isMobile ? '85px' : '100px') : '20px' }">
-    <el-page-header ref="pageHeaderRef" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3 no-wrap-title"> {{ pageTitle }} </span>
-      </template>
-      <template #extra>
-        <div class="header-actions">
-           
-        </div>
-      </template>
-    </el-page-header>
+    
 
     <!-- API Status Line (Separate Line) -->
     <div class="api-status-bar mb-4">
@@ -45,12 +36,34 @@
       </div>
       
       <div class="api-actions ml-2">
-         <el-tooltip content="重新检测最佳线路" placement="top" v-if="!currentApi && !checkingApi">
+         <el-tooltip content="重新检测最佳线路" placement="bottom" v-if="!currentApi && !checkingApi">
             <el-button circle size="small" :icon="Refresh" @click="findBestApi" />
          </el-tooltip>
-         <el-tooltip content="刷新数据缓存" placement="top" v-if="currentApi">
+         <el-tooltip content="刷新数据缓存" placement="bottom" v-if="currentApi">
             <el-button circle size="small" :icon="RefreshRight" @click="handleRefreshCache" />
          </el-tooltip>
+      </div>
+
+      <!-- Login Entry -->
+      <div class="user-actions" style="margin-left: auto; display: flex; align-items: center;">
+          <template v-if="playerStore.userProfile">
+              <el-dropdown trigger="click" @command="handleUserCommand">
+                  <div class="flex-center cursor-pointer" style="display: flex; align-items: center;">
+                      <el-avatar :size="24" :src="playerStore.userProfile.avatarUrl" style="margin-right: 8px;" />
+                      <span class="username" style="font-size: 14px; color: var(--el-text-color-regular);">{{ playerStore.userProfile.nickname }}</span>
+                  </div>
+                  <template #dropdown>
+                      <el-dropdown-menu>
+                          <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+                      </el-dropdown-menu>
+                  </template>
+              </el-dropdown>
+          </template>
+          <el-button v-else link type="primary" size="small" @click="playerStore.showLoginDialog = true">
+             <span style="display: flex; align-items: center;">
+                <el-icon class="mr-1"><User /></el-icon> 登录网易云
+             </span>
+          </el-button>
       </div>
     </div>
 
@@ -154,17 +167,10 @@
                <el-radio-group v-model="mainTab" size="small" class="custom-switch" @change="handleMainTabChange">
                   <el-radio-button label="home">首页</el-radio-button>
                   <el-radio-button label="mine">歌单</el-radio-button>
+                  <el-radio-button label="podcast">播客</el-radio-button>
                </el-radio-group>
             </div>
             <div class="greet-subtitle">由此开启好心情 ~</div>
-            
-            <!-- Secondary Switcher for Mine View -->
-            <div v-if="viewMode === 'mine'" class="mt-3">
-               <el-radio-group v-model="mineSubMode" size="small">
-                  <el-radio-button label="playlist">歌单</el-radio-button>
-                    <el-radio-button label="podcast">播客</el-radio-button>
-                 </el-radio-group>
-              </div>
          </div>
       </div>
 
@@ -360,8 +366,9 @@
         <div v-else-if="viewMode === 'mine'" key="mine">
             <!-- User Playlists (Mine) -->
             <div class="section mb-4">
+                <Transition :name="subTransitionName" mode="out-in">
                 <!-- Playlist View -->
-                <template v-if="mineSubMode === 'playlist'">
+                <div v-if="mineSubMode === 'playlist'" key="playlist">
                 <el-skeleton :loading="userPlaylistLoading" animated>
                     <template #template>
                         <div class="playlist-grid">
@@ -400,10 +407,10 @@
                     hide-on-single-page
                 />
                 </div>
-                </template>
+                </div>
 
                 <!-- Podcast View -->
-            <template v-else-if="mineSubMode === 'podcast'">
+                <div v-else-if="mineSubMode === 'podcast'" key="podcast">
                 <el-skeleton :loading="userPodcastLoading" animated>
                     <template #template>
                         <div class="playlist-grid">
@@ -439,7 +446,8 @@
                     hide-on-single-page
                     />
                 </div>
-            </template>
+                </div>
+                </Transition>
             </div>
         </div>
 
@@ -553,6 +561,11 @@
                  </div>
              </div>
              <div class="qr-status">{{ loginStatus }}</div>
+             <div class="mt-2" v-if="loginStatus !== '二维码已过期'">
+                <el-button link type="primary" size="small" @click="refreshLogin">
+                   <el-icon class="mr-1"><Refresh /></el-icon> 刷新二维码
+                </el-button>
+             </div>
           </div>
           <div v-else class="loading-qr">
              <el-icon class="is-loading" size="30"><Loading /></el-icon>
@@ -562,41 +575,52 @@
     </el-dialog>
 
     <!-- Playlist Detail Dialog -->
-    <el-dialog v-model="showPlaylistDialog" :title="currentPlaylist?.name" :width="isMobile ? '95%' : '90%'" class="playlist-dialog" append-to-body>
+    <el-dialog v-model="showPlaylistDialog" title="歌单" fullscreen class="playlist-dialog" append-to-body>
       <div class="playlist-table-wrapper">
-        <el-table :data="pagedPlaylistTracks" stripe style="width: 100%" v-loading="playlistLoading" @row-click="playSong" :row-style="{ height: '50px' }">
+        <el-table :data="pagedPlaylistTracks" stripe style="width: 100%; height: 100%;" v-loading="playlistLoading" @row-click="playSong" :row-style="{ height: '60px' }">
           <el-table-column type="index" :width="isMobile ? 40 : 50" :index="(i: number) => (playlistPage - 1) * 10 + i + 1" />
-          <el-table-column prop="name" label="歌曲" :min-width="isMobile ? 100 : 150" show-overflow-tooltip />
-          <el-table-column label="歌手" :min-width="isMobile ? 80 : 120" show-overflow-tooltip>
+          <el-table-column label="歌曲" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">
-              {{ getArtistName(row) }}
+              <div class="song-row-content">
+                <el-image 
+                  :src="row.al?.picUrl || row.album?.picUrl || row.coverImgUrl" 
+                  class="song-row-cover" 
+                  lazy
+                >
+                  <template #error><div class="song-row-cover-placeholder"></div></template>
+                </el-image>
+                <div class="song-row-info">
+                  <div class="song-row-name">{{ row.name }}</div>
+                  <div class="song-row-artist">{{ getArtistName(row) }}</div>
+                </div>
+              </div>
             </template>
           </el-table-column>
-          <el-table-column label="专辑" min-width="120" show-overflow-tooltip v-if="!isMobile">
-            <template #default="{ row }">
-              {{ row.al?.name || row.album?.name }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" :width="isMobile ? 60 : 100" align="center" :fixed="isMobile ? 'right' : false">
-            <template #default="{ row }">
-              <el-button circle size="small" type="primary" :icon="VideoPlay" @click.stop="playSong(row)" />
+          <el-table-column width="140" align="center" fixed="right">
+            <template #header>
+              <div class="header-pagination">
+                <el-button 
+                   size="small" 
+                   circle 
+                   text 
+                   :icon="ArrowLeft" 
+                   :disabled="playlistPage === 1" 
+                   @click.stop="playlistPage--" 
+                />
+                <span class="page-info">{{ playlistPage }}/{{ Math.ceil(playlistTracks.length / 10) || 1 }}</span>
+                <el-button 
+                   size="small" 
+                   circle 
+                   text 
+                   :icon="ArrowRight" 
+                   :disabled="playlistPage >= (Math.ceil(playlistTracks.length / 10) || 1)" 
+                   @click.stop="playlistPage++" 
+                />
+              </div>
             </template>
           </el-table-column>
         </el-table>
       </div>
-        
-        <div class="pagination-container mt-4" v-if="playlistTracks.length > 0">
-           <el-pagination
-             background
-             layout="prev, pager, next"
-             :pager-count="isMobile ? 5 : 7"
-             :small="isMobile"
-             :total="playlistTracks.length"
-             :page-size="10"
-             v-model:current-page="playlistPage"
-             hide-on-single-page
-           />
-        </div>
     </el-dialog>
 
   </div>
@@ -610,7 +634,7 @@ import { useLayoutStore } from '../stores/layout';
 import { proxyRequest, getMusicApis } from '../services/api';
 import { musicCache } from '../utils/cache'; // Import CacheManager
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Search, Loading, Headset, VideoPlay, Download, ArrowRight, Refresh, ArrowDown, Calendar, Star, CaretRight, Delete, VideoPause, Collection, RefreshRight } from '@element-plus/icons-vue';
+import { Search, Loading, Headset, VideoPlay, Download, ArrowLeft, ArrowRight, Refresh, ArrowDown, Calendar, Star, CaretRight, Delete, VideoPause, Collection, RefreshRight, User } from '@element-plus/icons-vue';
 
 const router = useRouter();
 const playerStore = usePlayerStore();
@@ -727,6 +751,7 @@ const viewMode = ref<'home' | 'radar' | 'recommend' | 'rank' | 'mine'>('home');
 const mineSubMode = ref<'playlist' | 'podcast'>('playlist');
 
 const transitionName = ref('slide-left');
+const subTransitionName = ref('slide-left');
 
 watch(viewMode, (newVal, oldVal) => {
   const order = ['home', 'mine'];
@@ -741,10 +766,26 @@ watch(viewMode, (newVal, oldVal) => {
   }
 });
 
+watch(mineSubMode, (newVal, oldVal) => {
+  const order = ['playlist', 'podcast'];
+  const newIndex = order.indexOf(newVal);
+  const oldIndex = order.indexOf(oldVal);
+  subTransitionName.value = newIndex > oldIndex ? 'slide-left' : 'slide-right';
+});
+
 const mainTab = computed({
-  get: () => viewMode.value === 'mine' ? 'mine' : 'home',
+  get: () => {
+    if (viewMode.value === 'mine') {
+        return mineSubMode.value === 'podcast' ? 'podcast' : 'mine';
+    }
+    return 'home';
+  },
   set: (val) => {
     if (val === 'mine') {
+       mineSubMode.value = 'playlist';
+       openMore('mine');
+    } else if (val === 'podcast') {
+       mineSubMode.value = 'podcast';
        openMore('mine');
     } else {
        viewMode.value = 'home';
@@ -789,7 +830,7 @@ const restorePageTitle = () => {
 
 watch(showPlaylistDialog, (val) => {
     if (val) {
-         const title = currentPlaylist.value?.name || '歌单详情';
+         const title = '歌单';
          layoutStore.setPageInfo(title, true, closePlaylistDialog);
          document.title = `${title} - OpenStore`;
     } else {
@@ -1367,7 +1408,18 @@ const refreshLogin = () => {
     openLogin();
 };
 
-// Removed internal handleUserCommand as it is handled in App.vue or we can keep sync
+const handleUserCommand = (cmd: string) => {
+    if (cmd === 'logout') {
+        localStorage.removeItem('netease_cookie');
+        playerStore.setCookie('');
+        playerStore.setUserProfile(null);
+        ElMessage.success('已退出登录');
+        // Clear user playlists
+        userPlaylists.value = [];
+        userPodcasts.value = [];
+    }
+};
+
 // Ideally clear profile on logout
 watch(() => playerStore.userProfile, (val) => {
     if (!val) {
@@ -2394,7 +2446,21 @@ onUnmounted(() => {
 }
 
 .playlist-table-wrapper {
-  height: 545px;
+  height: calc(100vh - 80px);
+  padding-bottom: 90px; /* Reserve space for dock */
+  box-sizing: border-box;
+}
+.header-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.header-pagination .page-info {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  min-width: 40px;
+  text-align: center;
 }
 
 /* Mobile specific adjustments */
@@ -2535,5 +2601,49 @@ onUnmounted(() => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+/* Song Row Styles */
+.song-row-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.song-row-cover {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.song-row-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  background-color: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+.song-row-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  flex: 1;
+}
+.song-row-name {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--el-text-color-primary);
+}
+.song-row-artist {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
