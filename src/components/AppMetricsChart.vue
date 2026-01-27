@@ -22,6 +22,17 @@
           <div ref="ratingChartRef" class="chart"></div>
         </div>
       </el-collapse-item>
+
+      <el-collapse-item name="stock-matrix">
+        <template #title>
+          <div class="custom-collapse-title">
+            <span>股市矩阵图 (Demo)</span>
+          </div>
+        </template>
+        <div class="chart-container">
+          <div ref="stockMatrixChartRef" class="chart stock-chart"></div>
+        </div>
+      </el-collapse-item>
     </el-collapse>
   </div>
 </template>
@@ -40,8 +51,10 @@ const themeStore = useThemeStore();
 const activeNames = ref<string[]>([]); // Default collapsed
 const downloadChartRef = ref<HTMLElement | null>(null);
 const ratingChartRef = ref<HTMLElement | null>(null);
+const stockMatrixChartRef = ref<HTMLElement | null>(null);
 let downloadChart: echarts.ECharts | null = null;
 let ratingChart: echarts.ECharts | null = null;
+let stockMatrixChart: echarts.ECharts | null = null;
 
 const formatDate = (dateStr: string) => {
   const date = new Date(dateStr);
@@ -366,6 +379,409 @@ const initRatingChart = (data: any) => {
   ratingChart.setOption(option);
 };
 
+// Financial Chart Helpers
+const calculateMA = (dayCount: number, data: number[]) => {
+  const result = [];
+  for (let i = 0, len = data.length; i < len; i++) {
+    if (i < dayCount) {
+      result.push('-');
+      continue;
+    }
+    let sum = 0;
+    for (let j = 0; j < dayCount; j++) {
+      sum += data[i - j];
+    }
+    result.push(sum / dayCount);
+  }
+  return result;
+};
+
+const calculateMACD = (data: number[]) => {
+  const ema12: number[] = [];
+  const ema26: number[] = [];
+  const dif: number[] = [];
+  const dea: number[] = [];
+  const macd: number[] = [];
+
+  let k12 = 2 / 13;
+  let k26 = 2 / 27;
+
+  for (let i = 0; i < data.length; i++) {
+    if (i === 0) {
+      ema12.push(data[i]);
+      ema26.push(data[i]);
+      dif.push(0);
+      dea.push(0);
+      macd.push(0);
+    } else {
+      ema12.push(data[i] * k12 + ema12[i - 1] * (1 - k12));
+      ema26.push(data[i] * k26 + ema26[i - 1] * (1 - k26));
+      dif.push(ema12[i] - ema26[i]);
+      dea.push(dif[i] * 0.2 + dea[i - 1] * 0.8); // EMA9 of DIF
+      macd.push((dif[i] - dea[i]) * 2);
+    }
+  }
+  return { dif, dea, macd };
+};
+
+const initFinancialChart = () => {
+  if (!stockMatrixChartRef.value) return;
+  if (!stockMatrixChart) {
+    stockMatrixChart = echarts.init(stockMatrixChartRef.value, themeStore.isDark ? 'dark' : undefined);
+  }
+
+  // 1. Collect all unique dates and sort them (YYYY-MM-DD for sorting)
+  const dateSet = new Set<string>();
+  const metricsMap = new Map<string, any>();
+  const ratingMap = new Map<string, any>();
+
+  props.metrics.forEach(m => {
+    const d = new Date(m.created_at);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    dateSet.add(dateStr);
+    metricsMap.set(dateStr, m);
+  });
+
+  (props.rateHistory || []).forEach(r => {
+    const d = new Date(r.report_date);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    dateSet.add(dateStr);
+    ratingMap.set(dateStr, r);
+  });
+
+  const sortedDates = Array.from(dateSet).sort();
+
+  // 2. Build aligned arrays
+  const alignedDates: string[] = [];
+  const alignedPrices: number[] = []; // Daily Increments (Download)
+  const alignedVolumes: number[] = []; // Cumulative Downloads
+  const alignedRatings: number[] = []; // Cumulative Rating
+  const alignedDailyRatings: number[] = []; // Daily New Rating
+
+  let lastDownload = 0;
+  // Initialize lastDownload with the first available metric if possible to avoid huge jump?
+  // But strictly following time, if data starts from 0, it is 0.
+  // Actually, we should find the first non-zero download to start? 
+  // For simplicity, assume 0 start or use the value if present.
+  
+  let lastRating = 0;
+
+  sortedDates.forEach((dateStr) => {
+    // Format for display (MM/DD)
+    const [, m, d] = dateStr.split('-');
+    alignedDates.push(`${parseInt(m)}/${parseInt(d)}`);
+
+    // Handle Downloads
+    const metric = metricsMap.get(dateStr);
+    let currentDownload = lastDownload;
+    let dailyInc = 0;
+    
+    if (metric) {
+        currentDownload = metric.download_count || 0;
+        // If it's the very first data point we encounter, dailyInc is 0.
+        // If we have a previous lastDownload, we calculate diff.
+        if (lastDownload > 0) {
+           dailyInc = Math.max(0, currentDownload - lastDownload);
+        }
+        lastDownload = currentDownload;
+    } else {
+        // No record, assume no change in cumulative, so 0 increment
+        dailyInc = 0;
+    }
+    
+    alignedVolumes.push(lastDownload); 
+    alignedPrices.push(dailyInc);      
+
+    // Handle Ratings
+    const rating = ratingMap.get(dateStr);
+    let currentRating = lastRating;
+    let dailyNewAvg = 0;
+
+    if (rating) {
+        const val = toNumberOrNull(rating.cumulative_avg_rating_origin);
+        if (val !== null) currentRating = Math.max(0, Math.min(5, val));
+        
+        const dailyVal = toNumberOrNull(rating.daily_new_average);
+        if (dailyVal !== null) dailyNewAvg = Math.max(0, Math.min(5, dailyVal));
+        
+        lastRating = currentRating;
+    } else {
+        dailyNewAvg = 0;
+    }
+    
+    alignedRatings.push(currentRating);
+    alignedDailyRatings.push(dailyNewAvg);
+  });
+  
+  const dataCount = alignedDates.length;
+  const ma10 = calculateMA(10, alignedPrices);
+  const { dif, dea, macd } = calculateMACD(alignedPrices);
+  
+  // Mock Order Book Data (Recent 5 days)
+  const orderBookData = [];
+  for (let i = 0; i < 5; i++) {
+    if (dataCount - 1 - i >= 0) {
+      orderBookData.push({
+        date: alignedDates[dataCount - 1 - i],
+        value: alignedPrices[dataCount - 1 - i],
+        type: i % 2 === 0 ? 'ask' : 'bid' // Mock
+      });
+    }
+  }
+
+  const option = {
+    animation: false,
+    color: ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'],
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      backgroundColor: 'rgba(255, 255, 255, 0.8)',
+      position: function (pos: any, _params: any, _el: any, _rect: any, size: any) {
+        const obj: any = { top: 10 };
+        obj[['left', 'right'][+(pos[0] < size.viewSize[0] / 2)]] = 30;
+        return obj;
+      },
+      extraCssText: 'width: 170px'
+    },
+    axisPointer: {
+      link: [{ xAxisIndex: 'all' }],
+      label: { backgroundColor: '#777' }
+    },
+    toolbox: {
+      feature: {
+        dataZoom: { yAxisIndex: false },
+        brush: { type: ['lineX', 'clear'] }
+      }
+    },
+    grid: [
+      {
+        left: '10%',
+        right: '35%', // Reserve space for Order Book
+        height: '40%'
+      },
+      {
+        left: '10%',
+        right: '35%',
+        top: '53%',
+        height: '15%'
+      },
+      {
+        left: '10%',
+        right: '35%',
+        top: '73%', // Volume chart
+        height: '15%'
+      },
+      { // Order Book Grid (Top Right)
+        left: '68%',
+        right: '5%',
+        top: '10%',
+        height: '40%' 
+      },
+       { // Rating Trend (Bottom Right)
+        left: '68%',
+        right: '5%',
+        top: '60%',
+        height: '28%' 
+      }
+    ],
+    xAxis: [
+      {
+        type: 'category',
+        data: alignedDates,
+        scale: true,
+        boundaryGap: false,
+        axisLine: { onZero: false },
+        splitLine: { show: false },
+        splitNumber: 20,
+        min: 'dataMin',
+        max: 'dataMax',
+        axisPointer: { z: 100 }
+      },
+      {
+        type: 'category',
+        gridIndex: 1,
+        data: alignedDates,
+        scale: true,
+        boundaryGap: false,
+        axisLine: { onZero: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+        axisLabel: { show: false },
+        splitNumber: 20,
+        min: 'dataMin',
+        max: 'dataMax'
+      },
+      {
+        type: 'category',
+        gridIndex: 2,
+        data: alignedDates,
+        scale: true,
+        boundaryGap: false,
+        axisLine: { onZero: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+        axisLabel: { show: false },
+        splitNumber: 20,
+        min: 'dataMin',
+        max: 'dataMax'
+      },
+      { // Order Book X (Value)
+        type: 'value',
+        gridIndex: 3,
+        show: false
+      },
+       { // Rating Trend X
+        type: 'category',
+        gridIndex: 4,
+        data: alignedDates,
+        show: false
+      }
+    ],
+    yAxis: [
+      {
+        scale: true,
+        splitArea: { show: true },
+        name: '日下载量'
+      },
+      {
+        scale: true,
+        gridIndex: 1,
+        splitNumber: 2,
+        axisLabel: { show: false },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+        name: 'MACD'
+      },
+      {
+        scale: true,
+        gridIndex: 2,
+        splitNumber: 2,
+        axisLabel: { show: false },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+        name: '活跃度'
+      },
+      { // Order Book Y (Category)
+        type: 'category',
+        gridIndex: 3,
+        data: orderBookData.map(d => d.date),
+        axisLabel: { show: true, interval: 0, fontSize: 10 },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        position: 'right'
+      },
+      { // Rating Trend Y
+        type: 'value',
+        gridIndex: 4,
+        splitLine: { show: false },
+        name: '平均评分',
+        position: 'right',
+        min: 0,
+        max: 5
+      }
+    ],
+    dataZoom: [
+      {
+        type: 'inside',
+        xAxisIndex: [0, 1, 2, 4], // Control main, macd, vol, rating
+        start: 50,
+        end: 100
+      },
+      {
+        show: true,
+        xAxisIndex: [0, 1, 2, 4],
+        type: 'slider',
+        top: '90%',
+        start: 50,
+        end: 100
+      }
+    ],
+    series: [
+      {
+        name: '下载量',
+        type: 'line',
+        data: alignedPrices, // Using Daily Increments as "Price"
+        smooth: true,
+        lineStyle: { opacity: 0.5, width: 1 }
+      },
+      {
+        name: '10日均线',
+        type: 'line',
+        data: ma10,
+        smooth: true,
+        lineStyle: { opacity: 0.5, width: 1 }
+      },
+      {
+        name: 'MACD',
+        type: 'bar',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: macd,
+        itemStyle: {
+          color: function (params: any) {
+            return params.value > 0 ? '#ef232a' : '#14b143';
+          }
+        }
+      },
+      {
+        name: 'DIF',
+        type: 'line',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: dif,
+        symbol: 'none'
+      },
+      {
+        name: 'DEA',
+        type: 'line',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: dea,
+        symbol: 'none'
+      },
+      {
+        name: '日评分活跃度',
+        type: 'bar',
+        xAxisIndex: 2,
+        yAxisIndex: 2,
+        data: alignedDailyRatings, // Use rating as volume
+        itemStyle: { color: '#73c0de' }
+      },
+      {
+        name: '近期下载',
+        type: 'bar',
+        xAxisIndex: 3,
+        yAxisIndex: 3,
+        data: orderBookData.map(d => d.value),
+        itemStyle: {
+          color: function (params: any) {
+            return params.dataIndex % 2 === 0 ? '#ef232a' : '#14b143'; // Mock red/green
+          }
+        },
+        label: {
+            show: true,
+            position: 'insideLeft',
+            formatter: '{c}'
+        }
+      },
+      {
+        name: '评分趋势',
+        type: 'line',
+        xAxisIndex: 4,
+        yAxisIndex: 4,
+        data: alignedRatings,
+        showSymbol: false,
+        lineStyle: { width: 2, color: '#fac858' },
+        areaStyle: { opacity: 0.1, color: '#fac858' }
+      }
+    ]
+  };
+
+  stockMatrixChart.setOption(option);
+};
+
 const renderCharts = () => {
   if (activeNames.value.includes('download')) {
     const downloadData = processDownloadData();
@@ -374,6 +790,9 @@ const renderCharts = () => {
   if (activeNames.value.includes('rating')) {
     const ratingData = processRatingHistoryData();
     if (ratingData) initRatingChart(ratingData);
+  }
+  if (activeNames.value.includes('stock-matrix')) {
+    initFinancialChart();
   }
 };
 
@@ -385,6 +804,10 @@ watch(() => themeStore.isDark, () => {
   if (ratingChart) {
     ratingChart.dispose();
     ratingChart = null;
+  }
+  if (stockMatrixChart) {
+    stockMatrixChart.dispose();
+    stockMatrixChart = null;
   }
   nextTick(() => {
     renderCharts();
@@ -407,6 +830,11 @@ watch(() => activeNames.value, (val) => {
       else ratingChart.resize();
     }
 
+    if (val.includes('stock-matrix')) {
+      if (!stockMatrixChart) initFinancialChart();
+      else stockMatrixChart.resize();
+    }
+
     if (val.length > 0) {
       window.addEventListener('resize', handleResize);
     } else {
@@ -426,12 +854,14 @@ watch(() => props.rateHistory, () => {
 const handleResize = () => {
   downloadChart?.resize();
   ratingChart?.resize();
+  stockMatrixChart?.resize();
 };
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
   downloadChart?.dispose();
   ratingChart?.dispose();
+  stockMatrixChart?.dispose();
 });
 </script>
 
@@ -472,5 +902,9 @@ onUnmounted(() => {
 .chart {
   width: 100%;
   height: 350px;
+}
+
+.stock-chart {
+  height: 600px;
 }
 </style>
