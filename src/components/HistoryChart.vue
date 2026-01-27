@@ -44,6 +44,20 @@
     </template>
     <div ref="chartRef" style="width: 100%; height: 300px;"></div>
   </el-card>
+  <el-card
+    v-if="route.path === '/rank/history'"
+    class="chart-card"
+    shadow="hover"
+  >
+    <template #header>
+      <div class="card-header">
+        <div class="header-left">
+          <span>鸿蒙应用下载量历史 · 股市矩阵图</span>
+        </div>
+      </div>
+    </template>
+    <div ref="matrixChartRef" style="width: 100%; height: 260px;"></div>
+  </el-card>
 </template>
 
 <script setup lang="ts">
@@ -56,6 +70,8 @@ const router = useRouter();
 const route = useRoute();
 const chartRef = ref<HTMLElement | null>(null);
 let chartInstance: echarts.ECharts | null = null;
+const matrixChartRef = ref<HTMLElement | null>(null);
+let matrixChartInstance: echarts.ECharts | null = null;
 const appName = ref('Loading...');
 const topApp = ref<any>(null);
 const todayIncrement = ref<number | null>(null);
@@ -88,6 +104,11 @@ const toggleTotal = () => {
 const toggleIncrement = () => {
   showIncrement.value = !showIncrement.value;
   updateVisibility();
+};
+
+const formatNumber = (value: number) => {
+  if (!Number.isFinite(value)) return '0';
+  return value.toLocaleString();
 };
 
 const updateVisibility = () => {
@@ -124,6 +145,78 @@ const toDate = (raw: any) => {
   }
   const d = new Date(raw);
   return isNaN(d.getTime()) ? null : d;
+};
+
+const initMatrixChart = (dates: string[], downloads: number[], increments: number[]) => {
+  if (!matrixChartRef.value) return;
+  if (!dates.length) return;
+
+  if (!matrixChartInstance) {
+    matrixChartInstance = echarts.init(matrixChartRef.value);
+  }
+
+  const monthMap = new Map<string, { name: string; value: number; increment: number; children: any[] }>();
+
+  dates.forEach((label, index) => {
+    if (!label) return;
+    const monthKey = label.slice(0, 5);
+    const base = label.includes(' ') ? label.split(' ')[0] : label;
+    const dayLabel = base.slice(3);
+    const inc = increments[index] || 0;
+    const total = downloads[index] || 0;
+
+    let monthItem = monthMap.get(monthKey);
+    if (!monthItem) {
+      monthItem = {
+        name: monthKey,
+        value: 0,
+        increment: 0,
+        children: []
+      };
+      monthMap.set(monthKey, monthItem);
+    }
+
+    monthItem.increment += inc;
+    monthItem.value += inc;
+
+    monthItem.children.push({
+      name: dayLabel,
+      value: inc,
+      total,
+      increment: inc
+    });
+  });
+
+  const data = Array.from(monthMap.values());
+
+  const option = {
+    tooltip: {
+      formatter: (info: any) => {
+        const d = info.data || {};
+        if (Array.isArray(d.children) && d.children.length) {
+          return `${d.name}<br/>当月新增下载：${formatNumber(d.increment || 0)}`;
+        }
+        const total = d.total || 0;
+        const inc = d.increment || d.value || 0;
+        return `${info.name}<br/>总下载量：${formatNumber(total)}<br/>新增下载：${formatNumber(inc)}`;
+      }
+    },
+    series: [
+      {
+        name: '历史榜矩阵',
+        type: 'treemap',
+        roam: false,
+        nodeClick: 'zoomToNode',
+        data,
+        label: {
+          show: true,
+          formatter: '{b}'
+        }
+      }
+    ]
+  };
+
+  matrixChartInstance.setOption(option);
 };
 
 const initChart = (data: any[]) => {
@@ -277,6 +370,8 @@ const initChart = (data: any[]) => {
   };
 
   chartInstance.setOption(option);
+
+  initMatrixChart(dates, downloads, increments);
 };
 
 const fetchData = async () => {
@@ -344,6 +439,7 @@ const fetchData = async () => {
 
 const handleResize = () => {
   chartInstance?.resize();
+  matrixChartInstance?.resize();
 };
 
 onMounted(() => {
@@ -354,6 +450,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
   chartInstance?.dispose();
+  matrixChartInstance?.dispose();
 });
 </script>
 

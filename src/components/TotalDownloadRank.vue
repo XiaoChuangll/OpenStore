@@ -32,6 +32,20 @@
     </template>
     <div ref="chartRef" style="width: 100%; height: 300px;"></div>
   </el-card>
+  <el-card
+    v-if="route.path === '/rank/total'"
+    class="chart-card"
+    shadow="hover"
+  >
+    <template #header>
+      <div class="card-header">
+        <div class="header-left">
+          <span>总下载榜 · 股市矩阵图</span>
+        </div>
+      </div>
+    </template>
+    <div ref="matrixChartRef" style="width: 100%; height: 260px;"></div>
+  </el-card>
 </template>
 
 <script setup lang="ts">
@@ -44,6 +58,8 @@ const router = useRouter();
 const route = useRoute();
 const chartRef = ref<HTMLElement | null>(null);
 let chartInstance: echarts.ECharts | null = null;
+const matrixChartRef = ref<HTMLElement | null>(null);
+let matrixChartInstance: echarts.ECharts | null = null;
 const showTotal = ref(true);
 const showIncrement = ref(true);
 const pageSize = ref(30);
@@ -63,6 +79,50 @@ const toggleTotal = () => {
 const toggleIncrement = () => {
   showIncrement.value = !showIncrement.value;
   updateVisibility();
+};
+
+const formatNumber = (value: number) => {
+  if (!Number.isFinite(value)) return '0';
+  return value.toLocaleString();
+};
+
+const initMatrixChart = (names: string[], downloads: number[], increments: number[]) => {
+  if (!matrixChartRef.value) return;
+  if (!chartData.value.length) return;
+
+  if (!matrixChartInstance) {
+    matrixChartInstance = echarts.init(matrixChartRef.value);
+  }
+
+  const data = names.map((name, index) => ({
+    name,
+    value: downloads[index] || 0,
+    increment: increments[index] || 0
+  }));
+
+  const option = {
+    tooltip: {
+      formatter: (info: any) => {
+        const item = data[info.dataIndex] || { value: 0, increment: 0 };
+        return `${info.name}<br/>总下载量：${formatNumber(item.value)}<br/>新增下载：${formatNumber(item.increment)}`;
+      }
+    },
+    series: [
+      {
+        name: '总下载榜矩阵',
+        type: 'treemap',
+        roam: false,
+        nodeClick: false,
+        data,
+        label: {
+          show: true,
+          formatter: '{b}'
+        }
+      }
+    ]
+  };
+
+  matrixChartInstance.setOption(option);
 };
 
 const updateVisibility = () => {
@@ -252,6 +312,8 @@ const initChart = (data: any[]) => {
   
   chartInstance.setOption(option);
 
+  initMatrixChart(names, downloads, increments);
+
   chartInstance.on('click', (params) => {
     const item = chartData.value[params.dataIndex];
     if (item && item.app_id) {
@@ -352,6 +414,7 @@ const fetchData = async () => {
 
 const handleResize = () => {
   chartInstance?.resize();
+  matrixChartInstance?.resize();
 };
 
 onMounted(() => {
@@ -362,6 +425,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
   chartInstance?.dispose();
+  matrixChartInstance?.dispose();
 });
 </script>
 

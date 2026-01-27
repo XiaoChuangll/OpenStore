@@ -5,7 +5,6 @@ dist
 *.local
 
 nginx
-更新日志.md
 
 # Database
 *.db

@@ -27,6 +27,20 @@
     </template>
     <div ref="chartRef" style="width: 100%; height: 300px;"></div>
   </el-card>
+  <el-card
+    v-if="route.path === '/rank/growth'"
+    class="chart-card"
+    shadow="hover"
+  >
+    <template #header>
+      <div class="card-header">
+        <div class="header-left">
+          <span>应用下载增长对比 · 股市矩阵图</span>
+        </div>
+      </div>
+    </template>
+    <div ref="matrixChartRef" style="width: 100%; height: 260px;"></div>
+  </el-card>
 </template>
 
 <script setup lang="ts">
@@ -39,6 +53,8 @@ const router = useRouter();
 const route = useRoute();
 const chartRef = ref<HTMLElement | null>(null);
 let chartInstance: echarts.ECharts | null = null;
+const matrixChartRef = ref<HTMLElement | null>(null);
+let matrixChartInstance: echarts.ECharts | null = null;
 
 const timeRange = ref(30);
 const pageSize = ref(30);
@@ -50,6 +66,49 @@ const goToRank = () => {
   if (route.path !== '/rank/growth') {
     router.push('/rank/growth');
   }
+};
+
+const formatNumber = (value: number) => {
+  if (!Number.isFinite(value)) return '0';
+  return value.toLocaleString();
+};
+
+const initMatrixChart = (names: string[], values: number[], seriesName: string) => {
+  if (!matrixChartRef.value) return;
+  if (!chartData.value.length) return;
+
+  if (!matrixChartInstance) {
+    matrixChartInstance = echarts.init(matrixChartRef.value);
+  }
+
+  const data = names.map((name, index) => ({
+    name,
+    value: values[index] || 0
+  }));
+
+  const option = {
+    tooltip: {
+      formatter: (info: any) => {
+        const value = info.value || 0;
+        return `${info.name}<br/>${seriesName}：${formatNumber(value)}`;
+      }
+    },
+    series: [
+      {
+        name: '增长榜矩阵',
+        type: 'treemap',
+        roam: false,
+        nodeClick: false,
+        data,
+        label: {
+          show: true,
+          formatter: '{b}'
+        }
+      }
+    ]
+  };
+
+  matrixChartInstance.setOption(option);
 };
 
 const initChart = () => {
@@ -167,6 +226,8 @@ const initChart = () => {
 
   chartInstance.setOption(option, true); // Use true to not merge with previous options
 
+  initMatrixChart(names, values, seriesName);
+
   chartInstance.on('click', (params) => {
     const item = chartData.value[params.dataIndex];
     if (item && item.app_id) {
@@ -253,6 +314,7 @@ const fetchData = async () => {
 
 const handleResize = () => {
   chartInstance?.resize();
+  matrixChartInstance?.resize();
 };
 
 onMounted(() => {
@@ -263,6 +325,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
   chartInstance?.dispose();
+  matrixChartInstance?.dispose();
 });
 </script>
 
