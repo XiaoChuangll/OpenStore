@@ -276,6 +276,10 @@ import { getAppUpdates, getNewApps } from '../services/api';
 import AppCard from '../components/AppCard.vue';
 import { hmApi } from '../services/hm-api';
 
+defineOptions({
+  name: 'UpdatesView'
+});
+
 const route = useRoute();
 const router = useRouter();
 const loading = ref(false);

@@ -18,11 +18,15 @@ import { useLayoutStore } from '../stores/layout';
 import HistoryChart from '../components/HistoryChart.vue';
 import RankNavigation from '../components/RankNavigation.vue';
 
+defineOptions({
+  name: 'HistoryRankView'
+});
+
 const router = useRouter();
 const layoutStore = useLayoutStore();
 
 onMounted(() => {
-  layoutStore.setPageInfo('鸿蒙应用下载量历史', true, () => router.push('/'));
+  layoutStore.setPageInfo('鸿蒙应用下载量历史', true, () => router.back());
 });
 
 onUnmounted(() => {

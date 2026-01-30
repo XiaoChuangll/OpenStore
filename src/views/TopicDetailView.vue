@@ -79,7 +79,7 @@ const fetchDetail = async () => {
     topic.value = data;
     
     // Set page title
-    layoutStore.setPageInfo(data.title || '专题详情', true, () => router.push('/topics'));
+    layoutStore.setPageInfo(data.title || '专题详情', true, () => router.back());
     document.title = `${data.title || '专题详情'} - OpenStore`;
   } catch (err: any) {
     console.error(err);

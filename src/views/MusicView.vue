@@ -640,6 +640,10 @@ import { musicCache } from '../utils/cache'; // Import CacheManager
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Search, Loading, Headset, VideoPlay, Download, ArrowLeft, ArrowRight, Refresh, ArrowDown, Calendar, Star, CaretRight, Delete, VideoPause, Collection, RefreshRight, User } from '@element-plus/icons-vue';
 
+defineOptions({
+  name: 'MusicView'
+});
+
 const router = useRouter();
 const playerStore = usePlayerStore();
 const layoutStore = useLayoutStore();

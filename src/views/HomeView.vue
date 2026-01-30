@@ -196,6 +196,11 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useLayoutStore } from '../stores/layout';
+
+defineOptions({
+  name: 'HomeView'
+});
+
 import ActiveIncidents from '../components/ActiveIncidents.vue';
 import SystemStatusCard from '../components/SystemStatusCard.vue';
 import OverviewCard from '../components/OverviewCard.vue';

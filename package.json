@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"node server/index.cjs\" \"vite --port 3333 --host\"",
+    "dev": "concurrently \"node server/index.cjs\" \"vite --port 3000 --host\"",
     "build": "vue-tsc -b && vite build && node scripts/generate-sitemap.js",
     "preview": "vite preview",
     "test": "vitest"

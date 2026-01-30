@@ -18,11 +18,15 @@ import { useLayoutStore } from '../stores/layout';
 import NonHuaweiChart from '../components/NonHuaweiChart.vue';
 import RankNavigation from '../components/RankNavigation.vue';
 
+defineOptions({
+  name: 'NonHuaweiRankView'
+});
+
 const router = useRouter();
 const layoutStore = useLayoutStore();
 
 onMounted(() => {
-  layoutStore.setPageInfo('非华为应用下载榜', true, () => router.push('/'));
+  layoutStore.setPageInfo('非华为应用下载榜', true, () => router.back());
 });
 
 onUnmounted(() => {

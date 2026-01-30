@@ -18,11 +18,15 @@ import { useLayoutStore } from '../stores/layout';
 import TotalDownloadRank from '../components/TotalDownloadRank.vue';
 import RankNavigation from '../components/RankNavigation.vue';
 
+defineOptions({
+  name: 'TotalRankView'
+});
+
 const router = useRouter();
 const layoutStore = useLayoutStore();
 
 onMounted(() => {
-  layoutStore.setPageInfo('总下载榜', true, () => router.push('/'));
+  layoutStore.setPageInfo('总下载榜', true, () => router.back());
 });
 
 onUnmounted(() => {

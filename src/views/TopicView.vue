@@ -57,6 +57,10 @@ import { useRouter } from 'vue-router';
 import { getTopics, type ShortSubstanceInfo } from '../services/api';
 import { ArrowRight } from '@element-plus/icons-vue';
 
+defineOptions({
+  name: 'TopicView'
+});
+
 const router = useRouter();
 
 const topics = ref<ShortSubstanceInfo[]>([]);

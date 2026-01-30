@@ -25,6 +25,10 @@ import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
 import AppDetailCard from '../components/AppDetailCard.vue';
 
+defineOptions({
+  name: 'AppCardView'
+});
+
 const router = useRouter();
 const route = useRoute();
 const layoutStore = useLayoutStore();

@@ -132,6 +132,10 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({
+  name: 'AppsView'
+});
+
 import { ref, watch, computed } from 'vue';
 import { 
   Search, Menu, Cellphone, Monitor, Van, Platform, Reading, Connection,

@@ -18,11 +18,15 @@ import { useLayoutStore } from '../stores/layout';
 import GrowthChart from '../components/GrowthChart.vue';
 import RankNavigation from '../components/RankNavigation.vue';
 
+defineOptions({
+  name: 'GrowthRankView'
+});
+
 const router = useRouter();
 const layoutStore = useLayoutStore();
 
 onMounted(() => {
-  layoutStore.setPageInfo('应用下载增长对比', true, () => router.push('/'));
+  layoutStore.setPageInfo('应用下载增长对比', true, () => router.back());
 });
 
 onUnmounted(() => {

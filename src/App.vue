@@ -268,7 +268,11 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
       </div>
     </el-header>
     <el-main class="main-content">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <keep-alive include="HomeView,MusicView,AppsView,UpdatesView,TopicView,TotalRankView,GrowthRankView,HistoryRankView,NonHuaweiRankView,AppCardView" :max="20">
+          <component :is="Component" :key="route.path" />
+        </keep-alive>
+      </router-view>
     </el-main>
     <div class="dock-wrapper desktop-nav" @mouseenter="isDockHovered = true" @mouseleave="isDockHovered = false">
       <MiniPlayer />
