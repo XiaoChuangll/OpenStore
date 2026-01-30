@@ -213,10 +213,19 @@
                   </el-form-item>
                 </el-form>
                 <el-alert
-                  v-if="queryResult"
-                  type="info"
+                  v-if="queryErrorVisible"
+                  type="error"
+                  :closable="true"
+                  title="查询失败"
+                  :description="queryErrorMessage"
+                  @close="queryErrorVisible = false"
+                  class="mt-2"
+                />
+                <el-alert
+                  v-if="queryResult || queryNotFound"
+                  :type="queryNotFound ? 'warning' : 'info'"
                   :closable="false"
-                  title="查询结果"
+                  :title="queryNotFound ? '未找到反馈' : '查询结果'"
                   class="mt-2"
                 />
                 <el-descriptions
@@ -286,6 +295,9 @@ const feedbackSuccessVisible = ref(false);
 const feedbackErrorVisible = ref(false);
 const feedbackErrorTitle = ref('提交失败');
 const feedbackErrorMessage = ref('');
+const queryErrorVisible = ref(false);
+const queryErrorMessage = ref('');
+const queryNotFound = ref(false);
 const submittedId = ref<number | null>(null);
 const submittedHash = ref<string | null>(null);
 const copyTipVisible = ref(false);
@@ -501,15 +513,19 @@ const queryFeedbackProgress = async () => {
   const h = (hashQueryInput.value || queryForm.value.hash || '').trim();
   if (!h) { queryResult.value = null; return; }
   queryLoading.value = true;
+  queryErrorVisible.value = false;
+  queryNotFound.value = false;
   try {
     const data = await getFeedbackProgressByHash(h);
     queryResult.value = data;
   } catch (e: any) {
     queryResult.value = null;
-    feedbackErrorTitle.value = '查询失败';
-    feedbackErrorMessage.value = e?.response?.data?.error || '无法查询反馈，请检查哈希是否正确';
-    feedbackErrorVisible.value = true;
-    feedbackSuccessVisible.value = false;
+    if (e?.response?.status === 404) {
+      queryNotFound.value = true;
+    } else {
+      queryErrorMessage.value = e?.response?.data?.error || '无法查询反馈，请检查哈希是否正确';
+      queryErrorVisible.value = true;
+    }
   } finally {
     queryLoading.value = false;
   }
@@ -517,8 +533,8 @@ const queryFeedbackProgress = async () => {
 const onQueryClear = () => {
   hashQueryInput.value = '';
   queryResult.value = null;
-  feedbackErrorVisible.value = false;
-  feedbackSuccessVisible.value = false;
+  queryErrorVisible.value = false;
+  queryNotFound.value = false;
 };
 const fetchSuccessList = async () => {
   try {
