@@ -1,8 +1,66 @@
 <template>
   <main class="home-view">
+    <Teleport to="#header-teleport-target">
+      <Transition name="fade-slide">
+        <div v-if="layoutStore.showCustomTitle" class="device-tabs header-device-tabs">
+          <div 
+            class="tab-glider" 
+            :style="{ 
+              width: 'calc(50% - 3px)',
+              transform: `translateX(${homeTab === 'system' ? '100%' : '0'})`
+            }"
+          ></div>
+          <div 
+            class="device-tab" 
+            :class="{ active: homeTab === 'home' }" 
+            @click="homeTab = 'home'"
+            :style="{ width: '50%' }"
+          >
+            <span class="tab-label">首页</span>
+          </div>
+          <div 
+            class="device-tab" 
+            :class="{ active: homeTab === 'system' }" 
+            @click="homeTab = 'system'"
+            :style="{ width: '50%' }"
+          >
+            <span class="tab-label">系统</span>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <section class="dashboard-container">
+      <div class="home-toolbar" ref="toolbarRef">
+        <div class="greeting-text">{{ greeting }}</div>
+        <div class="device-tabs">
+          <div 
+            class="tab-glider" 
+            :style="{ 
+              width: 'calc(50% - 6px)',
+              transform: `translateX(${homeTab === 'system' ? '100%' : '0'})`
+            }"
+          ></div>
+          <div 
+            class="device-tab" 
+            :class="{ active: homeTab === 'home' }" 
+            @click="homeTab = 'home'"
+            :style="{ width: '50%' }"
+          >
+            <span class="tab-label">首页</span>
+          </div>
+          <div 
+            class="device-tab" 
+            :class="{ active: homeTab === 'system' }" 
+            @click="homeTab = 'system'"
+            :style="{ width: '50%' }"
+          >
+            <span class="tab-label">系统</span>
+          </div>
+        </div>
+      </div>
       <ActiveIncidents />
-      <el-row v-if="siteCards.length > 0" :gutter="20" class="site-cards-row">
+      <el-row v-if="homeTab === 'system' && siteCards.length > 0" :gutter="20" class="site-cards-row">
         <el-col
           v-for="card in siteCards"
           :key="card.id"
@@ -107,34 +165,37 @@
         </el-col>
       </el-row>
 
-      <SystemStatusCard />
-      <OverviewCard />
-      
-      <RankOverview />
+      <template v-if="homeTab === 'home'">
+        <SystemStatusCard />
+        <OverviewCard />
+        
+        <RankOverview />
 
-      <el-row :gutter="20" class="mt-4">
-        <el-col :span="8" :xs="24">
-          <RatingPieChart />
-        </el-col>
-        <el-col :span="8" :xs="24">
-          <TargetSdkPieChart />
-        </el-col>
-        <el-col :span="8" :xs="24">
-          <MinSdkPieChart />
-        </el-col>
-      </el-row>
+        <el-row :gutter="20" class="mt-4">
+          <el-col :span="8" :xs="24">
+            <RatingPieChart />
+          </el-col>
+          <el-col :span="8" :xs="24">
+            <TargetSdkPieChart />
+          </el-col>
+          <el-col :span="8" :xs="24">
+            <MinSdkPieChart />
+          </el-col>
+        </el-row>
 
-      <div class="mt-4">
-        <AppListCard />
-      </div>
+        <div class="mt-4">
+          <AppListCard />
+        </div>
+      </template>
     </section>
   </main>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
+import { useLayoutStore } from '../stores/layout';
 import ActiveIncidents from '../components/ActiveIncidents.vue';
 import SystemStatusCard from '../components/SystemStatusCard.vue';
 import OverviewCard from '../components/OverviewCard.vue';
@@ -157,12 +218,30 @@ import {
 } from '../services/admin';
 
 const router = useRouter();
+const layoutStore = useLayoutStore();
+const toolbarRef = ref<HTMLElement | null>(null);
+
+const greeting = ref('');
+
+const updateGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour >= 6 && hour < 12) {
+    greeting.value = '尊敬的用户早上好~';
+  } else if (hour >= 12 && hour < 14) {
+    greeting.value = '尊敬的用户中午好~';
+  } else if (hour >= 14 && hour < 18) {
+    greeting.value = '尊敬的用户下午好~';
+  } else {
+    greeting.value = '尊敬的用户晚上好~';
+  }
+};
 
 const siteCards = ref<SiteCard[]>([]);
 const friendLinks = ref<FriendLink[]>([]);
 const groupChats = ref<GroupChat[]>([]);
 const announcements = ref<Announcement[]>([]);
 const publicApps = ref<AppItem[]>([]);
+const homeTab = ref<'home' | 'system'>('home');
 
 const getCardStyle = (card: SiteCard) => {
   let parsed: any = {};
@@ -257,8 +336,33 @@ const loadSiteCards = async () => {
   await Promise.all(tasks);
 };
 
+let observer: IntersectionObserver | null = null;
+
 onMounted(() => {
   loadSiteCards();
+  updateGreeting();
+
+  observer = new IntersectionObserver(
+    ([entry]) => {
+      if (!entry.isIntersecting && entry.boundingClientRect.top < 60) {
+        layoutStore.setCustomTitleVisible(true);
+      } else {
+        layoutStore.setCustomTitleVisible(false);
+      }
+    },
+    { threshold: 0, rootMargin: '-60px 0px 0px 0px' }
+  );
+  
+  if (toolbarRef.value) {
+    observer.observe(toolbarRef.value);
+  }
+});
+
+onUnmounted(() => {
+  if (observer) {
+    observer.disconnect();
+  }
+  layoutStore.setCustomTitleVisible(false);
 });
 </script>
 
@@ -268,6 +372,66 @@ onMounted(() => {
   max-width: 1400px;
   margin: 0 auto;
 }
+.home-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.greeting-text {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.device-tabs {
+  position: relative;
+  display: flex;
+  gap: 0;
+  background: var(--el-fill-color-light);
+  border-radius: 9999px;
+  padding: 6px;
+}
+.device-tab {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--el-text-color-secondary);
+  border-radius: 9999px;
+  user-select: none;
+}
+.device-tab.active {
+  color: var(--el-text-color-primary);
+  font-weight: 600;
+}
+.tab-glider {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  height: calc(100% - 12px);
+  background: var(--el-bg-color);
+  border-radius: 9999px;
+  transition: transform 0.25s ease;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+}
+
+.header-device-tabs {
+  padding: 3px;
+  background: var(--el-fill-color); /* Slightly different bg for header contrast if needed */
+  transform: scale(0.85); /* Make it slightly smaller in header */
+  transform-origin: center;
+}
+
+.header-device-tabs .tab-glider {
+  top: 3px;
+  left: 3px;
+  height: calc(100% - 6px);
+}
+
 .mt-4 {
   margin-top: 20px;
 }

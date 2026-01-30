@@ -579,7 +579,34 @@
       <div class="playlist-table-wrapper">
         <el-table :data="pagedPlaylistTracks" stripe style="width: 100%; height: 100%;" v-loading="playlistLoading" @row-click="playSong" :row-style="{ height: '60px' }">
           <el-table-column type="index" :width="isMobile ? 40 : 50" :index="(i: number) => (playlistPage - 1) * 10 + i + 1" />
-          <el-table-column label="歌曲" min-width="200" show-overflow-tooltip>
+          <el-table-column min-width="200" show-overflow-tooltip>
+            <template #header>
+              <div class="table-header">
+                <div class="table-header-title">{{ currentPlaylist?.name || '歌单' }}</div>
+                <div class="table-header-bar">
+                  <span>歌曲</span>
+                  <div class="header-pagination">
+                    <el-button 
+                       size="small" 
+                       circle 
+                       text 
+                       :icon="ArrowLeft" 
+                       :disabled="playlistPage === 1" 
+                       @click.stop="playlistPage--" 
+                    />
+                    <span class="page-info">{{ playlistPage }}/{{ Math.ceil(playlistTracks.length / 10) || 1 }}</span>
+                    <el-button 
+                       size="small" 
+                       circle 
+                       text 
+                       :icon="ArrowRight" 
+                       :disabled="playlistPage >= (Math.ceil(playlistTracks.length / 10) || 1)" 
+                       @click.stop="playlistPage++" 
+                    />
+                  </div>
+                </div>
+              </div>
+            </template>
             <template #default="{ row }">
               <div class="song-row-content">
                 <el-image 
@@ -593,29 +620,6 @@
                   <div class="song-row-name">{{ row.name }}</div>
                   <div class="song-row-artist">{{ getArtistName(row) }}</div>
                 </div>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column width="140" align="center" fixed="right">
-            <template #header>
-              <div class="header-pagination">
-                <el-button 
-                   size="small" 
-                   circle 
-                   text 
-                   :icon="ArrowLeft" 
-                   :disabled="playlistPage === 1" 
-                   @click.stop="playlistPage--" 
-                />
-                <span class="page-info">{{ playlistPage }}/{{ Math.ceil(playlistTracks.length / 10) || 1 }}</span>
-                <el-button 
-                   size="small" 
-                   circle 
-                   text 
-                   :icon="ArrowRight" 
-                   :disabled="playlistPage >= (Math.ceil(playlistTracks.length / 10) || 1)" 
-                   @click.stop="playlistPage++" 
-                />
               </div>
             </template>
           </el-table-column>
@@ -2450,11 +2454,32 @@ onUnmounted(() => {
   padding-bottom: 90px; /* Reserve space for dock */
   box-sizing: border-box;
 }
+.table-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.table-header-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.table-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+}
 .header-pagination {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 4px;
+  margin-right: 8px;
+  flex-shrink: 0;
 }
 .header-pagination .page-info {
   font-size: 12px;
@@ -2650,12 +2675,19 @@ onUnmounted(() => {
 .header-pagination {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 4px;
+  margin-right: 8px;
+  flex-shrink: 0;
 }
 .header-pagination .page-info {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+  white-space: nowrap;
+}
+.table-header-bar > span {
+  display: inline-flex;
+  align-items: center;
   white-space: nowrap;
 }
 </style>

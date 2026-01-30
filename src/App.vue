@@ -232,12 +232,20 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
         </el-button>
         <div v-else class="logo-container">
           <div class="logo-icon mr-2" role="img" aria-label="Logo"></div>
-          <span class="app-title">OpenStore</span>
+          <span 
+            class="app-title" 
+            :class="{ 'is-hidden-on-mobile': layoutStore.showCustomTitle }"
+          >
+            OpenStore
+          </span>
         </div>
       </div>
 
       <div class="header-center">
-        <span class="page-title">{{ layoutStore.pageTitle }}</span>
+        <transition name="fade-slide">
+          <span v-if="!layoutStore.showCustomTitle" class="page-title">{{ layoutStore.pageTitle }}</span>
+        </transition>
+        <div id="header-teleport-target" class="header-teleport-target"></div>
       </div>
       
       <div class="header-right">
@@ -408,18 +416,53 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
   min-width: 40px;
 }
 
+/* Header Transitions - Global */
+</style>
+
+<style>
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+</style>
+
+<style scoped>
 .header-center {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--el-text-color-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 60%;
+  display: grid;
+  place-items: center;
+  height: 100%;
+  pointer-events: none; /* Let clicks pass through container */
 }
+
+.header-center > * {
+  grid-area: 1 / 1;
+  pointer-events: auto; /* Re-enable clicks on children */
+}
+
+.header-teleport-target {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+
 
 .header-right {
   display: flex;
@@ -444,6 +487,19 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
   font-size: 1.2rem;
   font-weight: 600;
   color: var(--el-text-color-primary);
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+@media (max-width: 768px) {
+  .app-title {
+    display: inline-block;
+    overflow: hidden;
+  }
+
+  .app-title.is-hidden-on-mobile {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
 }
 
 .logo-icon {
