@@ -2,91 +2,94 @@
   <div class="music-view" :style="{ paddingBottom: (playerStore.showPlayer && playerStore.currentTrack) ? (isMobile ? '85px' : '100px') : '20px' }">
     
 
-    <!-- API Status Line (Separate Line) -->
-    <div class="api-status-bar mb-4">
-      <div class="status-tag-wrapper">
-        <el-dropdown v-if="currentApi" trigger="click" @command="handleSwitchApi">
-           <el-tag type="success" size="small" effect="plain" class="api-tag cursor-pointer">
-             <span class="flex-center">
-               API: {{ currentApi.friendly_name }} ({{ currentApi.latency }}ms)
-               <el-icon class="ml-1"><ArrowDown /></el-icon>
-             </span>
-           </el-tag>
-           <template #dropdown>
-              <el-dropdown-menu>
-                 <el-dropdown-item v-for="api in availableApis" :key="api.id" :command="api">
-                    {{ api.friendly_name }}
-                    <el-tag v-if="api.latency" size="small" type="info" class="ml-2">{{ api.latency }}ms</el-tag>
-                 </el-dropdown-item>
-                 <el-dropdown-item v-if="availableApis.length === 0" disabled>无可用节点</el-dropdown-item>
-              </el-dropdown-menu>
-           </template>
-        </el-dropdown>
 
-        <el-tag v-else-if="checkingApi" type="warning" size="small" effect="plain" class="api-tag">
-          <span class="flex-center">
-            <el-icon class="is-loading mr-1"><Loading /></el-icon> 正在寻找最佳线路...
-          </span>
-        </el-tag>
-        <el-tag v-else type="danger" size="small" effect="plain" class="api-tag">
-          <span class="flex-center">
-            无可用线路
-          </span>
-        </el-tag>
-      </div>
-      
-      <div class="api-actions ml-2">
-         <el-tooltip content="重新检测最佳线路" placement="bottom" v-if="!currentApi && !checkingApi">
-            <el-button circle size="small" :icon="Refresh" @click="findBestApi" />
-         </el-tooltip>
-         <el-tooltip content="刷新数据缓存" placement="bottom" v-if="currentApi">
-            <el-button circle size="small" :icon="RefreshRight" @click="handleRefreshCache" />
-         </el-tooltip>
-      </div>
-
-      <!-- Login Entry -->
-      <div class="user-actions" style="margin-left: auto; display: flex; align-items: center;">
-          <template v-if="playerStore.userProfile">
-              <el-dropdown trigger="click" @command="handleUserCommand">
-                  <div class="flex-center cursor-pointer" style="display: flex; align-items: center;">
-                      <el-avatar :size="24" :src="playerStore.userProfile.avatarUrl" style="margin-right: 8px;" />
-                      <span class="username" style="font-size: 14px; color: var(--el-text-color-regular);">{{ playerStore.userProfile.nickname }}</span>
-                  </div>
-                  <template #dropdown>
-                      <el-dropdown-menu>
-                          <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-                      </el-dropdown-menu>
-                  </template>
-              </el-dropdown>
-          </template>
-          <el-button v-else link type="primary" size="small" @click="playerStore.showLoginDialog = true">
-             <span style="display: flex; align-items: center;">
-                <el-icon class="mr-1"><User /></el-icon> 登录网易云
-             </span>
-          </el-button>
-      </div>
-    </div>
 
     <!-- Main Content -->
     <div class="music-content" v-loading="loading">
       
-      <!-- Search -->
+      <!-- Search & Header Bar -->
       <el-card class="mb-4 search-card" shadow="hover" v-if="viewMode === 'home' || viewMode === 'mine'">
-         <div class="search-box">
-             <el-input 
-               v-model="searchKeyword" 
-               placeholder="搜索歌曲、歌手、专辑..." 
-               class="search-input" 
-               @keyup.enter="handleSearch" 
-               clearable
-             >
-                <template #prefix>
-                  <el-icon><Search /></el-icon>
-                </template>
-                <template #append>
-                  <el-button @click="handleSearch" :loading="searchLoading">搜索</el-button>
-                </template>
-             </el-input>
+         <div class="header-bar" :class="{ 'mobile-layout': isMobile }">
+             <!-- API Status (Left) -->
+             <div class="api-status-wrapper">
+                <el-dropdown v-if="currentApi" trigger="click" @command="handleSwitchApi">
+                   <el-tag type="success" size="small" effect="plain" class="api-tag cursor-pointer">
+                     <span class="flex-center">
+                       API: {{ currentApi.friendly_name }} ({{ currentApi.latency }}ms)
+                       <el-icon class="ml-1"><ArrowDown /></el-icon>
+                     </span>
+                   </el-tag>
+                   <template #dropdown>
+                      <el-dropdown-menu>
+                         <el-dropdown-item v-for="api in availableApis" :key="api.id" :command="api">
+                            {{ api.friendly_name }}
+                            <el-tag v-if="api.latency" size="small" type="info" class="ml-2">{{ api.latency }}ms</el-tag>
+                         </el-dropdown-item>
+                         <el-dropdown-item v-if="availableApis.length === 0" disabled>无可用节点</el-dropdown-item>
+                      </el-dropdown-menu>
+                   </template>
+                </el-dropdown>
+
+                <el-tag v-else-if="checkingApi" type="warning" size="small" effect="plain" class="api-tag">
+                  <span class="flex-center">
+                    <el-icon class="is-loading mr-1"><Loading /></el-icon> 正在寻找...
+                  </span>
+                </el-tag>
+                <el-tag v-else type="danger" size="small" effect="plain" class="api-tag">
+                  <span class="flex-center">
+                    无可用线路
+                  </span>
+                </el-tag>
+             </div>
+
+             <!-- Search Box (Center/Bottom) -->
+             <div class="search-box">
+                 <el-input 
+                   v-model="searchKeyword" 
+                   placeholder="搜索歌曲、歌手、专辑..." 
+                   class="search-input" 
+                   @keyup.enter="handleSearch" 
+                   clearable
+                 >
+                    <template #prefix>
+                      <el-icon><Search /></el-icon>
+                    </template>
+                    <template #append>
+                      <el-button @click="handleSearch" :loading="searchLoading">搜索</el-button>
+                    </template>
+                 </el-input>
+             </div>
+
+             <!-- User Controls (Right) -->
+             <div class="header-right-actions">
+                  <div class="api-actions">
+                     <el-tooltip content="重新检测最佳线路" placement="bottom" v-if="!currentApi && !checkingApi">
+                        <el-button circle size="small" :icon="Refresh" @click="findBestApi" />
+                     </el-tooltip>
+                  </div>
+
+                  <!-- Login Entry -->
+                  <div class="user-actions">
+                      <template v-if="playerStore.userProfile">
+                          <el-dropdown trigger="click" @command="handleUserCommand">
+                              <div class="flex-center cursor-pointer" style="display: flex; align-items: center;">
+                                  <el-avatar :size="30" :src="playerStore.userProfile.avatarUrl" style="margin-right: 8px;" />
+                                  <span class="username" style="font-size: 14px; color: var(--el-text-color-regular); max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ playerStore.userProfile.nickname }}</span>
+                              </div>
+                              <template #dropdown>
+                                  <el-dropdown-menu>
+                                      <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+                                  </el-dropdown-menu>
+                              </template>
+                          </el-dropdown>
+                      </template>
+                      <el-button v-else link type="primary" size="small" @click="playerStore.showLoginDialog = true">
+                         <span style="display: flex; align-items: center;">
+                            <el-icon class="mr-1"><User /></el-icon> 登录
+                         </span>
+                      </el-button>
+                  </div>
+             </div>
          </div>
          <div class="search-type-selector mt-3" v-if="searchKeyword || searchResults.length > 0">
             <el-radio-group v-model="searchType" size="small" @change="handleSearch">
@@ -115,7 +118,6 @@
                  <div class="song-artist">{{ getArtistName(song) }} - {{ song.al?.name || song.album?.name }}</div>
               </div>
               <div class="song-action">
-                 <el-button circle size="small" type="primary" :icon="VideoPlay" @click.stop="playSong(song)" />
                  <el-button circle size="small" :icon="Download" @click.stop="downloadSong(song)" />
               </div>
            </div>
@@ -223,10 +225,10 @@
                             <div class="fm-info">
                                 <div class="fm-title">{{ fmTrack?.name || '私人FM' }}</div>
                                 <div class="fm-artist">
-                                <el-icon><Headset /></el-icon> {{ fmTrack ? getArtistName(fmTrack) : '听见喜欢的音乐' }}
+                                <el-icon><Headset /></el-icon> <span class="text-ellipsis">{{ fmTrack ? getArtistName(fmTrack) : '听见喜欢的音乐' }}</span>
                                 </div>
                                 <div class="fm-album" v-if="fmTrack">
-                                <el-icon><Collection /></el-icon> {{ fmTrack?.al?.name || fmTrack?.album?.name || '未知专辑' }}
+                                <el-icon><Collection /></el-icon> <span class="text-ellipsis">{{ fmTrack?.al?.name || fmTrack?.album?.name || '未知专辑' }}</span>
                                 </div>
                             </div>
                             
@@ -578,7 +580,18 @@
     <el-dialog v-model="showPlaylistDialog" title="歌单" fullscreen class="playlist-dialog" append-to-body>
       <div class="playlist-table-wrapper">
         <el-table :data="pagedPlaylistTracks" stripe style="width: 100%; height: 100%;" v-loading="playlistLoading" @row-click="playSong" :row-style="{ height: '60px' }">
-          <el-table-column type="index" :width="isMobile ? 40 : 50" :index="(i: number) => (playlistPage - 1) * 10 + i + 1" />
+          <el-table-column type="index" :width="isMobile ? 40 : 60" :index="(i: number) => (playlistPage - 1) * 10 + i + 1">
+            <template #header>
+              <el-image 
+                v-if="currentPlaylist?.coverImgUrl || currentPlaylist?.picUrl"
+                :src="currentPlaylist.coverImgUrl || currentPlaylist.picUrl" 
+                style="width: 30px; height: 30px; border-radius: 4px; vertical-align: middle; cursor: pointer;" 
+                fit="cover"
+                :preview-src-list="[currentPlaylist.coverImgUrl || currentPlaylist.picUrl]"
+                preview-teleported
+              />
+            </template>
+          </el-table-column>
           <el-table-column min-width="200" show-overflow-tooltip>
             <template #header>
               <div class="table-header">
@@ -594,13 +607,13 @@
                        :disabled="playlistPage === 1" 
                        @click.stop="playlistPage--" 
                     />
-                    <span class="page-info">{{ playlistPage }}/{{ Math.ceil(playlistTracks.length / 10) || 1 }}</span>
+                    <span class="page-info">{{ playlistPage }}/{{ Math.ceil(totalPlaylistTracks / 10) || 1 }}</span>
                     <el-button 
                        size="small" 
                        circle 
                        text 
                        :icon="ArrowRight" 
-                       :disabled="playlistPage >= (Math.ceil(playlistTracks.length / 10) || 1)" 
+                       :disabled="playlistPage >= (Math.ceil(totalPlaylistTracks / 10) || 1)" 
                        @click.stop="playlistPage++" 
                     />
                   </div>
@@ -610,6 +623,7 @@
             <template #default="{ row }">
               <div class="song-row-content">
                 <el-image 
+                  v-if="!['album', 'artist'].includes(currentPlaylist?.type)"
                   :src="row.al?.picUrl || row.album?.picUrl || row.coverImgUrl" 
                   class="song-row-cover" 
                   lazy
@@ -638,7 +652,7 @@ import { useLayoutStore } from '../stores/layout';
 import { proxyRequest, getMusicApis } from '../services/api';
 import { musicCache } from '../utils/cache'; // Import CacheManager
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Search, Loading, Headset, VideoPlay, Download, ArrowLeft, ArrowRight, Refresh, ArrowDown, Calendar, Star, CaretRight, Delete, VideoPause, Collection, RefreshRight, User } from '@element-plus/icons-vue';
+import { Search, Loading, Headset, VideoPlay, Download, ArrowLeft, ArrowRight, Refresh, ArrowDown, Calendar, Star, CaretRight, Delete, VideoPause, Collection, User } from '@element-plus/icons-vue';
 
 defineOptions({
   name: 'MusicView'
@@ -746,6 +760,7 @@ const userPodcastTotal = ref(0);
 const showPlaylistDialog = ref(false);
 const currentPlaylist = ref<any>(null);
 const playlistTracks = ref<any[]>([]);
+const totalPlaylistTracks = ref(0);
 const playlistLoading = ref(false);
 const playlistPage = ref(1);
 
@@ -1023,13 +1038,56 @@ const openPodcast = (podcast: any) => {
     openDjRadio(podcast);
 };
 
+const fetchPodcastPrograms = async (radio: any, offset: number, limit: number) => {
+    if (!currentApi.value) return;
+    
+    playlistLoading.value = true;
+    try {
+        const baseUrl = currentApi.value.baseUrl;
+        const cookie = getCookie();
+        const headers = cookie ? { Cookie: cookie } : {};
+        const cookieEncoded = cookie ? encodeURIComponent(cookie) : '';
+        
+        const res = await proxyRequest(`${baseUrl}/dj/program?rid=${radio.id}&limit=${limit}&offset=${offset}&cookie=${cookieEncoded}`, 'GET', headers, {});
+        
+        if (res.data?.programs) {
+            const tracks = res.data.programs.map((p: any) => ({
+                id: p.mainSong.id,
+                name: p.name,
+                ar: p.dj ? [{ name: p.dj.nickname }] : [],
+                al: { ...radio, picUrl: p.coverUrl },
+                dt: p.duration,
+                picUrl: p.coverUrl
+            }));
+            
+            // Fill array
+            for (let i = 0; i < tracks.length; i++) {
+                if (offset + i < playlistTracks.value.length) {
+                    playlistTracks.value[offset + i] = tracks[i];
+                }
+            }
+        }
+    } catch (e) {
+        console.error(e);
+        ElMessage.error('加载更多播客失败');
+    } finally {
+        playlistLoading.value = false;
+    }
+};
+
 const openDjRadio = async (radio: any) => {
     if (!currentApi.value) return;
-    currentPlaylist.value = { name: radio.name, coverImgUrl: radio.picUrl };
+    currentPlaylist.value = { 
+        name: radio.name, 
+        coverImgUrl: radio.picUrl,
+        type: 'podcast',
+        radio: radio
+    };
     showPlaylistDialog.value = true;
     playlistLoading.value = true;
     playlistTracks.value = [];
     playlistPage.value = 1;
+    totalPlaylistTracks.value = 0;
 
     try {
         const baseUrl = currentApi.value.baseUrl;
@@ -1037,18 +1095,35 @@ const openDjRadio = async (radio: any) => {
         const headers = cookie ? { Cookie: cookie } : {};
         const cookieEncoded = cookie ? encodeURIComponent(cookie) : '';
         
-        // Fetch programs
-        const res = await proxyRequest(`${baseUrl}/dj/program?rid=${radio.id}&limit=50&cookie=${cookieEncoded}`, 'GET', headers, {});
+        // Initial fetch to get count and first page
+        const res = await proxyRequest(`${baseUrl}/dj/program?rid=${radio.id}&limit=50&offset=0&cookie=${cookieEncoded}`, 'GET', headers, {});
         
+        if (res.data?.count) {
+             totalPlaylistTracks.value = res.data.count;
+             // Initialize array with holes
+             playlistTracks.value = new Array(res.data.count).fill(undefined);
+        }
+
         if (res.data?.programs) {
-            playlistTracks.value = res.data.programs.map((p: any) => ({
+            const tracks = res.data.programs.map((p: any) => ({
                 id: p.mainSong.id, // Use mainSong id for playback
                 name: p.name,
                 ar: p.dj ? [{ name: p.dj.nickname }] : [],
-                al: radio,
+                al: { ...radio, picUrl: p.coverUrl },
                 dt: p.duration,
                 picUrl: p.coverUrl
             }));
+            
+            // If we didn't get count (sometimes happens?), assume length
+            if (totalPlaylistTracks.value === 0) {
+                 totalPlaylistTracks.value = tracks.length;
+                 playlistTracks.value = tracks;
+            } else {
+                 // Fill first 50
+                 for (let i = 0; i < tracks.length; i++) {
+                     playlistTracks.value[i] = tracks[i];
+                 }
+            }
         }
     } catch (e) {
         ElMessage.error('获取播客内容失败');
@@ -1057,6 +1132,18 @@ const openDjRadio = async (radio: any) => {
         playlistLoading.value = false;
     }
 };
+
+watch(playlistPage, (newPage) => {
+    if (currentPlaylist.value?.type === 'podcast' && currentPlaylist.value.radio) {
+        const start = (newPage - 1) * 10;
+        // Check if data exists at start (and maybe end of page)
+        if (!playlistTracks.value[start]) {
+             const batchSize = 50;
+             const offset = Math.floor(start / batchSize) * batchSize;
+             fetchPodcastPrograms(currentPlaylist.value.radio, offset, batchSize);
+        }
+    }
+});
 
 // Watch for view mode request from App.vue
 watch(() => playerStore.viewModeRequest, (val) => {
@@ -1211,11 +1298,7 @@ const initData = async () => {
   fetchDiscovery();
 };
 
-const handleRefreshCache = () => {
-    musicCache.remove('discovery_data');
-    fetchDiscovery(true);
-    ElMessage.success('已刷新缓存');
-};
+
 
 const fetchDiscovery = async (forceRefresh = false) => {
    if (!currentApi.value) return;
@@ -1505,7 +1588,7 @@ const clearSearch = () => {
 // --- Playback & Detail Logic ---
 const openAlbum = async (album: any) => {
     if (!currentApi.value) return;
-    currentPlaylist.value = { name: album.name, coverImgUrl: album.picUrl }; // Mock playlist obj
+    currentPlaylist.value = { name: album.name, coverImgUrl: album.picUrl, type: 'album' }; // Mock playlist obj
     showPlaylistDialog.value = true;
     playlistLoading.value = true;
     playlistTracks.value = [];
@@ -1516,6 +1599,7 @@ const openAlbum = async (album: any) => {
         const res = await proxyRequest(`${baseUrl}/album?id=${album.id}`, 'GET', {}, null);
         if (res.data?.songs) {
             playlistTracks.value = res.data.songs;
+            totalPlaylistTracks.value = res.data.songs.length;
         }
     } catch (e) {
         ElMessage.error('获取专辑详情失败');
@@ -1526,7 +1610,7 @@ const openAlbum = async (album: any) => {
 
 const openArtist = async (artist: any) => {
     if (!currentApi.value) return;
-    currentPlaylist.value = { name: artist.name, coverImgUrl: artist.picUrl };
+    currentPlaylist.value = { name: artist.name, coverImgUrl: artist.picUrl, type: 'artist' };
     showPlaylistDialog.value = true;
     playlistLoading.value = true;
     playlistTracks.value = [];
@@ -1537,6 +1621,7 @@ const openArtist = async (artist: any) => {
         const res = await proxyRequest(`${baseUrl}/artists?id=${artist.id}`, 'GET', {}, null);
         if (res.data?.hotSongs) {
             playlistTracks.value = res.data.hotSongs;
+            totalPlaylistTracks.value = res.data.hotSongs.length;
         }
     } catch (e) {
         ElMessage.error('获取歌手详情失败');
@@ -1641,6 +1726,7 @@ const openPlaylist = async (list: any) => {
                 al: t.al,
                 dt: t.dt
             }));
+            totalPlaylistTracks.value = playlistTracks.value.length;
         }
     } catch (e) {
         ElMessage.error('获取歌单详情失败');
@@ -2059,15 +2145,16 @@ onUnmounted(() => {
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   line-height: 1.4;
 }
 .album-artist {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .personalized-grid {
@@ -2322,8 +2409,9 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
   gap: 12px;
+  overflow: hidden;
 }
 
 .fm-info {
@@ -2348,6 +2436,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+  overflow: hidden;
 }
 
 .fm-album {
@@ -2357,6 +2446,15 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   margin-top: 4px;
+  overflow: hidden;
+}
+
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .fm-controls {
@@ -2417,16 +2515,24 @@ onUnmounted(() => {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    display: block;
+  }
+  .fm-artist .el-icon, .fm-album .el-icon {
+    display: inline-block;
+    vertical-align: -2px;
+    margin-right: 4px;
   }
   .fm-info-controls {
     flex-direction: row;
     align-items: center;
     gap: 10px;
     height: auto;
+    overflow: hidden; /* Ensure controls don't get pushed out if calculation fails */
   }
   .fm-info {
     flex: 1;
     min-width: 0; /* Enable text truncation */
+    overflow: hidden;
   }
   .fm-controls {
     gap: 0;
@@ -2490,6 +2596,42 @@ onUnmounted(() => {
   color: var(--el-text-color-secondary);
   min-width: 40px;
   text-align: center;
+}
+
+/* Header Bar Layout */
+.header-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+.header-bar.mobile-layout {
+  flex-wrap: wrap;
+}
+.header-bar.mobile-layout .api-status-wrapper {
+  order: 1;
+}
+.header-bar.mobile-layout .header-right-actions {
+  order: 2;
+  margin-left: auto;
+}
+.header-bar.mobile-layout .search-box {
+  order: 3;
+  width: 100%;
+  flex: 0 0 100%;
+}
+.header-bar .search-box {
+  flex: 1;
+  min-width: 200px;
+}
+.header-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.api-status-wrapper {
+  display: flex;
+  align-items: center;
 }
 
 /* Mobile specific adjustments */

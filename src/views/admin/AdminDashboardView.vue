@@ -1,10 +1,5 @@
 <template>
   <div class="admin-dashboard">
-    <el-page-header ref="pageHeaderRef" class="mb-4" @back="goHome">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 后台管理 </span>
-      </template>
-    </el-page-header>
     <el-tabs v-model="active" type="border-card">
       <el-tab-pane label="接口管理" name="music-apis">
         <MusicApisAdminView :embedded="true" />
@@ -70,38 +65,13 @@ import FeedbackAdminView from './FeedbackAdminView.vue';
 const active = ref<'links' | 'groups' | 'apps' | 'announcements' | 'env' | 'visitors' | 'logs' | 'changelogs' | 'site-cards' | 'about' | 'incidents' | 'music-apis' | 'feedbacks'>('music-apis');
 const router = useRouter();
   const layoutStore = useLayoutStore();
-  const pageHeaderRef = ref<HTMLElement | null>(null);
   const goHome = () => router.push('/');
-
-  // Scroll Handler
-  let ticking = false;
-  
-  const checkScrollPosition = () => {
-    if (!pageHeaderRef.value) return;
-    const el = (pageHeaderRef.value as any).$el || pageHeaderRef.value;
-    if (!el || !el.getBoundingClientRect) return;
-  
-    const rect = el.getBoundingClientRect();
-    layoutStore.setHeaderState(rect.bottom < 60);
-  };
-  
-  const handleScroll = () => {
-    if (!ticking) {
-      window.requestAnimationFrame(() => {
-        checkScrollPosition();
-        ticking = false;
-      });
-      ticking = true;
-    }
-  };
   
   onMounted(() => {
-    window.addEventListener('scroll', handleScroll);
     layoutStore.setPageInfo('后台管理', true, goHome);
   });
   
   onUnmounted(() => {
-    window.removeEventListener('scroll', handleScroll);
     layoutStore.reset();
   });
   </script>

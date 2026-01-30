@@ -6,7 +6,7 @@ import { useLayoutStore } from './stores/layout';
 import { usePlayerStore } from './stores/player';
 import { useRouter, useRoute } from 'vue-router';
 import MiniPlayer from './components/MiniPlayer.vue';
-import { Moon, Sunny, ArrowLeft, Compass, Menu, Refresh, ArrowDown, UserFilled, Collection, Close, Monitor, Edit, InfoFilled } from '@element-plus/icons-vue';
+import { Moon, Sunny, ArrowLeft, Compass, Menu, Refresh, ArrowDown, UserFilled, Collection, Close, Monitor, Edit, InfoFilled, CaretRight } from '@element-plus/icons-vue';
 import { useAuthStore } from './stores/auth';
 
 const themeStore = useThemeStore();
@@ -48,6 +48,20 @@ const sliderStyle = ref({
 
 const isScrolling = ref(false);
 let scrollTimer: number | undefined;
+
+// Mini Player Logic
+const radius = 14;
+const circumference = 2 * Math.PI * radius;
+const strokeDashoffset = computed(() => {
+  if (!playerStore.duration) return circumference;
+  const progress = playerStore.currentTime / playerStore.duration;
+  return circumference - (progress * circumference);
+});
+
+const togglePlay = () => {
+  playerStore.togglePlay();
+};
+
 
 const playProgress = computed(() => {
   if (!playerStore.duration || !playerStore.currentTrack) return 0;
@@ -366,12 +380,37 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
       </transition>
 
       <!-- Trigger Button -->
-      <div class="mobile-trigger-btn" @click="toggleMobileMenu" ref="mobileTriggerRef">
-        <div class="trigger-logo">
+      <div class="mobile-trigger-btn" :class="{ 'has-player': playerStore.currentTrack, 'is-scrolling': isScrolling && !playerStore.currentTrack }" @click="toggleMobileMenu" ref="mobileTriggerRef">
+        
+        <!-- Player Trigger (Replaces Logo when playing) -->
+        <div class="trigger-logo player-trigger" v-if="playerStore.currentTrack" @click.stop="togglePlay">
+           <svg class="progress-ring" width="32" height="32">
+             <circle
+               class="progress-ring__circle"
+               stroke="var(--el-color-primary)"
+               stroke-width="2"
+               fill="transparent"
+               r="14"
+               cx="16"
+               cy="16"
+               :style="{ strokeDasharray: `${circumference} ${circumference}`, strokeDashoffset: strokeDashoffset }"
+             />
+           </svg>
+           <div class="mini-cover-wrapper">
+             <img :src="playerStore.currentTrack.al?.picUrl || playerStore.currentTrack.album?.picUrl || playerStore.currentTrack.picUrl" class="mini-cover" :class="{ spinning: playerStore.isPlaying }" />
+             <div class="play-status-icon" v-if="!playerStore.isPlaying">
+               <el-icon :size="12"><CaretRight /></el-icon>
+             </div>
+           </div>
+        </div>
+
+        <!-- Default Logo -->
+        <div class="trigger-logo" v-else>
            <el-icon :size="20" class="current-tab-icon">
              <component :is="activeIcon" />
            </el-icon>
         </div>
+
         <div class="trigger-divider"></div>
         <div class="trigger-icon">
           <el-icon :size="20">
@@ -755,6 +794,75 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
     align-items: center;
     justify-content: center;
     color: var(--el-text-color-primary);
+  }
+
+  .mobile-trigger-btn.has-player {
+    padding-left: 8px;
+  }
+
+  .player-trigger {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 0;
+  }
+
+  .progress-ring {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: rotate(-90deg);
+    pointer-events: none;
+  }
+  
+  .progress-ring__circle {
+    transition: stroke-dashoffset 0.1s linear;
+    transform-origin: 50% 50%;
+  }
+
+  .mini-cover-wrapper {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+    background-color: var(--el-fill-color-darker);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mini-cover {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  
+  .mini-cover.spinning {
+    animation: spin 10s linear infinite;
+  }
+  
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  
+  .play-status-icon {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    backdrop-filter: blur(2px);
   }
 
   .mobile-menu-popup {
