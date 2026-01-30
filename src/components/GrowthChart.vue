@@ -35,7 +35,7 @@
     <template #header>
       <div class="card-header">
         <div class="header-left">
-          <span>应用下载增长对比 · 股市矩阵图</span>
+          <span>应用下载增长对比 · 矩阵图</span>
         </div>
       </div>
     </template>

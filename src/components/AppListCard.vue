@@ -47,7 +47,15 @@
       </header>
     </template>
     
-    <el-table v-if="!isMobile && viewMode === 'table'" :data="apps" style="width: 100%" v-loading="loading" @row-click="handleRowClick">
+    <el-table
+      v-if="!isMobile && viewMode === 'table'"
+      :data="apps"
+      style="width: 100%"
+      v-loading="loading"
+      @row-click="handleRowClick"
+      :default-sort="{ prop: sortKey, order: sortDesc ? 'descending' : 'ascending' }"
+      @sort-change="onSortChange"
+    >
       <el-table-column label="序号" width="80" align="center">
         <template #default="scope">
           <span style="font-weight: bold; color: #909399;">
@@ -75,7 +83,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="kind_name" label="分类" width="200" show-overflow-tooltip>
+      <el-table-column prop="kind_name" label="分类" width="140" show-overflow-tooltip>
         <template #default="scope">
           <el-tag 
             effect="plain" 
@@ -87,13 +95,13 @@
         </template>
       </el-table-column>
       <el-table-column min-width="1" />
-      <el-table-column prop="download_count" label="下载量" width="90" sortable align="right" />
-      <el-table-column prop="average_rating" label="评分" width="70" align="right">
+      <el-table-column prop="download_count" label="下载量" width="90" sortable="custom" align="right" />
+      <el-table-column prop="average_rating" label="评分" width="80" sortable="custom" align="right" label-class-name="no-wrap">
         <template #default="scope">
           <span>{{ scope.row.average_rating || '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="listed_at" label="上架时间" width="170" align="right">
+      <el-table-column prop="listed_at" label="上架时间" width="170" sortable="custom" align="right">
         <template #default="scope">
           <span>{{ formatDate(scope.row.listed_at) }}</span>
         </template>
@@ -257,11 +265,46 @@ const fetchApps = async () => {
     const data = response.data || {};
     apps.value = data.data || [];
     total.value = data.total_count || 0;
+    applyLocalSort();
   } catch (error) {
     console.error('Failed to fetch apps:', error);
   } finally {
     loading.value = false;
   }
+};
+
+const sortKey = ref<'download_count' | 'average_rating' | 'listed_at'>('download_count');
+const sortDesc = ref(true);
+const onSortChange = (opt: any) => {
+  const prop = String(opt?.prop || '').trim();
+  const order = String(opt?.order || '');
+  if (!prop || !['download_count', 'average_rating', 'listed_at'].includes(prop)) return;
+  sortKey.value = prop as any;
+  sortDesc.value = order === 'descending' || order === '' || order === undefined;
+  applyLocalSort();
+};
+
+const applyLocalSort = () => {
+  const key = sortKey.value;
+  const desc = sortDesc.value;
+  const toNum = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const toTime = (v: any) => {
+    const t = new Date(v).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+  const getVal = (item: any) => {
+    if (key === 'listed_at') return toTime(item?.listed_at);
+    if (key === 'average_rating') return toNum(item?.average_rating);
+    return toNum(item?.download_count);
+  };
+  apps.value = [...apps.value].sort((a, b) => {
+    const va = getVal(a);
+    const vb = getVal(b);
+    return desc ? vb - va : va - vb;
+  });
 };
 
 const handleSearch = () => {
@@ -369,6 +412,14 @@ onUnmounted(() => {
 }
 .app-name {
   font-weight: 500;
+}
+
+:deep(th.no-wrap .cell) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {

@@ -24,9 +24,10 @@ defineOptions({
 
 const router = useRouter();
 const layoutStore = useLayoutStore();
+const goHome = () => router.push('/');
 
 onMounted(() => {
-  layoutStore.setPageInfo('应用下载增长对比', true, () => router.back());
+  layoutStore.setPageInfo('应用下载增长对比', true, goHome);
 });
 
 onUnmounted(() => {

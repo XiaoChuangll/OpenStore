@@ -1,8 +1,8 @@
 <template>
-  <main class="home-view">
+  <main class="home-view" @touchstart="handleTouchStart" @touchend="handleTouchEnd">
     <Teleport to="#header-teleport-target">
       <Transition name="fade-slide">
-        <div v-if="layoutStore.showCustomTitle" class="device-tabs header-device-tabs">
+        <div v-if="isActiveHome && layoutStore.showCustomTitle" class="device-tabs header-device-tabs">
           <div 
             class="tab-glider" 
             :style="{ 
@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, onActivated, onDeactivated } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useLayoutStore } from '../stores/layout';
@@ -247,6 +247,27 @@ const groupChats = ref<GroupChat[]>([]);
 const announcements = ref<Announcement[]>([]);
 const publicApps = ref<AppItem[]>([]);
 const homeTab = ref<'home' | 'system'>('home');
+const isActiveHome = ref(true);
+
+const touchStartX = ref(0);
+const touchStartY = ref(0);
+const handleTouchStart = (e: TouchEvent) => {
+  touchStartX.value = e.touches[0].clientX;
+  touchStartY.value = e.touches[0].clientY;
+};
+const handleTouchEnd = (e: TouchEvent) => {
+  const touchEndX = e.changedTouches[0].clientX;
+  const touchEndY = e.changedTouches[0].clientY;
+  const diffX = touchEndX - touchStartX.value;
+  const diffY = touchEndY - touchStartY.value;
+  if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
+    if (diffX < 0) {
+      homeTab.value = 'system';
+    } else {
+      homeTab.value = 'home';
+    }
+  }
+};
 
 const getCardStyle = (card: SiteCard) => {
   let parsed: any = {};
@@ -344,6 +365,7 @@ const loadSiteCards = async () => {
 let observer: IntersectionObserver | null = null;
 
 onMounted(() => {
+  isActiveHome.value = true;
   loadSiteCards();
   updateGreeting();
 
@@ -361,6 +383,34 @@ onMounted(() => {
   if (toolbarRef.value) {
     observer.observe(toolbarRef.value);
   }
+});
+
+onActivated(() => {
+  // Ensure header toggle only appears when HomeView is active
+  isActiveHome.value = true;
+  if (!observer && toolbarRef.value) {
+    observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting && entry.boundingClientRect.top < 60) {
+          layoutStore.setCustomTitleVisible(true);
+        } else {
+          layoutStore.setCustomTitleVisible(false);
+        }
+      },
+      { threshold: 0, rootMargin: '-60px 0px 0px 0px' }
+    );
+    observer.observe(toolbarRef.value);
+  }
+});
+
+onDeactivated(() => {
+  // Hide custom header when leaving HomeView
+  isActiveHome.value = false;
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+  layoutStore.setCustomTitleVisible(false);
 });
 
 onUnmounted(() => {

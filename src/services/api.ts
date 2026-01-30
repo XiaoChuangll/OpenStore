@@ -104,7 +104,13 @@ export const getMonitors = async (): Promise<Monitor[]> => {
       throw new Error(response.data.error?.message || 'API Error');
     }
   } catch (error) {
-    console.error('Failed to fetch monitors', error);
+    try {
+      const status = (error as any)?.response?.status;
+      const method = (error as any)?.config?.method?.toUpperCase();
+      const baseURL = (error as any)?.config?.baseURL || '';
+      const url = (error as any)?.config?.url || '';
+      console.error(`[AxiosError] ${method || 'GET'} ${baseURL}${url} ${status || ''}`, (error as any)?.message || error);
+    } catch {}
     throw error;
   }
 };
@@ -551,6 +557,50 @@ export const deleteIncident = async (id: number): Promise<void> => {
 export const login = async (username: string, password: string): Promise<{ token: string }> => {
   const response = await apiClient.post('/auth/login', { username, password });
   return response.data;
+};
+export interface FeedbackPayload {
+  type: string;
+  title: string;
+  description: string;
+  device_type?: string;
+  os?: string;
+  browser?: string;
+  network?: string;
+  page_url?: string;
+  user_role?: string;
+  email?: string;
+}
+
+export const submitFeedback = async (payload: FeedbackPayload): Promise<{ id: number; hash: string }> => {
+  const response = await apiClient.post('/feedback', payload);
+  return response.data;
+};
+
+export interface FeedbackProgress {
+  id: number;
+  type: string;
+  title: string;
+  status: string;
+  created_at: string;
+}
+
+export const getFeedbackProgressByHash = async (hash: string): Promise<FeedbackProgress> => {
+  const response = await apiClient.get(`/public/feedback/${encodeURIComponent(hash)}`);
+  return response.data;
+};
+
+export interface FeedbackSummary {
+  id: number;
+  type: string;
+  title: string;
+  status: string;
+  created_at: string;
+}
+export const getFeedbackSuccessList = async (limit = 10, status?: string): Promise<FeedbackSummary[]> => {
+  const params: any = { limit };
+  if (status) params.status = status;
+  const response = await apiClient.get('/public/feedbacks/success', { params });
+  return response.data.items || [];
 };
 export const changePassword = async (data: any): Promise<void> => {
   await apiClient.post('/auth/change-password', data);

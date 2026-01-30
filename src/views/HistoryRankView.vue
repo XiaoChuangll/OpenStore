@@ -24,9 +24,10 @@ defineOptions({
 
 const router = useRouter();
 const layoutStore = useLayoutStore();
+const goHome = () => router.push('/');
 
 onMounted(() => {
-  layoutStore.setPageInfo('鸿蒙应用下载量历史', true, () => router.back());
+  layoutStore.setPageInfo('鸿蒙应用下载量历史', true, goHome);
 });
 
 onUnmounted(() => {

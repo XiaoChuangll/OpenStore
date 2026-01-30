@@ -24,9 +24,10 @@ defineOptions({
 
 const router = useRouter();
 const layoutStore = useLayoutStore();
+const goHome = () => router.push('/');
 
 onMounted(() => {
-  layoutStore.setPageInfo('总下载榜', true, () => router.back());
+  layoutStore.setPageInfo('总下载榜', true, goHome);
 });
 
 onUnmounted(() => {

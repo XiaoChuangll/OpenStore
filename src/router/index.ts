@@ -154,6 +154,12 @@ const router = createRouter({
       meta: { title: '后台管理', requiresAuth: true, description: 'OpenStore后台管理系统，管理应用、用户和系统设置。' }
     },
     {
+      path: '/admin/feedbacks',
+      name: 'admin-feedbacks',
+      component: () => import('../views/admin/FeedbackAdminView.vue'),
+      meta: { title: '用户反馈', requiresAuth: true, description: '查看用户反馈' }
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: NotFoundView,

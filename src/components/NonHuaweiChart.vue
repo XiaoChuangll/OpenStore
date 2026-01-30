@@ -41,7 +41,7 @@
     <template #header>
       <div class="card-header">
         <div class="header-left">
-          <span>非华为应用下载榜 · 股市矩阵图</span>
+          <span>非华为应用下载榜 · 矩阵图</span>
         </div>
       </div>
     </template>

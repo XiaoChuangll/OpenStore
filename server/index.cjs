@@ -285,9 +285,21 @@ app.post('/api/upload', requireAuth, upload.single('file'), (req, res) => {
 // Proxy to UptimeRobot
 app.get('/api/monitors', async (req, res) => {
   try {
-    const API_KEY = process.env.VUE_APP_API_KEY;
+    let API_KEY = '';
+    try {
+      await new Promise((resolve) => {
+        db.get(`SELECT value_encrypted FROM env_vars WHERE key=?`, ['VUE_APP_API_KEY'], (e1, row) => {
+          if (!e1 && row && row.value_encrypted) {
+            const plain = decrypt(row.value_encrypted);
+            if (plain && plain.trim()) API_KEY = plain.trim();
+          }
+          resolve();
+        });
+      });
+    } catch {}
+    if (!API_KEY) API_KEY = process.env.VUE_APP_API_KEY || '';
     if (!API_KEY) {
-      throw new Error('API Key not found in environment variables');
+      return res.json({ stat: 'ok', monitors: [] });
     }
 
     // UptimeRobot requires x-www-form-urlencoded
@@ -401,6 +413,18 @@ app.get('/api/visitors', (req, res) => {
   });
 });
 
+app.post('/api/admin/feedbacks/batch-delete', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const { ids } = req.body || {};
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'No IDs provided' });
+  }
+  const placeholders = ids.map(() => '?').join(',');
+  db.run(`DELETE FROM feedbacks WHERE id IN (${placeholders})`, ids, function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ deleted: this.changes });
+  });
+});
 // Batch Delete Visitors
 app.post('/api/visitors/batch-delete', requireAuth, (req, res) => {
   const { ids } = req.body;
@@ -991,6 +1015,21 @@ const normalizeSubmission = (body) => {
   return { name, provider, bg_url, icon_url, download_url };
 };
 
+const normalizeFeedback = (body) => {
+  const toText = (v) => String(v ?? '').trim();
+  const type = toText(body?.type);
+  const title = toText(body?.title);
+  const description = toText(body?.description);
+  const device_type = toText(body?.device_type);
+  const os = toText(body?.os);
+  const browser = toText(body?.browser);
+  const network = toText(body?.network);
+  const page_url = toText(body?.page_url);
+  const user_role = toText(body?.user_role);
+  const email = toText(body?.email);
+  return { type, title, description, device_type, os, browser, network, page_url, user_role, email };
+};
+
 const validateSubmission = (payload) => {
   if (!payload.name) return '应用名称不能为空';
   if (!payload.provider) return '应用提供者不能为空';
@@ -1054,6 +1093,164 @@ app.post('/api/submissions', (req, res) => {
           );
         });
       });
+    }
+  );
+});
+
+app.post('/api/feedback', async (req, res) => {
+  const payload = normalizeFeedback(req.body || {});
+  if (!payload.type) return res.status(400).json({ error: '反馈类型不能为空' });
+  if (!payload.title) return res.status(400).json({ error: '标题不能为空' });
+  if (!payload.description) return res.status(400).json({ error: '详细描述不能为空' });
+
+  const email = payload.email;
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: '邮箱格式不正确' });
+  }
+
+  const ip = getClientIp(req);
+  let actor = ip || 'guest';
+  let role = 'guest';
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (token) {
+    try {
+      const data = jwt.verify(token, JWT_SECRET);
+      if (data?.username) actor = data.username;
+      if (data?.role) role = String(data.role);
+    } catch {}
+  }
+
+  const ua = String(req.headers['user-agent'] || '').trim();
+  let limit = 0;
+  // Prefer DB env_vars for dynamic configuration
+  try {
+    const key = 'FEEDBACK_RATE_LIMIT_PER_MINUTE';
+    await new Promise((resolve) => {
+      db.get(`SELECT value_encrypted FROM env_vars WHERE key=?`, [key], (e1, row) => {
+        if (!e1 && row && row.value_encrypted) {
+          const plain = decrypt(row.value_encrypted);
+          const n = Number(plain);
+          if (Number.isFinite(n)) limit = n;
+        }
+        resolve();
+      });
+    });
+  } catch {}
+  if (!limit) {
+    const envFile = readEnvFile();
+    limit = Number(envFile.FEEDBACK_RATE_LIMIT_PER_MINUTE || process.env.FEEDBACK_RATE_LIMIT_PER_MINUTE || 0) || 0;
+  }
+  const runInsert = () => {
+    db.run(
+      `INSERT INTO feedbacks (type, title, description, device_type, os, browser, network, page_url, user_role, email, ip, user_agent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [payload.type, payload.title, payload.description, payload.device_type || null, payload.os || null, payload.browser || null, payload.network || null, payload.page_url || null, payload.user_role || role, email || null, ip, ua],
+      function(e2) {
+        if (e2) return res.status(500).json({ error: e2.message });
+        logAction(actor, 'submit', 'feedbacks', this.lastID, { type: payload.type, title: payload.title });
+        const seed = `${this.lastID}-${Date.now()}-${ip}-${ua}`;
+        const hash = crypto.createHash('sha256').update(seed).digest('hex');
+        db.run(`UPDATE feedbacks SET hash = ? WHERE id = ?`, [hash, this.lastID], function(e3) {
+          if (e3) return res.status(500).json({ error: e3.message });
+          res.json({ id: this.lastID, hash });
+        });
+      }
+    );
+  };
+  if (limit > 0) {
+    db.get(
+      `SELECT COUNT(*) AS count FROM feedbacks WHERE ip = ? AND created_at > datetime('now', '-1 minute')`,
+      [ip],
+      (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (row && Number(row.count || 0) >= limit) {
+          return res.status(429).json({ error: `提交过于频繁，每分钟最多允许提交${limit}次` });
+        }
+        runInsert();
+      }
+    );
+  } else {
+    runInsert();
+  }
+});
+
+app.get('/api/admin/feedbacks', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const page = Number(req.query.page || 1);
+  const pageSize = Number(req.query.pageSize || 20);
+  const offset = (page - 1) * pageSize;
+
+  db.get(`SELECT COUNT(*) AS total FROM feedbacks`, [], (e1, agg) => {
+    if (e1) return res.status(500).json({ error: e1.message });
+    db.all(
+      `SELECT id, type, title, description, device_type, os, browser, network, page_url, user_role, email, ip, user_agent, hash, status, strftime('%Y-%m-%dT%H:%M:%SZ', created_at) AS created_at FROM feedbacks ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [pageSize, offset],
+      (e2, rows) => {
+        if (e2) return res.status(500).json({ error: e2.message });
+        res.json({ items: rows, total: agg?.total || 0, page, pageSize });
+      }
+    );
+  });
+});
+
+app.put('/api/admin/feedbacks/:id', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const id = Number(req.params.id);
+  const { status } = req.body || {};
+  const allowed = new Set(['pending', 'accepted', 'rejected', 'completed']);
+  const normalized = typeof status === 'string' ? status.trim() : '';
+  if (!allowed.has(normalized)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+  db.get(`SELECT id FROM feedbacks WHERE id=?`, [id], (e1, row) => {
+    if (e1) return res.status(500).json({ error: e1.message });
+    if (!row) return res.status(404).json({ error: '反馈不存在' });
+    db.run(`UPDATE feedbacks SET status=? WHERE id=?`, [normalized, id], function(e2) {
+      if (e2) return res.status(500).json({ error: e2.message });
+      logAction(req.user?.username, 'update', 'feedbacks', id, { status: normalized });
+      res.json({ changed: this.changes });
+    });
+  });
+});
+
+app.get('/api/public/feedback/:hash', (req, res) => {
+  const hash = String(req.params.hash || '').trim();
+  if (!hash) return res.status(400).json({ error: '缺少哈希值' });
+  db.get(
+    `SELECT id, type, title, status, strftime('%Y-%m-%dT%H:%M:%SZ', created_at) AS created_at FROM feedbacks WHERE hash = ?`,
+    [hash],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!row) return res.status(404).json({ error: '未找到反馈' });
+      res.json(row);
+    }
+  );
+});
+
+app.get('/api/public/feedbacks/success', (req, res) => {
+  const limit = Number(req.query.limit || 10);
+  const status = req.query.status;
+  
+  let whereClause = "status IN ('accepted','completed')";
+  const params = [];
+  
+  if (status && (status === 'accepted' || status === 'completed')) {
+    whereClause = "status = ?";
+    params.push(status);
+  }
+  
+  params.push(limit);
+
+  db.all(
+    `SELECT id, type, title, status, strftime('%Y-%m-%dT%H:%M:%SZ', created_at) AS created_at 
+     FROM feedbacks 
+     WHERE ${whereClause} 
+     ORDER BY created_at DESC 
+     LIMIT ?`,
+    params,
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ items: rows });
     }
   );
 });
@@ -1263,7 +1460,9 @@ app.get('/api/env', requireAuth, (req, res) => {
     if (err) return res.status(500).json({ error: err.message });
     const result = {};
     // Merge env file values and DB (DB values considered secure; send masked)
+    const dbKeys = new Set((rows || []).map(r => r.key));
     Object.keys(envFile).forEach(k => {
+      if (dbKeys.has(k)) return;
       const cat = categorizeKey(k);
       if (!result[cat]) result[cat] = [];
       result[cat].push({ key: k, value: envFile[k], secure: false, updated_at: null });
@@ -1271,7 +1470,8 @@ app.get('/api/env', requireAuth, (req, res) => {
     rows.forEach(r => {
       const cat = r.category || categorizeKey(r.key);
       if (!result[cat]) result[cat] = [];
-      result[cat].push({ key: r.key, value: '••••••', secure: true, updated_at: r.updated_at });
+      const val = r.key === 'FEEDBACK_RATE_LIMIT_PER_MINUTE' ? decrypt(r.value_encrypted) : '••••••';
+      result[cat].push({ key: r.key, value: val, secure: true, updated_at: r.updated_at });
     });
     res.json(result);
   });
@@ -1280,7 +1480,8 @@ app.get('/api/env', requireAuth, (req, res) => {
 app.put('/api/env', requireAuth, (req, res) => {
   const { key, value, category, secure = true } = req.body;
   if (!key) return res.status(400).json({ error: 'key required' });
-  if (secure) {
+  const isRateLimit = key === 'FEEDBACK_RATE_LIMIT_PER_MINUTE';
+  if (secure || isRateLimit) {
     const enc = encrypt(String(value || ''));
     db.get(`SELECT value_encrypted FROM env_vars WHERE key=?`, [key], (err, row) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -1290,17 +1491,17 @@ app.put('/api/env', requireAuth, (req, res) => {
         ? `UPDATE env_vars SET value_encrypted=?, category=?, updated_at=CURRENT_TIMESTAMP WHERE key=?`
         : `INSERT INTO env_vars (value_encrypted, category, key) VALUES (?,?,?)`;
       const params = row ? [enc, cat, key] : [enc, cat, key];
-  db.run(upsert, params, function(e2){
-    if (e2) return res.status(500).json({ error: e2.message });
-    db.run(`INSERT INTO env_history (key, old_value_encrypted, new_value_encrypted) VALUES (?,?,?)`, [key, oldEnc, enc]);
-    // Also write plaintext to .env for runtime usage
-    writeEnvKey(key, String(value || ''));
-    logAction(req.user?.username, 'env_set', 'env_vars', null, { key });
-    res.json({ ok: true });
-  });
+      db.run(upsert, params, function(e2){
+        if (e2) return res.status(500).json({ error: e2.message });
+        db.run(`INSERT INTO env_history (key, old_value_encrypted, new_value_encrypted) VALUES (?,?,?)`, [key, oldEnc, enc]);
+        if (!isRateLimit) {
+          writeEnvKey(key, String(value || ''));
+        }
+        logAction(req.user?.username, 'env_set', 'env_vars', null, { key });
+        res.json({ ok: true });
+      });
     });
   } else {
-    // Store in .env only
     writeEnvKey(key, String(value || ''));
     logAction(req.user?.username, 'env_set_plain', 'env_vars', null, { key });
     res.json({ ok: true });
@@ -1328,7 +1529,9 @@ app.post('/api/env/rollback', requireAuth, (req, res) => {
     const enc = row.old_value_encrypted;
     db.run(`UPDATE env_vars SET value_encrypted=?, category=?, updated_at=CURRENT_TIMESTAMP WHERE key=?`, [enc, cat, row.key], function(e2){
       if (e2) return res.status(500).json({ error: e2.message });
-      writeEnvKey(row.key, plain);
+      if (row.key !== 'FEEDBACK_RATE_LIMIT_PER_MINUTE') {
+        writeEnvKey(row.key, plain);
+      }
       logAction(req.user?.username, 'env_rollback', 'env_vars', null, { id });
       res.json({ ok: true });
     });

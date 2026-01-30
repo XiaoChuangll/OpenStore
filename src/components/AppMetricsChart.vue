@@ -26,7 +26,7 @@
       <el-collapse-item name="stock-matrix">
         <template #title>
           <div class="custom-collapse-title">
-            <span>股市矩阵图 (Demo)</span>
+            <span>K线矩阵图</span>
           </div>
         </template>
         <div class="chart-container">

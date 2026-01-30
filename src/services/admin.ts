@@ -69,6 +69,13 @@ api.interceptors.response.use(
         window.location.reload();
       }
     }
+    try {
+      const status = (error as any)?.response?.status;
+      const method = (error as any)?.config?.method?.toUpperCase();
+      const baseURL = (error as any)?.config?.baseURL || '';
+      const url = (error as any)?.config?.url || '';
+      console.error(`[AxiosError] ${method || 'GET'} ${baseURL}${url} ${status || ''}`, (error as any)?.message || error);
+    } catch {}
     return Promise.reject(error);
   }
 );
@@ -468,4 +475,37 @@ export const updateSiteCard = async (id: number, payload: Partial<SiteCard>) => 
 export const getPublicSiteCards = async () => {
   const { data } = await axios.get('/api/public/site-cards');
   return data.items as SiteCard[];
+};
+
+export interface Feedback {
+  id: number;
+  type: string;
+  title: string;
+  description: string;
+  device_type?: string | null;
+  os?: string | null;
+  browser?: string | null;
+  network?: string | null;
+  page_url?: string | null;
+  user_role?: string | null;
+  email?: string | null;
+  ip?: string | null;
+  user_agent?: string | null;
+  hash?: string | null;
+  status?: string | null;
+  created_at: string;
+}
+
+export const getFeedbacks = async (page = 1, pageSize = 20) => {
+  const { data } = await api.get('/feedbacks', { params: { page, pageSize } });
+  return data as { items: Feedback[]; total: number; page: number; pageSize: number };
+};
+
+export const deleteFeedbacks = async (ids: number[]) => {
+  const { data } = await api.post('/feedbacks/batch-delete', { ids });
+  return data as { deleted: number };
+};
+
+export const updateFeedbackStatus = async (id: number, status: 'pending' | 'accepted' | 'rejected' | 'completed') => {
+  await api.put(`/feedbacks/${id}`, { status });
 };

@@ -130,6 +130,132 @@
       </el-collapse-transition>
     </el-card>
 
+    <el-card class="about-card mb-4">
+      <template #header>
+        <div class="card-header cursor-pointer select-none flex items-center justify-between" @click="toggleFeedback">
+          <div class="flex items-center">
+            <span class="mr-2">意见反馈</span>
+          </div>
+          <el-icon :class="{ 'rotate-90': feedbackExpanded }"><ArrowRight /></el-icon>
+        </div>
+      </template>
+      <el-collapse-transition>
+        <div v-show="feedbackExpanded" class="feedback-form">
+          <el-tabs v-model="feedbackTab" class="feedback-tabs" :stretch="true">
+            <el-tab-pane label="提交反馈" name="submit">
+              <el-form :model="feedbackForm" label-width="120px">
+                <el-form-item label="反馈类型">
+                  <el-select v-model="feedbackForm.type" placeholder="请选择">
+                    <el-option v-for="opt in feedbackTypes" :key="opt.value" :label="opt.label" :value="opt.value" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="标题/概要">
+                  <el-input v-model="feedbackForm.title" placeholder="用一句话简述问题" />
+                </el-form-item>
+                <el-form-item label="详细描述">
+                  <el-input v-model="feedbackForm.description" type="textarea" :rows="6" placeholder="请描述问题场景、期望结果等" />
+                </el-form-item>
+                <el-form-item label="联系方式">
+                  <el-autocomplete
+                    v-model="feedbackForm.email"
+                    placeholder="邮箱（可选）"
+                    value-key="value"
+                    :fetch-suggestions="getEmailSuggestions"
+                    @select="onEmailSelect"
+                    style="width: 100%;"
+                  />
+                </el-form-item>
+                <el-form-item>
+                  <el-button type="primary" :loading="submitting" @click="submitFeedbackForm">提交反馈</el-button>
+                </el-form-item>
+              </el-form>
+              <el-alert
+                v-show="feedbackErrorVisible"
+                type="error"
+                :closable="true"
+                :title="feedbackErrorTitle"
+                :description="feedbackErrorMessage"
+                @close="feedbackErrorVisible = false"
+                class="mb-2"
+              />
+              <el-alert
+                v-show="feedbackSuccessVisible"
+                type="success"
+                :closable="true"
+                @close="feedbackSuccessVisible = false"
+                class="mb-2 success-alert"
+              >
+                <div class="alert-header">
+                  <span>反馈已提交</span>
+                </div>
+                <div class="alert-desc">
+                  反馈编号：
+                  <span class="hash" @click="copySubmittedHash">{{ submittedHash || '—' }}</span>
+                  <span v-if="copyTipVisible" class="copy-tip">已复制</span>
+                </div>
+              </el-alert>
+              <div class="privacy-tip"></div>
+            </el-tab-pane>
+            <el-tab-pane label="查询进度" name="query">
+              <div class="hash-query">
+                <el-form :model="queryForm" label-width="120px">
+                  <el-form-item label="反馈编号">
+                    <el-input
+                      v-model="hashQueryInput"
+                      placeholder="输入编号查询进度"
+                      style="width: 100%;"
+                      clearable
+                      @clear="onQueryClear"
+                    />
+                  </el-form-item>
+                  <el-form-item>
+                    <el-button type="primary" :loading="queryLoading" @click="queryFeedbackProgress">查询</el-button>
+                  </el-form-item>
+                </el-form>
+                <el-alert
+                  v-if="queryResult"
+                  type="info"
+                  :closable="false"
+                  title="查询结果"
+                  class="mt-2"
+                />
+                <el-descriptions
+                  v-if="queryResult"
+                  border
+                  :column="2"
+                  size="small"
+                  class="query-result-desc"
+                >
+                  <el-descriptions-item label="进度">{{ statusLabel(queryResult.status) }}</el-descriptions-item>
+                  <el-descriptions-item label="提交时间">{{ formatTime(queryResult.created_at) }}</el-descriptions-item>
+                  <el-descriptions-item label="类型">{{ typeLabel(queryResult.type) }}</el-descriptions-item>
+                  <el-descriptions-item label="标题">{{ queryResult.title }}</el-descriptions-item>
+                </el-descriptions>
+                <div v-if="completedList.length > 0" class="success-list success-list-completed">
+                  <div class="success-list-header flex items-center">
+                    <el-icon class="mr-1"><CircleCheckFilled /></el-icon> 已完成
+                  </div>
+                  <div class="success-item" v-for="item in completedList" :key="item.id">
+                    <span class="title">{{ item.title }}</span>
+                    <span class="meta">{{ typeLabel(item.type) }} · {{ statusLabel(item.status) }} · {{ formatTime(item.created_at) }}</span>
+                  </div>
+                </div>
+                <div v-if="acceptedList.length > 0" class="success-list success-list-accepted">
+                  <div class="success-list-header flex items-center">
+                    <el-icon class="mr-1"><CircleCheck /></el-icon> 已接纳
+                  </div>
+                  <div class="success-item" v-for="item in acceptedList" :key="item.id">
+                    <span class="title">{{ item.title }}</span>
+                    <span class="meta">{{ typeLabel(item.type) }} · {{ statusLabel(item.status) }} · {{ formatTime(item.created_at) }}</span>
+                  </div>
+                </div>
+              </div>
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+      </el-collapse-transition>
+    </el-card>
+
     <div class="footer-info">
       <p>Version {{ aboutData.version || '1.0.0' }}</p>
       <p>&copy; {{ new Date().getFullYear() }} BetaHub Tech. All rights reserved.</p>
@@ -140,18 +266,29 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from 'vue';
 import { useLayoutStore } from '../stores/layout';
-import { Link, ArrowRight, StarFilled } from '@element-plus/icons-vue';
-import { getAboutPage, getPublicChangelogs, type AboutPage, type Changelog } from '../services/api';
+import { Link, ArrowRight, StarFilled, CircleCheck, CircleCheckFilled } from '@element-plus/icons-vue';
+import { getAboutPage, getPublicChangelogs, submitFeedback, getFeedbackProgressByHash, getFeedbackSuccessList, type AboutPage, type Changelog, type FeedbackSummary } from '../services/api';
 import axios from 'axios';
 import MarkdownIt from 'markdown-it';
 import '@vueup/vue-quill/dist/vue-quill.snow.css'; // Import Quill styles for content rendering
 import 'github-markdown-css/github-markdown.css';
+import { useAuthStore } from '../stores/auth';
 
 const layoutStore = useLayoutStore();
 const aboutData = ref<AboutPage>({ id: 0, version: '', author_name: '', author_avatar: '', author_github: '', github_repo: '', content_html: '', content_markdown: '' });
 const commits = ref<any[]>([]);
 const commitsLoading = ref(false);
 const commitsExpanded = ref(false);
+const feedbackExpanded = ref(true);
+const feedbackTab = ref('submit');
+const queryForm = ref({ hash: '' });
+const feedbackSuccessVisible = ref(false);
+const feedbackErrorVisible = ref(false);
+const feedbackErrorTitle = ref('提交失败');
+const feedbackErrorMessage = ref('');
+const submittedId = ref<number | null>(null);
+const submittedHash = ref<string | null>(null);
+const copyTipVisible = ref(false);
 const repoStars = ref<number | null>(null);
 const changelogs = ref<Changelog[]>([]);
 const changelogsLoading = ref(false);
@@ -191,6 +328,243 @@ const showContent = computed(() => {
   }
   return true;
 });
+
+const feedbackTypes = [
+  { label: 'Bug / 错误报告', value: 'bug' },
+  { label: '功能建议', value: 'feature' },
+  { label: '体验问题', value: 'ux' },
+  { label: '内容反馈', value: 'content' },
+  { label: '其他', value: 'other' },
+] as const;
+const typeLabel = (v?: string) => {
+  const opt = feedbackTypes.find(o => o.value === (v || '').trim());
+  return opt ? opt.label : (v || '');
+};
+const statusOptions = [
+  { value: 'pending', label: '待优化' },
+  { value: 'accepted', label: '已接纳' },
+  { value: 'rejected', label: '不接纳' },
+  { value: 'completed', label: '已完成' },
+] as const;
+const statusLabel = (s?: string) => {
+  const opt = statusOptions.find(o => o.value === (s || '').trim());
+  return opt ? opt.label : '待优化';
+};
+
+const getUserRole = () => {
+  const store = useAuthStore();
+  if (!store.token) return 'guest';
+  try {
+    const parts = store.token.split('.');
+    if (parts.length < 2) return 'user';
+    const payloadBase64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = payloadBase64.length % 4 ? '='.repeat(4 - (payloadBase64.length % 4)) : '';
+    const json = atob(payloadBase64 + pad);
+    const obj = JSON.parse(json) as any;
+    return String(obj?.role || 'user');
+  } catch {
+    return 'user';
+  }
+};
+
+const detectEnv = () => {
+  const ua = navigator.userAgent || '';
+  const isMobile = /Mobile|Android|iPhone|iPad|iPod|HarmonyOS/i.test(ua);
+  const isTablet = /Tablet|iPad/i.test(ua);
+  const device_type = isTablet ? 'tablet' : (isMobile ? 'mobile' : 'desktop');
+
+  let os = 'unknown';
+  if (/Windows NT/i.test(ua)) os = 'Windows';
+  else if (/Mac OS X/i.test(ua)) os = 'macOS';
+  else if (/Android/i.test(ua)) os = 'Android';
+  else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS';
+  else if (/HarmonyOS/i.test(ua)) os = 'HarmonyOS';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+
+  let browser = 'unknown';
+  const m =
+    ua.match(/Edg\/([\d.]+)/) ||
+    ua.match(/Chrome\/([\d.]+)/) ||
+    ua.match(/Firefox\/([\d.]+)/) ||
+    ua.match(/Version\/([\d.]+).*Safari/) ||
+    ua.match(/OPR\/([\d.]+)/);
+  if (m) {
+    if (/Edg\//.test(ua)) browser = `Edge ${m[1]}`;
+    else if (/Chrome\//.test(ua)) browser = `Chrome ${m[1]}`;
+    else if (/Firefox\//.test(ua)) browser = `Firefox ${m[1]}`;
+    else if (/Safari/.test(ua)) browser = `Safari ${m[1]}`;
+    else if (/OPR\//.test(ua)) browser = `Opera ${m[1]}`;
+  }
+
+  let network = 'unknown';
+  const anyNav: any = navigator;
+  const conn = anyNav.connection || anyNav.mozConnection || anyNav.webkitConnection;
+  if (conn) {
+    const et = conn.effectiveType || '';
+    const dl = conn.downlink ? `${conn.downlink}Mbps` : '';
+    network = [et, dl].filter(Boolean).join(' ') || 'unknown';
+  }
+
+  return { device_type, os, browser, network };
+};
+
+const submitting = ref(false);
+const feedbackForm = ref({
+  type: '',
+  title: '',
+  description: '',
+  device_type: '',
+  os: '',
+  browser: '',
+  network: '',
+  email: '',
+});
+
+const submitFeedbackForm = async () => {
+  if (!feedbackForm.value.type) { 
+    feedbackErrorTitle.value = '提交失败';
+    feedbackErrorMessage.value = '请选择反馈类型';
+    feedbackErrorVisible.value = true;
+    feedbackSuccessVisible.value = false;
+    return; 
+  }
+  if (!feedbackForm.value.title.trim()) { 
+    feedbackErrorTitle.value = '提交失败';
+    feedbackErrorMessage.value = '请填写标题/概要';
+    feedbackErrorVisible.value = true;
+    feedbackSuccessVisible.value = false;
+    return; 
+  }
+  if (!feedbackForm.value.description.trim()) { 
+    feedbackErrorTitle.value = '提交失败';
+    feedbackErrorMessage.value = '请填写详细描述';
+    feedbackErrorVisible.value = true;
+    feedbackSuccessVisible.value = false;
+    return; 
+  }
+  const email = (feedbackForm.value.email || '').trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { 
+    feedbackErrorTitle.value = '提交失败';
+    feedbackErrorMessage.value = '邮箱格式不正确';
+    feedbackErrorVisible.value = true;
+    feedbackSuccessVisible.value = false;
+    return; 
+  }
+  submitting.value = true;
+  try {
+    const env = detectEnv();
+    const pageUrl = window.location.href;
+    const role = getUserRole();
+    const payload = {
+      ...feedbackForm.value,
+      device_type: feedbackForm.value.device_type || env.device_type,
+      os: feedbackForm.value.os || env.os,
+      browser: feedbackForm.value.browser || env.browser,
+      network: feedbackForm.value.network || env.network,
+      page_url: pageUrl,
+      user_role: role,
+    };
+    const data = await submitFeedback(payload);
+    submittedId.value = Number(data.id);
+    submittedHash.value = String(data.hash || '');
+    feedbackSuccessVisible.value = true;
+    feedbackErrorVisible.value = false;
+    feedbackForm.value.title = '';
+    feedbackForm.value.description = '';
+  } catch (e: any) {
+    const msg = e?.response?.data?.error || '提交失败，请稍后重试';
+    feedbackErrorTitle.value = '提交失败';
+    feedbackErrorMessage.value = msg;
+    feedbackErrorVisible.value = true;
+    feedbackSuccessVisible.value = false;
+  } finally {
+    submitting.value = false;
+  }
+};
+
+const copySubmittedHash = async () => {
+  const h = submittedHash.value || '';
+  if (!h) return;
+  try {
+    await navigator.clipboard.writeText(h);
+    copyTipVisible.value = true;
+    setTimeout(() => { copyTipVisible.value = false; }, 1500);
+  } catch {}
+};
+
+const hashQueryInput = ref('');
+const queryLoading = ref(false);
+const queryResult = ref<null | { id: number; type: string; title: string; status: string; created_at: string }>(null);
+const acceptedList = ref<FeedbackSummary[]>([]);
+const completedList = ref<FeedbackSummary[]>([]);
+const queryFeedbackProgress = async () => {
+  const h = (hashQueryInput.value || queryForm.value.hash || '').trim();
+  if (!h) { queryResult.value = null; return; }
+  queryLoading.value = true;
+  try {
+    const data = await getFeedbackProgressByHash(h);
+    queryResult.value = data;
+  } catch (e: any) {
+    queryResult.value = null;
+    feedbackErrorTitle.value = '查询失败';
+    feedbackErrorMessage.value = e?.response?.data?.error || '无法查询反馈，请检查哈希是否正确';
+    feedbackErrorVisible.value = true;
+    feedbackSuccessVisible.value = false;
+  } finally {
+    queryLoading.value = false;
+  }
+};
+const onQueryClear = () => {
+  hashQueryInput.value = '';
+  queryResult.value = null;
+  feedbackErrorVisible.value = false;
+  feedbackSuccessVisible.value = false;
+};
+const fetchSuccessList = async () => {
+  try {
+    const [accepted, completed] = await Promise.all([
+      getFeedbackSuccessList(5, 'accepted'),
+      getFeedbackSuccessList(5, 'completed')
+    ]);
+    acceptedList.value = accepted;
+    completedList.value = completed;
+  } catch {}
+};
+
+const commonEmailDomains = [
+  'qq.com',
+  '163.com',
+  '126.com',
+  'gmail.com',
+  'outlook.com',
+  'hotmail.com',
+  'icloud.com',
+  'sina.com',
+  'sohu.com',
+  'foxmail.com',
+  'yeah.net',
+  'aliyun.com'
+];
+
+const getEmailSuggestions = (queryString: string, cb: (arg: Array<{ value: string }>) => void) => {
+  const q = (queryString || '').trim();
+  if (!q) { cb([]); return; }
+  const hasAt = q.includes('@');
+  const [local, partialDomain] = q.split('@');
+  const baseLocal = local || '';
+  let domains = commonEmailDomains;
+  if (hasAt) {
+    const part = (partialDomain || '').toLowerCase();
+    domains = commonEmailDomains.filter(d => d.toLowerCase().includes(part));
+  }
+  const suggestions = domains.slice(0, 8).map(d => ({ value: `${baseLocal}@${d}` }));
+  cb(suggestions);
+};
+
+const onEmailSelect = (item: any) => {
+  const v = typeof item === 'string' ? item : item?.value;
+  if (v) feedbackForm.value.email = String(v);
+};
 
 const formatTime = (time?: string) => {
   if (!time) return '';
@@ -245,6 +619,10 @@ const toggleCommits = () => {
       fetchCommits(aboutData.value.github_repo);
     }
   }
+};
+
+const toggleFeedback = () => {
+  feedbackExpanded.value = !feedbackExpanded.value;
 };
 
 const fetchCommits = async (repoInput: string) => {
@@ -375,6 +753,7 @@ onMounted(async () => {
   checkScrollPosition();
   await fetchData();
   fetchChangelogs();
+  fetchSuccessList();
 });
 
 onUnmounted(() => {
@@ -404,6 +783,95 @@ onUnmounted(() => {
   height: auto;
 }
 .card-header {
+}
+.feedback-tabs {
+  margin-top: 8px;
+}
+.success-alert :deep(.el-alert__content) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.query-result-desc {
+  margin-top: 8px;
+}
+.success-list {
+  margin-top: 20px;
+  background-color: var(--el-fill-color-lighter);
+  border-radius: 8px;
+  padding: 16px;
+}
+.success-list-completed {
+  background-color: var(--el-color-success-light-9);
+}
+.success-list-accepted {
+  background-color: var(--el-color-primary-light-9);
+}
+
+.success-list-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-regular);
+  margin-bottom: 8px;
+  padding-left: 8px;
+  border-left: 4px solid var(--el-color-success);
+  line-height: 1.2;
+}
+.success-list-completed .success-list-header {
+  border-left-color: var(--el-color-success);
+  color: var(--el-color-success-dark-2);
+}
+.success-list-accepted .success-list-header {
+  border-left-color: var(--el-color-primary);
+  color: var(--el-color-primary-dark-2);
+}
+.success-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 8px;
+  border-bottom: 1px dashed var(--el-border-color-lighter);
+  transition: background-color 0.2s;
+  border-radius: 4px;
+}
+.success-item:hover {
+  background-color: var(--el-fill-color-light);
+}
+.success-item:last-child {
+  border-bottom: none;
+}
+.success-item .title {
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 16px;
+  font-weight: 500;
+}
+.success-item .meta {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.success-alert .alert-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.success-alert .alert-desc {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 14px;
+}
+.success-alert .alert-desc .hash {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: var(--el-color-primary);
+  word-break: break-all;
   font-weight: 600;
   font-size: 16px;
   display: flex;
@@ -411,6 +879,11 @@ onUnmounted(() => {
   align-items: center;
   cursor: pointer;
   user-select: none;
+}
+.copy-tip {
+  color: var(--el-color-success);
+  margin-left: 8px;
+  font-size: 13px;
 }
 .developer-info {
   display: flex;
@@ -560,6 +1033,17 @@ onUnmounted(() => {
 }
 .mr-2 { margin-right: 12px; }
 .mb-2 { margin-bottom: 12px; }
+
+.feedback-form :deep(.el-checkbox__label) {
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.6;
+}
+@media (max-width: 480px) {
+  .feedback-form :deep(.el-checkbox__label) {
+    display: block;
+  }
+}
 
 h2 {
   margin-bottom: 20px;

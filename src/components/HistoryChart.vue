@@ -52,7 +52,7 @@
     <template #header>
       <div class="card-header">
         <div class="header-left">
-          <span>鸿蒙应用下载量历史 · 股市矩阵图</span>
+          <span>鸿蒙应用下载量历史 · 矩阵图</span>
         </div>
       </div>
     </template>

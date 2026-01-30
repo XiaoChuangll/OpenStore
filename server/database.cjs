@@ -180,6 +180,38 @@ db.serialize(() => {
     reviewer_id INTEGER
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS feedbacks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    device_type TEXT,
+    os TEXT,
+    browser TEXT,
+    network TEXT,
+    page_url TEXT,
+    user_role TEXT,
+    email TEXT,
+    ip TEXT,
+    user_agent TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.all(`PRAGMA table_info(feedbacks)`, [], (err, cols) => {
+    if (err) return console.error('Failed to inspect feedbacks table:', err);
+    const names = Array.isArray(cols) ? cols.map(c => c.name) : [];
+    if (!names.includes('hash')) {
+      db.run(`ALTER TABLE feedbacks ADD COLUMN hash TEXT`, [], (e2) => {
+        if (e2) console.error('Failed to add hash column to feedbacks:', e2);
+      });
+    }
+    if (!names.includes('status')) {
+      db.run(`ALTER TABLE feedbacks ADD COLUMN status TEXT DEFAULT 'pending'`, [], (e3) => {
+        if (e3) console.error('Failed to add status column to feedbacks:', e3);
+      });
+    }
+  });
+
   db.run(`CREATE TABLE IF NOT EXISTS site_cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     key TEXT NOT NULL UNIQUE,

@@ -91,7 +91,22 @@
     </el-table>
 
     <div class="pagination">
+      <div v-if="isMobile" class="mobile-pagination-container">
+        <div class="mobile-pagination-controls">
+          <el-button size="small" :disabled="page <= 1" @click="onPageChange(1)">首页</el-button>
+          <el-pagination
+            small
+            layout="prev, jumper, next"
+            :page-size="pageSize"
+            :total="total"
+            :current-page="page"
+            @current-change="onPageChange"
+          />
+          <el-button size="small" :disabled="page >= Math.ceil(total / pageSize)" @click="onPageChange(Math.ceil(total / pageSize))">尾页</el-button>
+        </div>
+      </div>
       <el-pagination
+        v-else
         background
         layout="total, prev, pager, next"
         :page-size="pageSize"
@@ -339,4 +354,23 @@ const exportCsv = async () => {
 .pagination { margin-top: 20px; display: flex; justify-content: flex-end; }
 .chart-container { width: 100%; height: 300px; }
 .filter-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+.mobile-pagination-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.mobile-pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (max-width: 768px) {
+  .pagination {
+    justify-content: center;
+    padding: 10px 0;
+  }
+}
 </style>

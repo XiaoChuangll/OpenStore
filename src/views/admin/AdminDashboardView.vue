@@ -42,6 +42,9 @@
       <el-tab-pane label="系统日志" name="logs">
         <SystemLogsView :embedded="true" />
       </el-tab-pane>
+      <el-tab-pane label="用户反馈" name="feedbacks">
+        <FeedbackAdminView :embedded="true" />
+      </el-tab-pane>
     </el-tabs>
   </div>
   </template>
@@ -62,8 +65,9 @@ import IncidentsAdminView from './IncidentsAdminView.vue';
 import ChangelogsAdminView from './ChangelogsAdminView.vue';
 import SiteCardsAdminView from './SiteCardsAdminView.vue';
 import AboutManageView from './AboutManageView.vue';
+import FeedbackAdminView from './FeedbackAdminView.vue';
 
-const active = ref<'links' | 'groups' | 'apps' | 'announcements' | 'env' | 'visitors' | 'logs' | 'changelogs' | 'site-cards' | 'about' | 'incidents' | 'music-apis'>('music-apis');
+const active = ref<'links' | 'groups' | 'apps' | 'announcements' | 'env' | 'visitors' | 'logs' | 'changelogs' | 'site-cards' | 'about' | 'incidents' | 'music-apis' | 'feedbacks'>('music-apis');
 const router = useRouter();
   const layoutStore = useLayoutStore();
   const pageHeaderRef = ref<HTMLElement | null>(null);
