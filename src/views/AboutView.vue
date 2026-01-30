@@ -237,7 +237,7 @@
                   </div>
                   <div class="success-item" v-for="item in completedList" :key="item.id">
                     <span class="title">{{ item.title }}</span>
-                    <span class="meta">{{ typeLabel(item.type) }} · {{ statusLabel(item.status) }} · {{ formatTime(item.created_at) }}</span>
+                    <span class="meta">{{ typeLabel(item.type) }}</span>
                   </div>
                 </div>
                 <div v-if="acceptedList.length > 0" class="success-list success-list-accepted">
@@ -246,7 +246,7 @@
                   </div>
                   <div class="success-item" v-for="item in acceptedList" :key="item.id">
                     <span class="title">{{ item.title }}</span>
-                    <span class="meta">{{ typeLabel(item.type) }} · {{ statusLabel(item.status) }} · {{ formatTime(item.created_at) }}</span>
+                    <span class="meta">{{ typeLabel(item.type) }}</span>
                   </div>
                 </div>
               </div>
@@ -813,17 +813,31 @@ onUnmounted(() => {
   font-weight: 600;
   color: var(--el-text-color-regular);
   margin-bottom: 8px;
-  padding-left: 8px;
-  border-left: 4px solid var(--el-color-success);
+  padding-left: 12px;
+  position: relative;
   line-height: 1.2;
 }
+.success-list-header::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 4px;
+  background-color: var(--el-color-success);
+}
 .success-list-completed .success-list-header {
-  border-left-color: var(--el-color-success);
   color: var(--el-color-success-dark-2);
 }
+.success-list-completed .success-list-header::before {
+  background-color: var(--el-color-success);
+}
 .success-list-accepted .success-list-header {
-  border-left-color: var(--el-color-primary);
   color: var(--el-color-primary-dark-2);
+}
+.success-list-accepted .success-list-header::before {
+  background-color: var(--el-color-primary);
 }
 .success-item {
   display: flex;

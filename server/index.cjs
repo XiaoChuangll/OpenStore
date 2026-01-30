@@ -1196,18 +1196,48 @@ app.get('/api/admin/feedbacks', requireAuth, (req, res) => {
 app.put('/api/admin/feedbacks/:id', requireAuth, (req, res) => {
   if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
   const id = Number(req.params.id);
-  const { status } = req.body || {};
-  const allowed = new Set(['pending', 'accepted', 'rejected', 'completed']);
-  const normalized = typeof status === 'string' ? status.trim() : '';
-  if (!allowed.has(normalized)) {
-    return res.status(400).json({ error: 'Invalid status' });
+  const { status, title, description } = req.body || {};
+  
+  const updates = [];
+  const params = [];
+  
+  if (status) {
+    const allowed = new Set(['pending', 'accepted', 'rejected', 'completed']);
+    const normalizedStatus = typeof status === 'string' ? status.trim() : '';
+    if (!allowed.has(normalizedStatus)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    updates.push('status=?');
+    params.push(normalizedStatus);
   }
+  
+  if (title !== undefined) {
+    const normalizedTitle = String(title || '').trim();
+    if (!normalizedTitle) return res.status(400).json({ error: '标题不能为空' });
+    updates.push('title=?');
+    params.push(normalizedTitle);
+  }
+  
+  if (description !== undefined) {
+    const normalizedDesc = String(description || '').trim();
+    if (!normalizedDesc) return res.status(400).json({ error: '详情不能为空' });
+    updates.push('description=?');
+    params.push(normalizedDesc);
+  }
+  
+  if (updates.length === 0) {
+    return res.status(400).json({ error: '没有需要更新的字段' });
+  }
+  
+  params.push(id);
+  
   db.get(`SELECT id FROM feedbacks WHERE id=?`, [id], (e1, row) => {
     if (e1) return res.status(500).json({ error: e1.message });
     if (!row) return res.status(404).json({ error: '反馈不存在' });
-    db.run(`UPDATE feedbacks SET status=? WHERE id=?`, [normalized, id], function(e2) {
+    
+    db.run(`UPDATE feedbacks SET ${updates.join(', ')} WHERE id=?`, params, function(e2) {
       if (e2) return res.status(500).json({ error: e2.message });
-      logAction(req.user?.username, 'update', 'feedbacks', id, { status: normalized });
+      logAction(req.user?.username, 'update', 'feedbacks', id, { status, title_updated: !!title, desc_updated: !!description });
       res.json({ changed: this.changes });
     });
   });

@@ -78,15 +78,19 @@
       </el-table>
       <el-dialog v-model="detailDialogVisible" title="反馈详情" :width="isMobile ? '95%' : '700px'">
         <div class="dialog-section">
-          <div class="dialog-row"><span class="label">ID：</span><span class="value">{{ detailItem?.id }}</span></div>
-          <div class="dialog-row"><span class="label">哈希：</span><span class="value single-line">{{ detailItem?.hash }}</span></div>
-          <div class="dialog-row"><span class="label">类型：</span><span class="value">{{ typeLabel(detailItem?.type) }}</span></div>
-          <div class="dialog-row"><span class="label">标题：</span><span class="value">{{ detailItem?.title }}</span></div>
-          <div class="dialog-row"><span class="label">详情：</span><span class="value">{{ detailItem?.description }}</span></div>
-          <div class="dialog-row"><span class="label">时间：</span><span class="value">{{ formatTime(detailItem?.created_at) }}</span></div>
+          <div class="dialog-row"><span class="label">ID</span><span class="value">{{ detailItem?.id }}</span></div>
+          <div class="dialog-row"><span class="label">哈希</span><span class="value single-line">{{ detailItem?.hash }}</span></div>
+          <div class="dialog-row"><span class="label">类型</span><span class="value">{{ typeLabel(detailItem?.type) }}</span></div>
+          <div class="dialog-row"><span class="label">时间</span><span class="value">{{ formatTime(detailItem?.created_at) }}</span></div>
         </div>
-        <el-form label-width="120px" class="mt-2">
-          <el-form-item label="进度状态">
+        <el-form label-width="80px" label-position="left" class="mt-2">
+          <el-form-item label="标题">
+            <el-input v-model="detailTitle" />
+          </el-form-item>
+          <el-form-item label="详情">
+            <el-input v-model="detailDescription" type="textarea" :rows="5" />
+          </el-form-item>
+          <el-form-item label="状态">
             <el-select v-model="detailStatus" placeholder="请选择">
               <el-option v-for="opt in statusOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
             </el-select>
@@ -94,7 +98,7 @@
         </el-form>
         <template #footer>
           <el-button @click="detailDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="saving" @click="saveStatus">保存</el-button>
+          <el-button type="primary" :loading="saving" @click="saveDetail">保存</el-button>
         </template>
       </el-dialog>
       
@@ -131,7 +135,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { getFeedbacks, deleteFeedbacks, updateFeedbackStatus, type Feedback } from '../../services/admin';
+import { getFeedbacks, deleteFeedbacks, updateFeedback, type Feedback } from '../../services/admin';
 import { getEnvVars, setEnvVar } from '../../services/api';
 import { ElMessageBox, ElMessage } from 'element-plus';
 
@@ -206,18 +210,26 @@ const typeLabel = (v?: string | null) => {
   return opt ? opt.label : (v || '');
 };
 const detailStatus = ref<StatusValue>('pending');
+const detailTitle = ref('');
+const detailDescription = ref('');
 const saving = ref(false);
 const onCellClick = (row: Feedback) => {
   detailItem.value = row;
   detailStatus.value = ((row.status || '') as StatusValue) || 'pending';
+  detailTitle.value = row.title || '';
+  detailDescription.value = row.description || '';
   detailDialogVisible.value = true;
 };
-const saveStatus = async () => {
+const saveDetail = async () => {
   if (!detailItem.value) return;
   saving.value = true;
   try {
-    await updateFeedbackStatus(detailItem.value.id, detailStatus.value);
-    ElMessage.success('状态已更新');
+    await updateFeedback(detailItem.value.id, {
+      status: detailStatus.value,
+      title: detailTitle.value,
+      description: detailDescription.value
+    });
+    ElMessage.success('反馈详情已更新');
     detailDialogVisible.value = false;
     fetchList();
   } catch (e: any) {
@@ -301,7 +313,14 @@ onUnmounted(() => {
 .clickable { cursor: pointer; }
 .dialog-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.6; }
 .dialog-section { font-size: 14px; line-height: 1.8; }
-.dialog-row { display: flex; gap: 8px; margin-bottom: 4px; }
-.dialog-row .label { color: var(--el-text-color-secondary); min-width: 64px; }
-.dialog-row .value { flex: 1; word-break: break-word; }
+.dialog-row { display: flex; margin-bottom: 8px; }
+.dialog-row .label { 
+  color: var(--el-text-color-regular); 
+  width: 80px; 
+  text-align: left; 
+  padding-right: 12px; 
+  box-sizing: border-box; 
+  flex-shrink: 0;
+}
+.dialog-row .value { flex: 1; word-break: break-word; color: var(--el-text-color-primary); }
 </style>

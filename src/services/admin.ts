@@ -506,6 +506,6 @@ export const deleteFeedbacks = async (ids: number[]) => {
   return data as { deleted: number };
 };
 
-export const updateFeedbackStatus = async (id: number, status: 'pending' | 'accepted' | 'rejected' | 'completed') => {
-  await api.put(`/feedbacks/${id}`, { status });
+export const updateFeedback = async (id: number, data: { status?: 'pending' | 'accepted' | 'rejected' | 'completed'; title?: string; description?: string }) => {
+  await api.put(`/feedbacks/${id}`, data);
 };
