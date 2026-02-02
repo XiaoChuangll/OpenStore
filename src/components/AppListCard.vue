@@ -66,7 +66,13 @@
       <el-table-column label="应用名称" width="220">
         <template #default="scope">
           <div class="app-info">
-            <img :src="scope.row.icon_url || '/placeholder.png'" :alt="`${scope.row.name} 应用图标`" class="app-icon" loading="lazy" />
+            <img 
+              :src="(scope.row.icon_url && !failedIcons.has(scope.row.id)) ? scope.row.icon_url : '/placeholder.png'" 
+              :alt="`${scope.row.name} 应用图标`" 
+              class="app-icon" 
+              loading="lazy" 
+              @error="onIconError(scope.row.id)"
+            />
             <span class="app-name">{{ scope.row.name }}</span>
           </div>
         </template>
@@ -118,7 +124,13 @@
         <div class="mobile-bg-index">{{ (currentPage - 1) * pageSize + index + 1 }}</div>
         
         <div class="mobile-card-top">
-          <img :src="app.icon_url || '/placeholder.png'" :alt="`${app.name} 应用图标`" class="mobile-app-icon" loading="lazy" />
+          <img 
+            :src="(app.icon_url && !failedIcons.has(app.id)) ? app.icon_url : '/placeholder.png'" 
+            :alt="`${app.name} 应用图标`" 
+            class="mobile-app-icon" 
+            loading="lazy" 
+            @error="onIconError(app.id)"
+          />
           
           <div class="mobile-card-content">
             <div class="mobile-card-header-row">
@@ -191,6 +203,12 @@ import { Search, Download, Switch } from '@element-plus/icons-vue';
 import { hmApi } from '../services/hm-api';
 
 const router = useRouter();
+
+const failedIcons = ref(new Set<string>());
+
+const onIconError = (id: string) => {
+  failedIcons.value.add(id);
+};
 
 interface App {
   id: string;
