@@ -579,7 +579,32 @@
     <!-- Playlist Detail Dialog -->
     <el-dialog v-model="showPlaylistDialog" title="歌单" fullscreen class="playlist-dialog" append-to-body>
       <div class="playlist-table-wrapper">
-        <el-table :data="pagedPlaylistTracks" stripe style="width: 100%; height: 100%;" v-loading="playlistLoading" @row-click="playSong" :row-style="{ height: '60px' }">
+        <el-table 
+          ref="playlistTableRef"
+          :data="pagedPlaylistTracks" 
+          stripe 
+          style="width: 100%; height: 100%;" 
+          v-loading="playlistLoading" 
+          @row-click="playSong" 
+          :row-style="{ height: '60px' }"
+          row-key="id"
+        >
+          <el-table-column v-if="isSelectionMode" width="55">
+            <template #header>
+               <el-checkbox 
+                 :model-value="isPageAllSelected" 
+                 :indeterminate="isPageIndeterminate" 
+                 @change="handlePageSelectAll"
+               />
+            </template>
+            <template #default="{ row }">
+               <el-checkbox 
+                 :model-value="isSelected(row)" 
+                 @click.stop
+                 @change="(val: boolean) => toggleRowSelection(row, val)"
+               />
+            </template>
+          </el-table-column>
           <el-table-column type="index" :width="isMobile ? 40 : 60" :index="(i: number) => (playlistPage - 1) * 10 + i + 1">
             <template #header>
               <el-image 
@@ -596,9 +621,42 @@
             <template #header>
               <div class="table-header">
                 <div class="table-header-title">{{ currentPlaylist?.name || '歌单' }}</div>
-                <div class="table-header-bar">
+                <div class="table-header-bar" style="display: flex; align-items: center;">
                   <span>歌曲</span>
-                  <div class="header-pagination">
+                  <template v-if="playlistTracks.length > 0">
+                      <el-button 
+                        v-if="!isSelectionMode"
+                        type="primary" 
+                        size="small" 
+                        round
+                        @click.stop="toggleSelectionMode"
+                        style="margin-left: 8px; vertical-align: middle;"
+                      >
+                        下载
+                      </el-button>
+                      <template v-else>
+                          <el-button 
+                            type="success" 
+                            size="small" 
+                            round
+                            :loading="batchDownloadLoading"
+                            :disabled="selectedTracks.length === 0"
+                            @click.stop="executeBatchDownload"
+                            style="margin-left: 8px; vertical-align: middle;"
+                          >
+                            下载 ({{ selectedTracks.length }})
+                          </el-button>
+                          <el-button 
+                            size="small" 
+                            round
+                            @click.stop="toggleSelectionMode"
+                            style="vertical-align: middle;"
+                          >
+                            取消
+                          </el-button>
+                      </template>
+                  </template>
+                  <div class="header-pagination" style="margin-left: auto;">
                     <el-button 
                        size="small" 
                        circle 
@@ -1662,6 +1720,98 @@ const playSong = (song: any) => {
     playerStore.playTrack(track, list.length > 0 ? list : undefined);
 };
 
+const batchDownloadLoading = ref(false);
+const isSelectionMode = ref(false);
+const selectedTracks = ref<any[]>([]);
+const playlistTableRef = ref();
+
+const isSelected = (row: any) => selectedTracks.value.some(t => t.id === row.id);
+
+const isPageAllSelected = computed(() => {
+    if (pagedPlaylistTracks.value.length === 0) return false;
+    return pagedPlaylistTracks.value.every(row => isSelected(row));
+});
+
+const isPageIndeterminate = computed(() => {
+    if (pagedPlaylistTracks.value.length === 0) return false;
+    const selectedCount = pagedPlaylistTracks.value.filter(row => isSelected(row)).length;
+    return selectedCount > 0 && selectedCount < pagedPlaylistTracks.value.length;
+});
+
+const handlePageSelectAll = (val: boolean) => {
+    if (val) {
+        // Add all current page tracks to selection if not already selected
+        pagedPlaylistTracks.value.forEach(row => {
+            if (!isSelected(row)) {
+                selectedTracks.value.push(row);
+            }
+        });
+    } else {
+        // Remove all current page tracks from selection
+        selectedTracks.value = selectedTracks.value.filter(
+            t => !pagedPlaylistTracks.value.some(p => p.id === t.id)
+        );
+    }
+};
+
+const toggleRowSelection = (row: any, selected: boolean) => {
+    if (selected) {
+        if (!isSelected(row)) {
+            selectedTracks.value.push(row);
+        }
+    } else {
+        selectedTracks.value = selectedTracks.value.filter(t => t.id !== row.id);
+    }
+};
+
+const toggleSelectionMode = () => {
+    isSelectionMode.value = !isSelectionMode.value;
+    selectedTracks.value = [];
+};
+
+// Removed handleSelectionChange as we manage it manually now
+// const handleSelectionChange = (val: any[]) => { ... };
+
+const executeBatchDownload = async () => {
+    if (selectedTracks.value.length === 0) return;
+    
+    try {
+        await ElMessageBox.confirm(
+            `确定要下载选中的 ${selectedTracks.value.length} 首歌曲吗？`,
+            '批量下载',
+            {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                type: 'info',
+            }
+        );
+        
+        batchDownloadLoading.value = true;
+        ElMessage.info('开始批量下载...');
+        
+        const tracks = [...selectedTracks.value];
+        let successCount = 0;
+        
+        for (const song of tracks) {
+            try {
+                await downloadSong(song);
+                successCount++;
+                // Delay to prevent browser throttling
+                await new Promise(resolve => setTimeout(resolve, 1500));
+            } catch (e) {
+                console.error('Batch download error', e);
+            }
+        }
+        
+        ElMessage.success(`批量下载完成，共 ${successCount} 首`);
+        toggleSelectionMode(); // Exit selection mode after download
+    } catch (e) {
+        // Cancelled
+    } finally {
+        batchDownloadLoading.value = false;
+    }
+};
+
 const downloadSong = async (song: any) => {
     if (!currentApi.value) return;
     try {
@@ -1670,9 +1820,46 @@ const downloadSong = async (song: any) => {
         const headers = cookie ? { Cookie: cookie } : {};
         const cookieEncoded = cookie ? encodeURIComponent(cookie) : '';
         const res = await proxyRequest(`${baseUrl}/song/url?id=${song.id}&cookie=${cookieEncoded}`, 'GET', headers, {});
-        const url = res.data?.data?.[0]?.url;
+        const data = res.data?.data?.[0];
+        const url = data?.url;
+        
         if (url) {
-            window.open(url, '_blank');
+            // Determine file extension
+            let ext = 'mp3';
+            if (data?.type) {
+                ext = data.type.toLowerCase();
+            } else if (url.includes('.')) {
+                const parts = url.split('.');
+                const last = parts[parts.length - 1].split('?')[0]; // Handle query params
+                if (last.length <= 4) ext = last;
+            }
+
+            const artist = getArtistName(song);
+            const filename = `${song.name} - ${artist}.${ext}`;
+
+            try {
+                // Use backend proxy to avoid CORS and ensure download
+                const proxyUrl = `/api/music-proxy?url=${encodeURIComponent(url)}`;
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const blob = await response.blob();
+                const blobUrl = window.URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = blobUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                
+                window.URL.revokeObjectURL(blobUrl);
+                document.body.removeChild(a);
+                ElMessage.success(`开始下载: ${filename}`);
+            } catch (fetchError) {
+                console.warn('Proxy download failed, falling back to window.open', fetchError);
+                // Fallback: open in new tab (browser handles name)
+                window.open(url, '_blank');
+            }
         } else {
             ElMessage.warning('无法获取下载链接');
         }
