@@ -103,7 +103,19 @@
       <!-- Search Results -->
       <div v-if="searchResults.length > 0" class="section mb-4">
         <div class="section-header">
-           <h3>搜索结果</h3>
+           <div style="display: flex; align-items: center; gap: 8px;">
+             <h3>搜索结果</h3>
+             <el-select
+               v-model="downloadQuality"
+               size="small"
+               style="width: 120px;"
+             >
+               <el-option label="标准" value="standard" />
+               <el-option label="高" value="higher" />
+               <el-option label="极高" value="exhigh" />
+               <el-option label="无损" value="lossless" />
+             </el-select>
+           </div>
            <el-button link @click="clearSearch">清除</el-button>
         </div>
         
@@ -114,7 +126,10 @@
                  <template #error><el-icon><Headset /></el-icon></template>
               </el-image>
               <div class="song-info">
-                 <div class="song-name" v-html="highlight(song.name)"></div>
+                 <div class="song-name-row">
+                   <div class="song-name" v-html="highlight(song.name)"></div>
+                   <div v-if="isVipSong(song)" class="song-vip-badge">VIP</div>
+                 </div>
                  <div class="song-artist">{{ getArtistName(song) }} - {{ song.al?.name || song.album?.name }}</div>
               </div>
               <div class="song-action">
@@ -620,10 +635,31 @@
           <el-table-column min-width="200" show-overflow-tooltip>
             <template #header>
               <div class="table-header">
-                <div class="table-header-title">{{ currentPlaylist?.name || '歌单' }}</div>
+                <div class="table-header-top" style="display: flex; justify-content: space-between; align-items: center;">
+                  <div class="table-header-title" style="flex: 1; min-width: 0; margin-right: 8px;">{{ currentPlaylist?.name || '歌单' }}</div>
+                  <el-button 
+                    v-if="isSelectionMode"
+                    size="small" 
+                    round
+                    @click.stop="toggleSelectionMode"
+                  >
+                    取消
+                  </el-button>
+                </div>
                 <div class="table-header-bar" style="display: flex; align-items: center;">
                   <span>歌曲</span>
                   <template v-if="playlistTracks.length > 0">
+                      <el-select
+                        v-if="!isSelectionMode"
+                        v-model="downloadQuality"
+                        size="small"
+                        style="margin-left: 8px; width: 120px;"
+                      >
+                        <el-option label="标准" value="standard" />
+                        <el-option label="高" value="higher" />
+                        <el-option label="极高" value="exhigh" />
+                        <el-option label="无损" value="lossless" />
+                      </el-select>
                       <el-button 
                         v-if="!isSelectionMode"
                         type="primary" 
@@ -634,27 +670,17 @@
                       >
                         下载
                       </el-button>
-                      <template v-else>
-                          <el-button 
-                            type="success" 
-                            size="small" 
-                            round
-                            :loading="batchDownloadLoading"
-                            :disabled="selectedTracks.length === 0"
-                            @click.stop="executeBatchDownload"
-                            style="margin-left: 8px; vertical-align: middle;"
-                          >
-                            下载 ({{ selectedTracks.length }})
-                          </el-button>
-                          <el-button 
-                            size="small" 
-                            round
-                            @click.stop="toggleSelectionMode"
-                            style="vertical-align: middle;"
-                          >
-                            取消
-                          </el-button>
-                      </template>
+                      <el-button 
+                        v-else
+                        type="success" 
+                        size="small" 
+                        round
+                        :disabled="selectedTracks.length === 0"
+                        @click.stop="executeBatchDownload"
+                        style="margin-left: 8px; vertical-align: middle;"
+                      >
+                        下载 ({{ selectedTracks.length }}<el-icon v-if="batchDownloadLoading" class="is-loading" style="margin-left: 4px;"><Loading /></el-icon>)
+                      </el-button>
                   </template>
                   <div class="header-pagination" style="margin-left: auto;">
                     <el-button 
@@ -689,7 +715,10 @@
                   <template #error><div class="song-row-cover-placeholder"></div></template>
                 </el-image>
                 <div class="song-row-info">
-                  <div class="song-row-name">{{ row.name }}</div>
+                  <div class="song-row-name-row">
+                    <div class="song-row-name">{{ row.name }}</div>
+                    <div v-if="isVipSong(row)" class="song-vip-badge">VIP</div>
+                  </div>
                   <div class="song-row-artist">{{ getArtistName(row) }}</div>
                 </div>
               </div>
@@ -1724,6 +1753,14 @@ const batchDownloadLoading = ref(false);
 const isSelectionMode = ref(false);
 const selectedTracks = ref<any[]>([]);
 const playlistTableRef = ref();
+const downloadQuality = ref<'standard' | 'higher' | 'exhigh' | 'lossless'>('lossless');
+
+const getBitrateByQuality = (quality: 'standard' | 'higher' | 'exhigh' | 'lossless') => {
+    if (quality === 'higher') return 192000;
+    if (quality === 'exhigh') return 320000;
+    if (quality === 'lossless') return 999000;
+    return 128000;
+};
 
 const isSelected = (row: any) => selectedTracks.value.some(t => t.id === row.id);
 
@@ -1796,14 +1833,12 @@ const executeBatchDownload = async () => {
             try {
                 await downloadSong(song);
                 successCount++;
-                // Delay to prevent browser throttling
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                await new Promise(resolve => setTimeout(resolve, 500));
             } catch (e) {
                 console.error('Batch download error', e);
             }
         }
         
-        ElMessage.success(`批量下载完成，共 ${successCount} 首`);
         toggleSelectionMode(); // Exit selection mode after download
     } catch (e) {
         // Cancelled
@@ -1816,21 +1851,76 @@ const downloadSong = async (song: any) => {
     if (!currentApi.value) return;
     try {
         const baseUrl = currentApi.value.baseUrl;
+        const level = downloadQuality.value;
         const cookie = getCookie();
         const headers = cookie ? { Cookie: cookie } : {};
         const cookieEncoded = cookie ? encodeURIComponent(cookie) : '';
-        const res = await proxyRequest(`${baseUrl}/song/url?id=${song.id}&cookie=${cookieEncoded}`, 'GET', headers, {});
-        const data = res.data?.data?.[0];
-        const url = data?.url;
-        
-        if (url) {
-            // Determine file extension
+        let data: any = null;
+        let url: string | undefined;
+
+        try {
+            const res = await proxyRequest(
+                `${baseUrl}/song/download/url/v1?id=${song.id}&level=${level}&cookie=${cookieEncoded}`,
+                'GET',
+                headers,
+                {}
+            );
+            const raw = res.data?.data;
+            const d = Array.isArray(raw) ? raw[0] : raw;
+            if (d && d.url) {
+                data = d;
+                url = d.url;
+            }
+        } catch (e) {
+            console.warn('song.download.url.v1 failed', e);
+        }
+
+        if (!url) {
+            try {
+                const br = getBitrateByQuality(level);
+                const res = await proxyRequest(
+                    `${baseUrl}/song/url?id=${song.id}&br=${br}&cookie=${cookieEncoded}`,
+                    'GET',
+                    headers,
+                    {}
+                );
+                const raw = res.data?.data;
+                const d = Array.isArray(raw) ? raw[0] : raw;
+                if (d && d.url) {
+                    data = d;
+                    url = d.url;
+                }
+            } catch (e) {
+                console.warn('song.url fallback failed', e);
+            }
+        }
+
+        if (!url) {
+            try {
+                const res = await proxyRequest(
+                    `${baseUrl}/song/url/match?id=${song.id}&cookie=${cookieEncoded}`,
+                    'GET',
+                    headers,
+                    {}
+                );
+                const raw = res.data?.data;
+                const d = Array.isArray(raw) ? raw[0] : raw;
+                if (d && d.url) {
+                    data = d;
+                    url = d.url;
+                }
+            } catch (e) {
+                console.warn('song.url.match fallback failed', e);
+            }
+        }
+
+        if (url && data) {
             let ext = 'mp3';
-            if (data?.type) {
+            if (data.type) {
                 ext = data.type.toLowerCase();
             } else if (url.includes('.')) {
                 const parts = url.split('.');
-                const last = parts[parts.length - 1].split('?')[0]; // Handle query params
+                const last = parts[parts.length - 1].split('?')[0];
                 if (last.length <= 4) ext = last;
             }
 
@@ -1838,33 +1928,26 @@ const downloadSong = async (song: any) => {
             const filename = `${song.name} - ${artist}.${ext}`;
 
             try {
-                // Use backend proxy to avoid CORS and ensure download
-                const proxyUrl = `/api/music-proxy?url=${encodeURIComponent(url)}`;
-                const response = await fetch(proxyUrl);
-                if (!response.ok) throw new Error('Network response was not ok');
-                const blob = await response.blob();
-                const blobUrl = window.URL.createObjectURL(blob);
-                
+                const proxyUrl = `/api/music-proxy?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
                 const a = document.createElement('a');
                 a.style.display = 'none';
-                a.href = blobUrl;
+                a.href = proxyUrl;
                 a.download = filename;
                 document.body.appendChild(a);
                 a.click();
-                
-                window.URL.revokeObjectURL(blobUrl);
                 document.body.removeChild(a);
-                ElMessage.success(`开始下载: ${filename}`);
-            } catch (fetchError) {
-                console.warn('Proxy download failed, falling back to window.open', fetchError);
-                // Fallback: open in new tab (browser handles name)
+                ElMessage.success(`已加入下载队列: ${filename}`);
+            } catch (error) {
+                console.warn('Download trigger failed', error);
                 window.open(url, '_blank');
             }
         } else {
-            ElMessage.warning('无法获取下载链接');
+            ElMessage.warning('无法获取下载链接,已尝试所有可用接口');
+            ElMessage.info('建议检查 API 配置或尝试切换音质等级');
         }
     } catch (e) {
-        ElMessage.error('下载出错');
+        console.error('下载出错:', e);
+        ElMessage.error('下载出错,请稍后重试');
     }
 };
 
@@ -1881,6 +1964,10 @@ const getCover = (song: any) => {
     return url ? url.replace(/^http:/, 'https:') : '';
 };
 const getArtistName = (song: any) => (song.ar || song.artists || []).map((a: any) => a.name).join(', ');
+const isVipSong = (song: any) => {
+    const fee = song.fee ?? song.privilege?.fee;
+    return typeof fee === 'number' && fee !== 0;
+};
 const highlight = (text: string) => {
     if (!searchKeyword.value) return text;
     return text.replace(new RegExp(searchKeyword.value, 'gi'), match => `<span class="text-primary">${match}</span>`);
@@ -2239,10 +2326,24 @@ onUnmounted(() => {
   flex: 1;
   overflow: hidden;
 }
+.song-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .song-name {
   font-weight: 500;
   font-size: 14px;
   margin-bottom: 4px;
+}
+.song-vip-badge {
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background-color: var(--el-color-danger);
+  color: #fff;
+  line-height: 1.4;
+  flex-shrink: 0;
 }
 .song-artist {
   font-size: 12px;
@@ -2251,6 +2352,12 @@ onUnmounted(() => {
 .song-action {
   display: flex;
   gap: 8px;
+}
+
+.song-row-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .login-container {
@@ -2925,6 +3032,20 @@ onUnmounted(() => {
   }
   .card-desc-v2 {
     display: none;
+  }
+  .song-name-row {
+    flex-wrap: nowrap;
+  }
+  .song-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .song-artist {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 

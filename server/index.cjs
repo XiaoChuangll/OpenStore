@@ -239,7 +239,7 @@ app.post('/api/proxy-request', async (req, res) => {
 
 // Music Proxy Endpoint for streaming audio (HTTP -> HTTPS)
 app.get('/api/music-proxy', async (req, res) => {
-  const { url } = req.query;
+  const { url, filename } = req.query;
   if (!url) {
     return res.status(400).send('URL is required');
   }
@@ -252,7 +252,8 @@ app.get('/api/music-proxy', async (req, res) => {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Referer': 'https://music.163.com/'
-      }
+      },
+      timeout: 10000
     });
 
     if (response.headers['content-type']) {
@@ -260,6 +261,12 @@ app.get('/api/music-proxy', async (req, res) => {
     }
     if (response.headers['content-length']) {
       res.setHeader('Content-Length', response.headers['content-length']);
+    }
+    
+    if (filename) {
+      // Ensure filename is properly encoded for Content-Disposition
+      const encodedFilename = encodeURIComponent(filename);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
     }
 
     response.data.pipe(res);
