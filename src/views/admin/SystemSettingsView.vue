@@ -5,25 +5,51 @@
         <div class="card-title-block">
           <h3>主题设置</h3>
         </div>
-        <div class="card-preview-block">
-          <div class="preview-card">
-            <div class="preview-header" :style="{ backgroundColor: previewColors.primary }">
-              <span class="preview-title">主题预览</span>
-            </div>
-            <div class="preview-body">
-              <div class="preview-row">
-                <span class="preview-tag" :style="{ backgroundColor: previewColors.primary }">主要</span>
-                <span class="preview-tag" :style="{ backgroundColor: previewColors.success }">成功</span>
-                <span class="preview-tag" :style="{ backgroundColor: previewColors.warning }">警告</span>
-                <span class="preview-tag" :style="{ backgroundColor: previewColors.danger }">危险</span>
+        <div class="card-preview-row">
+          <div class="card-preview-block">
+            <div class="preview-card">
+              <div class="preview-header" :style="{ backgroundColor: previewColors.primary }">
+                <span class="preview-title">主题预览</span>
               </div>
-              <div class="preview-row">
-                <button class="preview-button" :style="{ backgroundColor: previewColors.primary }">
-                  按钮示例
-                </button>
-                <span class="preview-chip" :style="{ borderColor: previewColors.info, color: previewColors.info }">
-                  信息提示
-                </span>
+              <div class="preview-body">
+                <div class="preview-row">
+                  <span class="preview-tag" :style="{ backgroundColor: previewColors.primary }">主要</span>
+                  <span class="preview-tag" :style="{ backgroundColor: previewColors.success }">成功</span>
+                  <span class="preview-tag" :style="{ backgroundColor: previewColors.warning }">警告</span>
+                  <span class="preview-tag" :style="{ backgroundColor: previewColors.danger }">危险</span>
+                </div>
+                <div class="preview-row">
+                  <button class="preview-button" :style="{ backgroundColor: previewColors.primary }">
+                    按钮示例
+                  </button>
+                  <span class="preview-chip" :style="{ borderColor: previewColors.info, color: previewColors.info }">
+                    信息提示
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card-preview-extra">
+            <div class="preview-extra-card">
+              <div class="preview-extra-header">控件预览</div>
+              <div class="preview-extra-body">
+                <div class="preview-extra-row">
+                  <button class="preview-button" :style="{ backgroundColor: previewColors.primary }">
+                    主按钮
+                  </button>
+                  <button
+                    class="preview-button preview-button-ghost"
+                    :style="{ color: previewColors.primary, borderColor: previewColors.primary }"
+                  >
+                    幽灵按钮
+                  </button>
+                </div>
+                <div class="preview-extra-row">
+                  <span class="preview-tag" :style="{ backgroundColor: previewColors.success }">成功状态</span>
+                  <span class="preview-chip" :style="{ borderColor: previewColors.warning, color: previewColors.warning }">
+                    警告提示
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -156,9 +182,14 @@ onMounted(() => {
   border-radius: 8px;
   box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
 }
+.card-preview-row {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+}
 .card-header-row {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: flex-start;
   gap: 20px;
   margin-bottom: 20px;
@@ -174,6 +205,9 @@ onMounted(() => {
 }
 .card-preview-block {
   flex-shrink: 0;
+}
+.card-preview-extra {
+  flex: 1;
 }
 .preview-card {
   border-radius: 10px;
@@ -217,7 +251,7 @@ onMounted(() => {
   border-radius: 999px;
   font-size: 13px;
   color: #fff;
-  cursor: default;
+  cursor: pointer;
 }
 .preview-chip {
   padding: 4px 10px;
@@ -226,6 +260,36 @@ onMounted(() => {
   border-width: 1px;
   border-style: solid;
   background-color: transparent;
+}
+.preview-extra-card {
+  border-radius: 10px;
+  border: 1px dashed var(--el-border-color-lighter);
+  background: var(--el-bg-color);
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.preview-extra-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.preview-extra-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.preview-extra-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.preview-button-ghost {
+  background-color: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
 }
 .form-grid {
   display: grid;
@@ -275,6 +339,9 @@ onMounted(() => {
 }
 @media (max-width: 900px) {
   .card-header-row {
+    flex-direction: column;
+  }
+  .card-preview-row {
     flex-direction: column;
   }
   .card-preview-block {
