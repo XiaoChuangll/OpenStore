@@ -40,6 +40,9 @@
       <el-tab-pane label="用户反馈" name="feedbacks">
         <FeedbackAdminView :embedded="true" />
       </el-tab-pane>
+      <el-tab-pane label="系统设置" name="settings">
+        <SystemSettingsView />
+      </el-tab-pane>
     </el-tabs>
   </div>
   </template>
@@ -61,8 +64,9 @@ import ChangelogsAdminView from './ChangelogsAdminView.vue';
 import SiteCardsAdminView from './SiteCardsAdminView.vue';
 import AboutManageView from './AboutManageView.vue';
 import FeedbackAdminView from './FeedbackAdminView.vue';
+import SystemSettingsView from './SystemSettingsView.vue';
 
-const active = ref<'links' | 'groups' | 'apps' | 'announcements' | 'env' | 'visitors' | 'logs' | 'changelogs' | 'site-cards' | 'about' | 'incidents' | 'music-apis' | 'feedbacks'>('music-apis');
+const active = ref<'links' | 'groups' | 'apps' | 'announcements' | 'env' | 'visitors' | 'logs' | 'changelogs' | 'site-cards' | 'about' | 'incidents' | 'music-apis' | 'feedbacks' | 'settings'>('music-apis');
 const router = useRouter();
   const layoutStore = useLayoutStore();
   const goHome = () => router.push('/');

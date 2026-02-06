@@ -160,6 +160,12 @@ const router = createRouter({
       meta: { title: '用户反馈', requiresAuth: true, description: '查看用户反馈' }
     },
     {
+      path: '/admin/settings',
+      name: 'admin-settings',
+      component: () => import('../views/admin/SystemSettingsView.vue'),
+      meta: { title: '系统设置', requiresAuth: true, description: '管理系统设置与主题' }
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: NotFoundView,

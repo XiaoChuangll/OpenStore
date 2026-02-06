@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
+import { getThemeSettings } from '../services/api';
 
 type ThemePreference = 'light' | 'dark' | 'auto';
 
@@ -38,12 +39,47 @@ export const useThemeStore = defineStore('theme', () => {
     return preference.value === 'dark';
   });
 
+  // Custom theme colors
+  const customTheme = ref<Record<string, string>>({});
+
+  const applyThemeVariables = () => {
+    const root = document.documentElement;
+    const map: Record<string, string> = {
+      'theme_primary_color': '--el-color-primary',
+      'theme_success_color': '--el-color-success',
+      'theme_warning_color': '--el-color-warning',
+      'theme_danger_color': '--el-color-danger',
+      'theme_info_color': '--el-color-info',
+    };
+    
+    Object.entries(customTheme.value).forEach(([k, v]) => {
+      if (map[k]) {
+        if (v) {
+          root.style.setProperty(map[k], v);
+        } else {
+          root.style.removeProperty(map[k]);
+        }
+      }
+    });
+  };
+
+  const loadThemeSettings = async () => {
+    try {
+      const settings = await getThemeSettings();
+      customTheme.value = settings;
+      applyThemeVariables();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const applyTheme = () => {
     if (isDark.value) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
+    applyThemeVariables();
   };
 
   const toggleTheme = () => {
@@ -65,6 +101,7 @@ export const useThemeStore = defineStore('theme', () => {
 
   // Initialize
   applyTheme();
+  loadThemeSettings();
 
-  return { isDark, preference, toggleTheme };
+  return { isDark, preference, toggleTheme, customTheme, loadThemeSettings };
 });

@@ -509,3 +509,14 @@ export const deleteFeedbacks = async (ids: number[]) => {
 export const updateFeedback = async (id: number, data: { status?: 'pending' | 'accepted' | 'rejected' | 'completed'; title?: string; description?: string }) => {
   await api.put(`/feedbacks/${id}`, data);
 };
+
+// System Settings
+export const getSystemSettings = async () => {
+  const { data } = await api.get('/settings');
+  return data as Record<string, string>;
+};
+
+export const updateSystemSettings = async (settings: Record<string, string>) => {
+  const { data } = await api.put('/settings', settings);
+  return data as { updated: number };
+};

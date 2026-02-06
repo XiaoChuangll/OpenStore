@@ -760,4 +760,14 @@ export const getTopicDetail = async (substanceId: string): Promise<FullSubstance
   }
 };
 
+export const getThemeSettings = async (): Promise<Record<string, string>> => {
+  try {
+    const response = await apiClient.get('/settings/theme');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch theme settings', error);
+    return {};
+  }
+};
+
 export default apiClient;
