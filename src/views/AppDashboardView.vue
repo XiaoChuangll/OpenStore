@@ -26,71 +26,90 @@
 
       <!-- Meta Grid -->
       <div class="meta-grid">
-        <div class="meta-item">
-          <div class="meta-label">分类</div>
-          <div class="meta-value">{{ formatCategory(appDetail) }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">评分</div>
-          <div class="meta-value">{{ appDetail.rating?.average_rating ?? '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">评分数量</div>
-          <div class="meta-value">{{ formatNumber(appDetail.rating?.total_star_rating_count) }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">总下载量</div>
-          <div class="meta-value">{{ formatNumber(lastMetric?.download_count) }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">大小</div>
-          <div class="meta-value">{{ formatSize(lastMetric?.size_bytes) }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">数据更新时间</div>
-          <div class="meta-value">{{ formatDateTime(lastMetric?.created_at) }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">创建时间</div>
-          <div class="meta-value">{{ formatDateTime(appDetail.created_at) }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">上架时间</div>
-          <div class="meta-value">{{ formatDateTime(appDetail.listed_at) }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">包名</div>
-          <div class="meta-value pkg-name" :title="appDetail.pkg_name">{{ appDetail.pkg_name || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">应用ID</div>
-          <div class="meta-value">{{ appDetail.app_id || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">开发者</div>
-          <div class="meta-value">{{ appDetail.developer_name || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">版本</div>
-          <div class="meta-value">{{ lastMetric?.version || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">版本号</div>
-          <div class="meta-value">{{ lastMetric?.version_code || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">目标 API 版本</div>
-          <div class="meta-value">{{ lastMetric?.target_sdk || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">最小 API 版本</div>
-          <div class="meta-value">{{ lastMetric?.minsdk || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">编译 API 版本</div>
-          <div class="meta-value">{{ lastMetric?.compile_sdk_version || '—' }}</div>
+        <div class="meta-row meta-row-1">
+          <div class="meta-pill">
+            <span class="meta-pill-label">{{ categoryInfo.label }}</span>
+            <span class="meta-pill-value">{{ categoryInfo.value }}</span>
+          </div>
+          <div class="meta-pill with-watermark">
+            <span class="meta-pill-watermark">API</span>
+            <span class="meta-pill-label">目标</span>
+            <span class="meta-pill-value">{{ lastMetric?.target_sdk || '—' }}</span>
+          </div>
+          <div class="meta-pill with-watermark">
+            <span class="meta-pill-watermark">API</span>
+            <span class="meta-pill-label">最小</span>
+            <span class="meta-pill-value">{{ lastMetric?.minsdk || '—' }}</span>
+          </div>
         </div>
 
+        <div class="meta-row meta-row-2">
+          <div class="meta-card">
+            <div class="meta-card-label">评分 / 评分数量</div>
+            <div class="meta-card-value">
+              <span>{{ appDetail.rating?.average_rating ?? '—' }}</span>
+              <span class="meta-card-sub">({{ formatNumber(appDetail.rating?.total_star_rating_count) }})</span>
+            </div>
+          </div>
+          <div class="meta-card">
+            <div class="meta-card-label">总下载量</div>
+            <div class="meta-card-value">{{ formatNumber(lastMetric?.download_count) }}</div>
+          </div>
+          <div class="meta-card">
+            <div class="meta-card-label">大小</div>
+            <div class="meta-card-value">{{ formatSize(lastMetric?.size_bytes) }}</div>
+          </div>
+          <div class="meta-card">
+            <div class="meta-card-label">版本号</div>
+            <div class="meta-card-value">{{ lastMetric?.version_code || '—' }}</div>
+          </div>
+        </div>
+
+        <div class="meta-row meta-row-3">
+          <div class="meta-group">
+            <div class="meta-group-title">时间</div>
+            <div class="meta-kv">
+              <div class="meta-kv-key">数据更新时间</div>
+              <div class="meta-kv-value" :title="formatDateTime(lastMetric?.created_at)">{{ formatDateTime(lastMetric?.created_at) }}</div>
+            </div>
+            <div class="meta-kv">
+              <div class="meta-kv-key">创建时间</div>
+              <div class="meta-kv-value" :title="formatDateTime(appDetail.created_at)">{{ formatDateTime(appDetail.created_at) }}</div>
+            </div>
+            <div class="meta-kv">
+              <div class="meta-kv-key">上架时间</div>
+              <div class="meta-kv-value" :title="formatDateTime(appDetail.listed_at)">{{ formatDateTime(appDetail.listed_at) }}</div>
+            </div>
+          </div>
+
+          <div class="meta-group">
+            <div class="meta-group-title">标识</div>
+            <div class="meta-kv">
+              <div class="meta-kv-key">包名</div>
+              <div class="meta-kv-value pkg-name" :title="appDetail.pkg_name">{{ appDetail.pkg_name || '—' }}</div>
+            </div>
+            <div class="meta-kv">
+              <div class="meta-kv-key">应用ID</div>
+              <div class="meta-kv-value" :title="appDetail.app_id">{{ appDetail.app_id || '—' }}</div>
+            </div>
+          </div>
+
+          <div class="meta-group">
+            <div class="meta-group-title">发布</div>
+            <div class="meta-kv">
+              <div class="meta-kv-key">开发者</div>
+              <div class="meta-kv-value" :title="appDetail.developer_name">{{ appDetail.developer_name || '—' }}</div>
+            </div>
+            <div class="meta-kv">
+              <div class="meta-kv-key">版本</div>
+              <div class="meta-kv-value" :title="lastMetric?.version">{{ lastMetric?.version || '—' }}</div>
+            </div>
+            <div class="meta-kv">
+              <div class="meta-kv-key">编译 API</div>
+              <div class="meta-kv-value" :title="String(lastMetric?.compile_sdk_version ?? '—')">{{ lastMetric?.compile_sdk_version || '—' }}</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Description -->
@@ -208,12 +227,6 @@ const formatDateTime = (ts: any) => {
   return new Date(ts).toLocaleString();
 };
 
-const formatCategory = (detail: any) => {
-  const typeName = detail.kind_type_name || '';
-  const kindName = detail.kind_name || '';
-  return `${typeName}-${kindName}`.replace(/^-/, '') || '—';
-};
-
 const checkDescriptionOverflow = () => {
   if (!descriptionRef.value) return;
   const el = descriptionRef.value;
@@ -289,6 +302,21 @@ const countryLabels = computed(() => {
     if (code === 'CN') return '中国';
     return regionDisplay?.of(code) || code;
   });
+});
+
+const categoryInfo = computed(() => {
+  const detail = appDetail.value;
+  if (!detail) return { label: '分类', value: '—' };
+
+  const typeName = detail.kind_type_name;
+  const kindName = detail.kind_name;
+
+  if (typeName && kindName) {
+    return { label: typeName, value: kindName };
+  }
+  
+  const full = `${typeName || ''}-${kindName || ''}`.replace(/^-/, '').replace(/-$/, '') || '—';
+  return { label: '分类', value: full };
 });
 
 const structuredData = computed(() => {
@@ -490,32 +518,164 @@ onMounted(() => {
 }
 
 .meta-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   margin-bottom: 24px;
 }
 
-.meta-item {
+.meta-row {
+  width: 100%;
+}
+
+.meta-row-1 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.meta-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 10px;
+  border-radius: 999px;
   background: var(--el-fill-color-light);
-  border-radius: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  min-height: 28px;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.meta-pill.with-watermark {
+  /* Ensure positioning context */
+}
+
+.meta-pill-watermark {
+  position: absolute;
+  right: 6px;
+  bottom: -6px;
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--el-text-color-placeholder);
+  opacity: 0.15;
+  pointer-events: none;
+  z-index: 0;
+  font-style: italic;
+  line-height: 1;
+}
+
+.meta-pill-label {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+.meta-pill-value {
+  color: var(--el-text-color-primary);
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+  position: relative;
+  z-index: 1;
+}
+
+.meta-row-1 .meta-pill {
+  flex: 1 1 220px;
+}
+
+.meta-row-2 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.meta-card {
+  background: var(--el-fill-color-light);
+  border-radius: 10px;
   padding: 12px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.meta-item.full-width {
-  grid-column: 1 / -1;
-}
-
-.meta-label {
+.meta-card-label {
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  margin-bottom: 4px;
 }
 
-.meta-value {
+.meta-card-value {
   font-size: 14px;
   color: var(--el-text-color-primary);
-  word-break: break-all;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta-card-sub {
+  font-weight: 500;
+  color: var(--el-text-color-secondary);
+  margin-left: 6px;
+}
+
+.meta-row-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.meta-group {
+  background: var(--el-fill-color-light);
+  border-radius: 10px;
+  padding: 12px;
+  min-width: 0;
+}
+
+.meta-group-title {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.meta-kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  min-width: 0;
+}
+
+.meta-kv:first-of-type {
+  margin-top: 0;
+}
+
+.meta-kv-key {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  flex: 0 0 auto;
+}
+
+.meta-kv-value {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
 }
 
 .pkg-name {
@@ -524,6 +684,63 @@ onMounted(() => {
 
 .section-container {
   margin-top: 24px;
+}
+
+@media (max-width: 768px) {
+  .meta-row-1 {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    gap: 8px;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .meta-row-1::-webkit-scrollbar {
+    display: none;
+  }
+
+  .meta-pill {
+    font-size: 11px;
+    min-height: 26px;
+    padding: 0 8px;
+    gap: 2px;
+    flex: 0 0 auto;
+  }
+  
+  .meta-pill-watermark {
+    font-size: 16px;
+    bottom: -4px;
+    right: 4px;
+  }
+
+  .meta-row-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .meta-row-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .meta-pill-value {
+    max-width: 220px;
+  }
+
+  .meta-card {
+    padding: 10px;
+  }
+  .meta-card-label {
+    font-size: 11px;
+  }
+  .meta-card-value {
+    font-size: 13px;
+  }
+
+  .meta-group {
+    padding: 10px;
+  }
+  .meta-group-title {
+    margin-bottom: 8px;
+  }
 }
 
 .section-header {
