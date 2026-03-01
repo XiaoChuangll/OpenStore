@@ -80,7 +80,7 @@ const fetchDetail = async () => {
     
     // Set page title
     layoutStore.setPageInfo(data.title || '专题详情', true, () => router.back());
-    document.title = `${data.title || '专题详情'} - OpenStore`;
+    document.title = `OpenStore | ${data.title || '专题详情'}`;
   } catch (err: any) {
     console.error(err);
     error.value = '无法加载专题详情，请稍后再试';

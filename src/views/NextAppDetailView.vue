@@ -171,7 +171,7 @@ const fetchDetail = async () => {
     if (appDetail.value) {
       const title = appDetail.value.name || '应用详情';
       layoutStore.setPageInfo(title, true, () => router.back());
-      document.title = `${title} - OpenStore`;
+      document.title = `OpenStore | ${title}`;
     }
   } catch (error) {
     console.error('Failed to fetch app detail:', error);

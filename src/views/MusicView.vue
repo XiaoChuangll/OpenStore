@@ -721,6 +721,7 @@
                   </div>
                   <div class="song-row-artist">{{ getArtistName(row) }}</div>
                 </div>
+                <div class="song-row-duration">{{ formatDuration(row.dt || row.duration) }}</div>
               </div>
             </template>
           </el-table-column>
@@ -935,14 +936,14 @@ const restorePageTitle = () => {
     
     pageTitle.value = title;
     layoutStore.setPageInfo(title, true, goBack);
-    document.title = `${title} - OpenStore`;
+    document.title = `OpenStore | ${title}`;
 };
 
 watch(showPlaylistDialog, (val) => {
     if (val) {
          const title = '歌单';
          layoutStore.setPageInfo(title, true, closePlaylistDialog);
-         document.title = `${title} - OpenStore`;
+         document.title = `OpenStore | ${title}`;
     } else {
          restorePageTitle();
     }
@@ -1964,6 +1965,12 @@ const getCover = (song: any) => {
     return url ? url.replace(/^http:/, 'https:') : '';
 };
 const getArtistName = (song: any) => (song.ar || song.artists || []).map((a: any) => a.name).join(', ');
+const formatDuration = (ms: number) => {
+  if (!ms) return '00:00';
+  const minutes = Math.floor(ms / 60000);
+  const seconds = Math.floor((ms % 60000) / 1000);
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
 const isVipSong = (song: any) => {
     const fee = song.fee ?? song.privilege?.fee;
     return typeof fee === 'number' && fee !== 0;
@@ -3124,6 +3131,14 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.song-row-duration {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-left: auto;
+  padding-left: 8px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .header-pagination {

@@ -193,9 +193,9 @@ router.beforeEach((to) => {
 
 router.afterEach((to) => {
   // Update document title
-  const defaultTitle = 'OpenStore - 发现更多精彩应用'; // 默认标题
+  const defaultTitle = 'OpenStore | 发现更多精彩应用'; // 默认标题
   const pageTitle = (to.query.title as string) || (to.meta.title as string);
-  document.title = pageTitle ? `${pageTitle} - OpenStore` : defaultTitle;
+  document.title = pageTitle ? `OpenStore | ${pageTitle}` : defaultTitle;
 
   // Update meta description
   const defaultDescription = 'OpenStore 是一个发现和管理移动应用的平台，提供丰富的应用信息、排行榜和更新动态。'; // 默认描述
@@ -216,7 +216,7 @@ router.afterEach((to) => {
   updateMeta('description', description);
   
   // Update Open Graph and Twitter tags
-  const fullTitle = pageTitle ? `${pageTitle} - OpenStore` : defaultTitle;
+  const fullTitle = pageTitle ? `OpenStore | ${pageTitle}` : defaultTitle;
   updateMeta('og:title', fullTitle, true);
   updateMeta('og:description', description, true);
   updateMeta('og:url', window.location.href, true);

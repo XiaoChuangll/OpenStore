@@ -431,7 +431,7 @@ const fetchData = async () => {
 
     const title = info.name || '应用详情';
     layoutStore.setPageInfo(title, true, () => router.back());
-    document.title = `${title} - OpenStore`;
+    document.title = `OpenStore | ${title}`;
 
     if (info.pkg_name) {
       try {
