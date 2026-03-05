@@ -83,6 +83,66 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS blog_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    parent_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS blog_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    color TEXT,
+    group_name TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS blogs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    content_html TEXT,
+    content_markdown TEXT,
+    summary TEXT,
+    cover_url TEXT,
+    cover_focus TEXT,
+    author_names TEXT,
+    status TEXT CHECK(status IN ('draft','published','offline')) DEFAULT 'draft',
+    category_id INTEGER,
+    seo_title TEXT,
+    seo_description TEXT,
+    seo_keywords TEXT,
+    password TEXT,
+    allow_comments INTEGER DEFAULT 1,
+    scheduled_at DATETIME,
+    published_at DATETIME,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS blog_tag_relations (
+    blog_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    PRIMARY KEY (blog_id, tag_id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS blog_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    blog_id INTEGER NOT NULL,
+    title TEXT,
+    content_html TEXT,
+    content_markdown TEXT,
+    summary TEXT,
+    cover_url TEXT,
+    author_names TEXT,
+    status TEXT,
+    seo_title TEXT,
+    seo_description TEXT,
+    seo_keywords TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS env_vars (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     key TEXT NOT NULL UNIQUE,
@@ -280,6 +340,19 @@ db.serialize(() => {
   ensureColumn('about_page', 'author_github', 'TEXT');
   ensureColumn('about_page', 'content_markdown', 'TEXT');
   ensureColumn('app_submissions', 'review_note', 'TEXT');
+  ensureColumn('blogs', 'content_markdown', 'TEXT');
+  ensureColumn('blogs', 'summary', 'TEXT');
+  ensureColumn('blogs', 'cover_url', 'TEXT');
+  ensureColumn('blogs', 'cover_focus', 'TEXT');
+  ensureColumn('blogs', 'author_names', 'TEXT');
+  ensureColumn('blogs', 'seo_title', 'TEXT');
+  ensureColumn('blogs', 'seo_description', 'TEXT');
+  ensureColumn('blogs', 'seo_keywords', 'TEXT');
+  ensureColumn('blogs', 'password', 'TEXT');
+  ensureColumn('blogs', 'allow_comments', 'INTEGER DEFAULT 1');
+  ensureColumn('blogs', 'scheduled_at', 'DATETIME');
+  ensureColumn('blogs', 'published_at', 'DATETIME');
+  ensureColumn('blogs', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
 });
 
 module.exports = db;

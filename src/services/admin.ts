@@ -204,6 +204,111 @@ export const offlineAnnouncement = async (id: number) => {
   await api.post(`/announcements/${id}/offline`);
 };
 
+export interface BlogCategory { id: number; name: string; parent_id?: number | null; }
+export interface BlogTag { id: number; name: string; color?: string | null; group_name?: string | null; usage_count?: number; }
+export interface Blog {
+  id: number;
+  title: string;
+  slug: string;
+  content_html?: string | null;
+  content_markdown?: string | null;
+  summary?: string | null;
+  cover_url?: string | null;
+  cover_focus?: string | null;
+  author_names?: string | null;
+  status: 'draft' | 'published' | 'offline';
+  category_id?: number | null;
+  category_name?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  seo_keywords?: string | null;
+  password?: string | null;
+  allow_comments?: number | null;
+  scheduled_at?: string | null;
+  published_at?: string | null;
+  updated_at?: string | null;
+  tag_ids?: string | number[] | null;
+  tag_names?: string | null;
+  tag_colors?: string | null;
+}
+export interface BlogVersion {
+  id: number;
+  blog_id: number;
+  title?: string | null;
+  content_html?: string | null;
+  content_markdown?: string | null;
+  summary?: string | null;
+  cover_url?: string | null;
+  author_names?: string | null;
+  status?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  seo_keywords?: string | null;
+  created_at?: string | null;
+}
+
+export const getBlogCategories = async () => {
+  const { data } = await api.get('/blog-categories');
+  return data.items as BlogCategory[];
+};
+export const createBlogCategory = async (payload: Partial<BlogCategory>) => {
+  const { data } = await api.post('/blog-categories', payload);
+  return data.id as number;
+};
+export const updateBlogCategory = async (id: number, payload: Partial<BlogCategory>) => {
+  await api.put(`/blog-categories/${id}`, payload);
+};
+export const deleteBlogCategory = async (id: number) => {
+  await api.delete(`/blog-categories/${id}`);
+};
+
+export const getBlogTags = async () => {
+  const { data } = await api.get('/blog-tags');
+  return data.items as BlogTag[];
+};
+export const createBlogTag = async (payload: Partial<BlogTag>) => {
+  const { data } = await api.post('/blog-tags', payload);
+  return data.id as number;
+};
+export const updateBlogTag = async (id: number, payload: Partial<BlogTag>) => {
+  await api.put(`/blog-tags/${id}`, payload);
+};
+export const deleteBlogTag = async (id: number) => {
+  await api.delete(`/blog-tags/${id}`);
+};
+
+export const getBlogs = async (params: { status?: string; page?: number; pageSize?: number; category_id?: number; tag_id?: number } = {}) => {
+  const { data } = await api.get('/blogs', { params });
+  return data as { items: Blog[]; total: number; page: number; pageSize: number };
+};
+export const createBlog = async (payload: Partial<Blog> & { tag_ids?: number[] }) => {
+  const { data } = await api.post('/blogs', payload);
+  return data.id as number;
+};
+export const updateBlog = async (id: number, payload: Partial<Blog> & { tag_ids?: number[] }) => {
+  await api.put(`/blogs/${id}`, payload);
+};
+export const deleteBlog = async (id: number) => {
+  await api.delete(`/blogs/${id}`);
+};
+export const publishBlog = async (id: number) => {
+  await api.post(`/blogs/${id}/publish`);
+};
+export const offlineBlog = async (id: number) => {
+  await api.post(`/blogs/${id}/offline`);
+};
+export const getBlogVersions = async (id: number) => {
+  const { data } = await api.get(`/blogs/${id}/versions`);
+  return data.items as BlogVersion[];
+};
+export const createBlogVersion = async (id: number, payload: Partial<BlogVersion>) => {
+  const { data } = await api.post(`/blogs/${id}/versions`, payload);
+  return data.id as number;
+};
+export const restoreBlogVersion = async (id: number, versionId: number) => {
+  await api.post(`/blogs/${id}/restore`, { version_id: versionId });
+};
+
 // Apps
 export interface AppItem {
   id: number;

@@ -410,6 +410,58 @@ export const offlineAnnouncement = async (id: number): Promise<void> => {
   await apiClient.post(`/announcements/${id}/offline`);
 };
 
+export interface Blog {
+  id: number;
+  title: string;
+  slug: string;
+  content_html?: string;
+  content_markdown?: string;
+  summary?: string | null;
+  cover_url?: string | null;
+  cover_focus?: string | null;
+  author_names?: string | null;
+  status: 'draft' | 'published' | 'offline';
+  category_id?: number | null;
+  category_name?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  seo_keywords?: string | null;
+  published_at?: string | null;
+  updated_at?: string | null;
+  tag_ids?: string | number[] | null;
+  tag_names?: string | null;
+  tag_colors?: string | null;
+  has_password?: number | null;
+}
+export interface BlogCategory {
+  id: number;
+  name: string;
+  parent_id?: number | null;
+}
+export interface BlogTag {
+  id: number;
+  name: string;
+  color?: string | null;
+  group_name?: string | null;
+  usage_count?: number;
+}
+export const getPublicBlogCategories = async (): Promise<BlogCategory[]> => {
+  const response = await apiClient.get('/public/blog-categories');
+  return response.data.items || [];
+};
+export const getPublicBlogTags = async (): Promise<BlogTag[]> => {
+  const response = await apiClient.get('/public/blog-tags');
+  return response.data.items || [];
+};
+export const getPublicBlogs = async (params: { limit?: number; category_id?: number; tag_id?: number } = {}): Promise<Blog[]> => {
+  const response = await apiClient.get('/public/blogs', { params });
+  return response.data.items || [];
+};
+export const getPublicBlogBySlug = async (slug: string, password?: string): Promise<Blog> => {
+  const response = await apiClient.get(`/public/blogs/${slug}`, { params: password ? { password } : {} });
+  return response.data;
+};
+
 // Changelogs
 export interface Changelog {
   id: number;
