@@ -810,11 +810,14 @@ const save = async () => {
       if (typeof app === 'number') {
         finalAppIds.push(app);
       } else if (typeof app === 'string') {
-        // It's a remote ID, find the object in options
+        // It's a remote ID
         const remoteApp = appOptions.value.find(a => String(a.id) === app);
         if (remoteApp) {
           try {
-            // Import to local
+            // Check if app already exists locally by original_id
+            // Ideally we should have an API to check existence or rely on createApp returning existing ID
+            // My API implementation of createApp checks original_id and returns existing if found
+            
             const created = await createApp({
               name: remoteApp.name,
               icon_url: remoteApp.icon_url,
@@ -824,8 +827,13 @@ const save = async () => {
               original_id: String(remoteApp.id),
               enabled: 1
             } as any);
-            // If created returns object { id: ..., existed: ... } or just ID
-            // My API returns { id: ... }
+
+            // The backend implementation of createApp (in server/index.cjs) handles deduplication:
+            // if (original_id) check DB, if exists return { id: row.id, existed: true }
+            // So calling createApp here is actually correct behavior: it either creates a new local record 
+            // OR returns the existing local record ID if it was already imported.
+            // This is necessary because the blog_app_relations table links to local app IDs, not remote original_ids.
+            
             if (created && (created as any).id) {
               finalAppIds.push((created as any).id);
             } else if (typeof created === 'number') {
