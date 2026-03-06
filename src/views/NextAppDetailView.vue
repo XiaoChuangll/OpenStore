@@ -172,6 +172,17 @@ const fetchDetail = async () => {
       const title = appDetail.value.name || '应用详情';
       layoutStore.setPageInfo(title, true, () => router.back());
       document.title = `${title} - OpenStore`;
+
+      const description = appDetail.value.description || appDetail.value.intro || '';
+      if (description) {
+        let el = document.querySelector('meta[name="description"]');
+        if (!el) {
+          el = document.createElement('meta');
+          el.setAttribute('name', 'description');
+          document.head.appendChild(el);
+        }
+        el.setAttribute('content', description.slice(0, 160));
+      }
     }
   } catch (error) {
     console.error('Failed to fetch app detail:', error);

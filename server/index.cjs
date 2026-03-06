@@ -194,6 +194,53 @@ app.get('/next-api/apps/devices', (req, res) => {
   res.json({ status: 'ok', service: 'next-api' });
 });
 
+// Proxy Middleware Helper
+const createProxy = (target, pathRewrite) => async (req, res) => {
+  let url = req.originalUrl;
+  if (pathRewrite) {
+    url = pathRewrite(url);
+  }
+  const fullUrl = `${target}${url}`;
+  
+  try {
+    const headers = { ...req.headers };
+    delete headers.host;
+    delete headers['content-length']; // Let axios handle it
+    delete headers['content-type']; // Let axios set it based on data
+    
+    const config = {
+      method: req.method,
+      url: fullUrl,
+      headers,
+      data: (req.method === 'GET' || req.method === 'HEAD') ? undefined : req.body,
+      responseType: 'stream',
+      validateStatus: () => true // Handle all status codes manually
+    };
+    
+    const response = await axios(config);
+    
+    res.status(response.status);
+    Object.keys(response.headers).forEach(key => {
+      res.setHeader(key, response.headers[key]);
+    });
+    
+    response.data.pipe(res);
+  } catch (error) {
+    console.error(`Proxy error [${req.method} ${fullUrl}]:`, error.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Proxy Error: ' + error.message });
+    }
+  }
+};
+
+// Setup Proxies
+// /api/v0 -> http://shenjack.top:10003/api/v0
+app.use('/api/v0', createProxy(process.env.VITE_API_TARGET || 'http://shenjack.top:10003'));
+
+// /next-api -> https://next.vcck.cn/api
+app.use('/next-api', createProxy(process.env.VITE_NEXT_API_TARGET || 'https://next.vcck.cn', (path) => path.replace(/^\/next-api/, '/api')));
+
+
 // API Proxy for debugging
 app.post('/api/proxy-request', async (req, res) => {
   const { url, method = 'GET', headers = {}, data = null, body = null } = req.body;
@@ -766,24 +813,68 @@ app.get('/api/apps', requireAuth, (req, res) => {
     res.json({ items: rows });
   });
 });
-app.post('/api/apps', requireAuth, (req, res) => {
-  const { name, provider, bg_url, icon_url, download_url, enabled = 1 } = req.body;
-  db.run(
-    `INSERT INTO apps (name, provider, bg_url, icon_url, download_url, enabled) VALUES (?,?,?,?,?,?)`,
-    [name, provider || null, bg_url || null, icon_url || null, download_url || null, Number(enabled) ? 1 : 0],
-    function(err){
+app.get('/api/apps/search', requireAuth, (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const idsRaw = String(req.query.ids || '').trim();
+  const limit = Number(req.query.limit || 20);
+
+  if (idsRaw) {
+    const ids = idsRaw.split(',').map(v => Number(v)).filter(v => !Number.isNaN(v));
+    if (!ids.length) return res.json({ items: [] });
+    const placeholders = ids.map(() => '?').join(',');
+    db.all(`SELECT * FROM apps WHERE id IN (${placeholders}) ORDER BY id DESC`, ids, (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
-      logAction(req.user?.username, 'create', 'apps', this.lastID, { name });
-      db.all(`SELECT * FROM apps ORDER BY id DESC`, [], (e2, rows) => {
-        if (!e2) broadcast('apps:update', rows);
-      });
-      res.json({ id: this.lastID });
+      res.json({ items: rows });
+    });
+    return;
+  }
+
+  if (!q) return res.json({ items: [] });
+  const like = `%${q}%`;
+  db.all(
+    `SELECT * FROM apps WHERE name LIKE ? OR provider LIKE ? ORDER BY id DESC LIMIT ?`,
+    [like, like, limit],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ items: rows });
     }
   );
 });
+app.post('/api/apps', requireAuth, (req, res) => {
+  const { name, provider, bg_url, icon_url, download_url, enabled = 1, kind_name, average_rating, download_count_str, original_id } = req.body;
+  
+  const insertApp = () => {
+    db.run(
+      `INSERT INTO apps (name, provider, bg_url, icon_url, download_url, enabled, kind_name, average_rating, download_count_str, original_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [name, provider || null, bg_url || null, icon_url || null, download_url || null, Number(enabled) ? 1 : 0, kind_name || null, average_rating || null, download_count_str || null, original_id || null],
+      function(err){
+        if (err) return res.status(500).json({ error: err.message });
+        logAction(req.user?.username, 'create', 'apps', this.lastID, { name });
+        db.all(`SELECT * FROM apps ORDER BY id DESC`, [], (e2, rows) => {
+          if (!e2) broadcast('apps:update', rows);
+        });
+        res.json({ id: this.lastID });
+      }
+    );
+  };
+
+  if (original_id) {
+    db.get(`SELECT id FROM apps WHERE original_id = ?`, [original_id], (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (row) {
+        // Already exists, return existing ID
+        res.json({ id: row.id, existed: true });
+      } else {
+        insertApp();
+      }
+    });
+  } else {
+    insertApp();
+  }
+});
 app.put('/api/apps/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
-  const { name, provider, bg_url, icon_url, download_url, enabled } = req.body || {};
+  const { name, provider, bg_url, icon_url, download_url, enabled, kind_name, average_rating, download_count_str, original_id } = req.body || {};
 
   const sets = [];
   const params = [];
@@ -793,6 +884,10 @@ app.put('/api/apps/:id', requireAuth, (req, res) => {
   if (typeof icon_url !== 'undefined') { sets.push('icon_url=?'); params.push(icon_url || null); }
   if (typeof download_url !== 'undefined') { sets.push('download_url=?'); params.push(download_url || null); }
   if (typeof enabled !== 'undefined') { sets.push('enabled=?'); params.push(Number(enabled) ? 1 : 0); }
+  if (typeof kind_name !== 'undefined') { sets.push('kind_name=?'); params.push(kind_name || null); }
+  if (typeof average_rating !== 'undefined') { sets.push('average_rating=?'); params.push(average_rating || null); }
+  if (typeof download_count_str !== 'undefined') { sets.push('download_count_str=?'); params.push(download_count_str || null); }
+  if (typeof original_id !== 'undefined') { sets.push('original_id=?'); params.push(original_id || null); }
 
   if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
   sets.push('updated_at=CURRENT_TIMESTAMP');
@@ -884,16 +979,14 @@ app.get('/api/public/blogs', (req, res) => {
   params.push(limit);
   db.all(
     `SELECT b.*, c.name as category_name,
-      group_concat(t.id, ',') as tag_ids,
-      group_concat(t.name, ',') as tag_names,
-      group_concat(t.color, ',') as tag_colors,
+      (SELECT group_concat(t.id, ',') FROM blog_tag_relations r JOIN blog_tags t ON r.tag_id = t.id WHERE r.blog_id = b.id) as tag_ids,
+      (SELECT group_concat(t.name, ',') FROM blog_tag_relations r JOIN blog_tags t ON r.tag_id = t.id WHERE r.blog_id = b.id) as tag_names,
+      (SELECT group_concat(t.color, ',') FROM blog_tag_relations r JOIN blog_tags t ON r.tag_id = t.id WHERE r.blog_id = b.id) as tag_colors,
+      (SELECT group_concat(a.id, ',') FROM blog_app_relations ar JOIN apps a ON ar.app_id = a.id WHERE ar.blog_id = b.id AND a.enabled = 1) as app_ids,
       CASE WHEN b.password IS NOT NULL AND b.password != '' THEN 1 ELSE 0 END as has_password
      FROM blogs b
      LEFT JOIN blog_categories c ON b.category_id = c.id
-     LEFT JOIN blog_tag_relations r ON b.id = r.blog_id
-     LEFT JOIN blog_tags t ON r.tag_id = t.id
      ${where}
-     GROUP BY b.id
      ORDER BY b.published_at DESC, b.updated_at DESC
      LIMIT ?`,
     params,
@@ -909,16 +1002,14 @@ app.get('/api/public/blogs/:slug', (req, res) => {
   const password = req.query.password ? String(req.query.password) : '';
   db.get(
     `SELECT b.*, c.name as category_name,
-      group_concat(t.id, ',') as tag_ids,
-      group_concat(t.name, ',') as tag_names,
-      group_concat(t.color, ',') as tag_colors,
+      (SELECT group_concat(t.id, ',') FROM blog_tag_relations r JOIN blog_tags t ON r.tag_id = t.id WHERE r.blog_id = b.id) as tag_ids,
+      (SELECT group_concat(t.name, ',') FROM blog_tag_relations r JOIN blog_tags t ON r.tag_id = t.id WHERE r.blog_id = b.id) as tag_names,
+      (SELECT group_concat(t.color, ',') FROM blog_tag_relations r JOIN blog_tags t ON r.tag_id = t.id WHERE r.blog_id = b.id) as tag_colors,
+      (SELECT group_concat(a.id, ',') FROM blog_app_relations ar JOIN apps a ON ar.app_id = a.id WHERE ar.blog_id = b.id AND a.enabled = 1) as app_ids,
       CASE WHEN b.password IS NOT NULL AND b.password != '' THEN 1 ELSE 0 END as has_password
      FROM blogs b
      LEFT JOIN blog_categories c ON b.category_id = c.id
-     LEFT JOIN blog_tag_relations r ON b.id = r.blog_id
-     LEFT JOIN blog_tags t ON r.tag_id = t.id
-     WHERE b.slug=? AND b.status='published'
-     GROUP BY b.id`,
+     WHERE b.slug=? AND b.status='published'`,
     [slug],
     (err, row) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -926,7 +1017,18 @@ app.get('/api/public/blogs/:slug', (req, res) => {
       if (row.password && row.password !== password) {
         return res.status(403).json({ error: 'password_required' });
       }
-      res.json(row);
+      db.all(
+        `SELECT a.*
+         FROM blog_app_relations ar
+         JOIN apps a ON ar.app_id = a.id
+         WHERE ar.blog_id = ? AND a.enabled = 1
+         ORDER BY a.id DESC`,
+        [row.id],
+        (e2, apps) => {
+          if (e2) return res.status(500).json({ error: e2.message });
+          res.json({ ...row, apps });
+        }
+      );
     }
   );
 });
@@ -1120,15 +1222,13 @@ app.get('/api/blogs', requireAuth, (req, res) => {
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   db.all(
     `SELECT b.*, c.name as category_name,
-      group_concat(t.id, ',') as tag_ids,
-      group_concat(t.name, ',') as tag_names,
-      group_concat(t.color, ',') as tag_colors
+      (SELECT group_concat(t.id, ',') FROM blog_tag_relations r JOIN blog_tags t ON r.tag_id = t.id WHERE r.blog_id = b.id) as tag_ids,
+      (SELECT group_concat(t.name, ',') FROM blog_tag_relations r JOIN blog_tags t ON r.tag_id = t.id WHERE r.blog_id = b.id) as tag_names,
+      (SELECT group_concat(t.color, ',') FROM blog_tag_relations r JOIN blog_tags t ON r.tag_id = t.id WHERE r.blog_id = b.id) as tag_colors,
+      (SELECT group_concat(a.id, ',') FROM blog_app_relations ar JOIN apps a ON ar.app_id = a.id WHERE ar.blog_id = b.id) as app_ids
      FROM blogs b
      LEFT JOIN blog_categories c ON b.category_id = c.id
-     LEFT JOIN blog_tag_relations r ON b.id = r.blog_id
-     LEFT JOIN blog_tags t ON r.tag_id = t.id
      ${where}
-     GROUP BY b.id
      ORDER BY b.updated_at DESC
      LIMIT ? OFFSET ?`,
     [...params, ps, offset],
@@ -1143,7 +1243,7 @@ app.get('/api/blogs', requireAuth, (req, res) => {
 });
 
 app.post('/api/blogs', requireAuth, (req, res) => {
-  const { title, slug, content_html, content_markdown, summary, cover_url, cover_focus, author_names, status = 'draft', category_id, seo_title, seo_description, seo_keywords, password, allow_comments = 1, scheduled_at, tag_ids = [] } = req.body;
+  const { title, slug, content_html, content_markdown, summary, cover_url, cover_focus, author_names, status = 'draft', category_id, seo_title, seo_description, seo_keywords, password, allow_comments = 1, scheduled_at, tag_ids = [], app_ids = [] } = req.body;
   db.run(
     `INSERT INTO blogs (title, slug, content_html, content_markdown, summary, cover_url, cover_focus, author_names, status, category_id, seo_title, seo_description, seo_keywords, password, allow_comments, scheduled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [title, slug, content_html || '', content_markdown || null, summary || null, cover_url || null, cover_focus || null, author_names || null, status, category_id || null, seo_title || null, seo_description || null, seo_keywords || null, password || null, Number(allow_comments) ? 1 : 0, scheduled_at || null],
@@ -1154,6 +1254,10 @@ app.post('/api/blogs', requireAuth, (req, res) => {
       tagIds.forEach((tid) => {
         db.run(`INSERT OR IGNORE INTO blog_tag_relations (blog_id, tag_id) VALUES (?,?)`, [blogId, tid]);
       });
+      const appIds = Array.isArray(app_ids) ? app_ids : [];
+      appIds.forEach((aid) => {
+        db.run(`INSERT OR IGNORE INTO blog_app_relations (blog_id, app_id) VALUES (?,?)`, [blogId, aid]);
+      });
       logAction(req.user?.username, 'create', 'blogs', blogId, { title });
       res.json({ id: blogId });
     }
@@ -1162,7 +1266,7 @@ app.post('/api/blogs', requireAuth, (req, res) => {
 
 app.put('/api/blogs/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
-  const { title, slug, content_html, content_markdown, summary, cover_url, cover_focus, author_names, status, category_id, seo_title, seo_description, seo_keywords, password, allow_comments = 1, scheduled_at, tag_ids = [] } = req.body;
+  const { title, slug, content_html, content_markdown, summary, cover_url, cover_focus, author_names, status, category_id, seo_title, seo_description, seo_keywords, password, allow_comments = 1, scheduled_at, tag_ids = [], app_ids = [] } = req.body;
   db.run(
     `UPDATE blogs SET title=?, slug=?, content_html=?, content_markdown=?, summary=?, cover_url=?, cover_focus=?, author_names=?, status=?, category_id=?, seo_title=?, seo_description=?, seo_keywords=?, password=?, allow_comments=?, scheduled_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
     [title, slug, content_html || '', content_markdown || null, summary || null, cover_url || null, cover_focus || null, author_names || null, status, category_id || null, seo_title || null, seo_description || null, seo_keywords || null, password || null, Number(allow_comments) ? 1 : 0, scheduled_at || null, id],
@@ -1172,6 +1276,12 @@ app.put('/api/blogs/:id', requireAuth, (req, res) => {
         const tagIds = Array.isArray(tag_ids) ? tag_ids : [];
         tagIds.forEach((tid) => {
           db.run(`INSERT OR IGNORE INTO blog_tag_relations (blog_id, tag_id) VALUES (?,?)`, [id, tid]);
+        });
+      });
+      db.run(`DELETE FROM blog_app_relations WHERE blog_id=?`, [id], () => {
+        const appIds = Array.isArray(app_ids) ? app_ids : [];
+        appIds.forEach((aid) => {
+          db.run(`INSERT OR IGNORE INTO blog_app_relations (blog_id, app_id) VALUES (?,?)`, [id, aid]);
         });
       });
       logAction(req.user?.username, 'update', 'blogs', id, { title });
@@ -1185,6 +1295,7 @@ app.delete('/api/blogs/:id', requireAuth, (req, res) => {
   db.run(`DELETE FROM blogs WHERE id=?`, [id], function(err){
     if (err) return res.status(500).json({ error: err.message });
     db.run(`DELETE FROM blog_tag_relations WHERE blog_id=?`, [id]);
+    db.run(`DELETE FROM blog_app_relations WHERE blog_id=?`, [id]);
     logAction(req.user?.username, 'delete', 'blogs', id);
     res.json({ deleted: this.changes });
   });

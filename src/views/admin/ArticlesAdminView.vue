@@ -129,21 +129,6 @@
             </el-form-item>
           </el-col>
 
-          <el-col :md="12" :xs="24">
-            <el-form-item label="状态">
-              <el-select v-model="form.status" style="width: 100%">
-                <el-option label="草稿" value="draft" />
-                <el-option label="已发布" value="published" />
-                <el-option label="已下线" value="offline" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :md="12" :xs="24">
-            <el-form-item label="发布时间">
-              <el-date-picker v-model="scheduled" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="选择定时发布时间（可选）" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-
           <el-col :span="24">
             <el-form-item label="摘要">
               <el-input v-model="form.summary" type="textarea" :autosize="{ minRows: 3, maxRows: 5 }" placeholder="请输入摘要">
@@ -177,6 +162,37 @@
                 <el-option label="底部" value="bottom" />
                 <el-option label="左侧" value="left" />
                 <el-option label="右侧" value="right" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+
+          <el-col :span="24">
+            <el-form-item label="关联应用">
+              <el-select
+                v-model="selectedApps"
+                multiple
+                filterable
+                remote
+                reserve-keyword
+                placeholder="搜索应用并关联"
+                :remote-method="searchAppOptions"
+                :loading="appSearchLoading"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="item in appOptions"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id"
+                >
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center;">
+                      <el-image v-if="item.icon_url" :src="item.icon_url" style="width: 20px; height: 20px; margin-right: 8px; border-radius: 4px;" />
+                      <span>{{ item.name }}</span>
+                    </div>
+                    <span v-if="(item as any).kind_name" style="color: var(--el-text-color-secondary); font-size: 12px;">{{ (item as any).kind_name }}</span>
+                  </div>
+                </el-option>
               </el-select>
             </el-form-item>
           </el-col>
@@ -364,7 +380,8 @@
 import { ref, onMounted, computed, watch, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { getBlogCategories, createBlogCategory, updateBlogCategory, deleteBlogCategory, getBlogTags, createBlogTag, updateBlogTag, deleteBlogTag, getBlogs, createBlog, updateBlog, deleteBlog, publishBlog, offlineBlog, getBlogVersions, createBlogVersion, restoreBlogVersion, uploadFile, type BlogCategory, type BlogTag, type Blog, type BlogVersion } from '../../services/admin';
+import { getBlogCategories, createBlogCategory, updateBlogCategory, deleteBlogCategory, getBlogTags, createBlogTag, updateBlogTag, deleteBlogTag, getBlogs, createBlog, updateBlog, deleteBlog, publishBlog, offlineBlog, getBlogVersions, createBlogVersion, restoreBlogVersion, uploadFile, createApp, getApps, type BlogCategory, type BlogTag, type Blog, type BlogVersion, type AppItem } from '../../services/admin';
+import { searchApps as searchNextApps } from '../../services/next-api';
 import { QuillEditor } from '@vueup/vue-quill';
 import '@vueup/vue-quill/dist/vue-quill.snow.css';
 import MarkdownIt from 'markdown-it';
@@ -408,6 +425,9 @@ const allowComments = ref(true);
 const authorList = ref<string[]>([]);
 const selectedTags = ref<(number | string)[]>([]);
 const authorOptions = ref<string[]>([]);
+const selectedApps = ref<number[]>([]);
+const appOptions = ref<AppItem[]>([]);
+const appSearchLoading = ref(false);
 
 const showCatDialog = ref(false);
 const catDialogTitle = ref('新增分类');
@@ -508,6 +528,70 @@ const quillOptions = ref({
 
 const fetchCategories = async () => { categories.value = await getBlogCategories(); };
 const fetchTags = async () => { tags.value = await getBlogTags(); };
+// const appLabel = (app: AppItem) => app.provider ? `${app.name} · ${app.provider}` : app.name;
+const mergeAppOptions = (list: AppItem[]) => {
+  const map = new Map<number, AppItem>();
+  appOptions.value.forEach(item => map.set(item.id, item));
+  list.forEach(item => map.set(item.id, item));
+  appOptions.value = Array.from(map.values());
+};
+const searchAppOptions = async (query: string) => {
+  const keyword = String(query || '').trim();
+  if (!keyword) return;
+  appSearchLoading.value = true;
+  try {
+    // 1. Search local apps
+    const localApps = await getApps();
+    const localMatches = localApps.filter(app => app.name.toLowerCase().includes(keyword.toLowerCase()));
+    
+    // 2. Search remote apps
+    const remoteResult = await searchNextApps(keyword);
+    const remoteApps = (remoteResult.data || remoteResult.items || []).map((app: any) => ({
+      id: app.app_id || app.id, // Use app_id from remote API if available
+      name: app.name,
+      icon_url: app.icon || app.icon_url,
+      provider: app.developer_name || app.provider,
+      kind_name: app.kind_name,
+      average_rating: app.average_rating,
+      download_count: app.download_count || app.down_count,
+      download_count_str: app.download_count_str || app.down_count_desc,
+      enabled: 1
+    }));
+
+    // Merge: prioritize local, avoid duplicates by ID? 
+    // Since IDs are different types (number vs string), we can keep both.
+    // Ideally, we should check if a remote app is already imported (by original_id match), 
+    // but client doesn't know original_id of local apps easily without fetching detail.
+    // For simplicity, show both. User should prefer local if exact match.
+    
+    // To fix selection bug: ensure we keep already selected items in appOptions
+    // Otherwise, when we search, the selected items might disappear from options, causing display issues or selection bugs
+    const existingSelected = appOptions.value.filter(opt => selectedApps.value.includes(opt.id));
+    
+    // Combine new search results with existing selected items, removing duplicates
+    const newOptions = [...localMatches, ...remoteApps];
+    const map = new Map();
+    existingSelected.forEach(opt => map.set(opt.id, opt));
+    newOptions.forEach(opt => map.set(opt.id, opt));
+    
+    appOptions.value = Array.from(map.values());
+  } catch (e) {
+    console.error(e);
+  } finally {
+    appSearchLoading.value = false;
+  }
+};
+const fetchAppsByIds = async (ids: number[]) => {
+  if (!ids.length) return;
+  // searchApps is local API, getApps is better if searchApps not available
+  // But we need to filter by IDs.
+  // Actually we can just fetch all local apps and filter.
+  // Or if searchApps exists in admin.ts (it does not currently), use it.
+  // admin.ts has getApps(), which returns all.
+  const allApps = await getApps();
+  const matches = allApps.filter(a => ids.includes(a.id));
+  mergeAppOptions(matches);
+};
 const fetchList = async () => {
   const { items: its, total: t } = await getBlogs({
     status: status.value || undefined,
@@ -569,6 +653,8 @@ const openCreate = () => {
   allowComments.value = true;
   authorList.value = authStore.username ? [authStore.username] : [];
   selectedTags.value = [];
+  selectedApps.value = [];
+  appOptions.value = [];
   autoSaveTip.value = '';
   fullScreen.value = true;
   restoreDraftIfAny();
@@ -602,6 +688,17 @@ const editRow = (row: Blog) => {
     ? row.tag_ids
     : (row.tag_ids ? row.tag_ids.split(',').map((s: string) => Number(s)) : []);
   selectedTags.value = tagIds;
+  
+  const appIds = Array.isArray((row as any).app_ids) 
+    ? (row as any).app_ids
+    : ((row as any).app_ids ? (row as any).app_ids.split(',').map((s: string) => Number(s)) : []);
+  selectedApps.value = appIds;
+  // If editing, we need to load the selected apps into options so they display correctly
+  if (appIds.length > 0) {
+    // Fetch apps details
+    fetchAppsByIds(appIds);
+  }
+
   fullScreen.value = true;
   slugEdited.value = true;
   autoSaveTip.value = '';
@@ -706,8 +803,43 @@ const save = async () => {
     form.value.author_names = authorList.value.join(',');
     form.value.scheduled_at = scheduled.value || null;
     form.value.allow_comments = allowComments.value ? 1 : 0;
+    
+    // Resolve apps (import remote ones)
+    const finalAppIds: number[] = [];
+    for (const app of selectedApps.value) {
+      if (typeof app === 'number') {
+        finalAppIds.push(app);
+      } else if (typeof app === 'string') {
+        // It's a remote ID, find the object in options
+        const remoteApp = appOptions.value.find(a => String(a.id) === app);
+        if (remoteApp) {
+          try {
+            // Import to local
+            const created = await createApp({
+              name: remoteApp.name,
+              icon_url: remoteApp.icon_url,
+              kind_name: (remoteApp as any).kind_name,
+              average_rating: String((remoteApp as any).average_rating || ''),
+              download_count_str: (remoteApp as any).download_count_str || String((remoteApp as any).download_count || ''),
+              original_id: String(remoteApp.id),
+              enabled: 1
+            } as any);
+            // If created returns object { id: ..., existed: ... } or just ID
+            // My API returns { id: ... }
+            if (created && (created as any).id) {
+              finalAppIds.push((created as any).id);
+            } else if (typeof created === 'number') {
+              finalAppIds.push(created);
+            }
+          } catch (e) {
+            console.error('Failed to import app:', remoteApp.name, e);
+          }
+        }
+      }
+    }
+
     const tagIds = await resolveTagIds();
-  const payload: Partial<Omit<Blog, 'tag_ids'>> & { tag_ids: number[] } = { ...form.value, tag_ids: tagIds };
+    const payload: Partial<Omit<Blog, 'tag_ids' | 'app_ids'>> & { tag_ids: number[]; app_ids: number[] } = { ...form.value, tag_ids: tagIds, app_ids: finalAppIds };
     if (markdownMode.value) {
       payload.content_markdown = contentMarkdown.value;
       payload.content_html = md.render(contentMarkdown.value || '');
@@ -865,7 +997,7 @@ const persistDraftToLocal = (clear = false) => {
     return;
   }
   if (editingId.value) return;
-  const draft = { form: form.value, markdownMode: markdownMode.value, contentMarkdown: contentMarkdown.value, authorList: authorList.value, selectedTags: selectedTags.value, scheduled: scheduled.value, allowComments: allowComments.value };
+  const draft = { form: form.value, markdownMode: markdownMode.value, contentMarkdown: contentMarkdown.value, authorList: authorList.value, selectedTags: selectedTags.value, selectedApps: selectedApps.value, scheduled: scheduled.value, allowComments: allowComments.value };
   localStorage.setItem('article_draft', JSON.stringify(draft));
 };
 
@@ -880,12 +1012,14 @@ const restoreDraftIfAny = () => {
     contentMarkdown.value = draft?.contentMarkdown || '';
     authorList.value = draft?.authorList || [];
     selectedTags.value = draft?.selectedTags || [];
+    selectedApps.value = draft?.selectedApps || [];
+    fetchAppsByIds(selectedApps.value);
     scheduled.value = draft?.scheduled || null;
     allowComments.value = draft?.allowComments ?? true;
   } catch {}
 };
 
-watch([form, contentMarkdown, markdownMode, authorList, selectedTags, scheduled, allowComments], () => {
+watch([form, contentMarkdown, markdownMode, authorList, selectedTags, selectedApps, scheduled, allowComments], () => {
   persistDraftToLocal();
 }, { deep: true });
 

@@ -230,6 +230,7 @@ export interface Blog {
   tag_ids?: string | number[] | null;
   tag_names?: string | null;
   tag_colors?: string | null;
+  app_ids?: string | number[] | null;
 }
 export interface BlogVersion {
   id: number;
@@ -281,11 +282,11 @@ export const getBlogs = async (params: { status?: string; page?: number; pageSiz
   const { data } = await api.get('/blogs', { params });
   return data as { items: Blog[]; total: number; page: number; pageSize: number };
 };
-export const createBlog = async (payload: Partial<Blog> & { tag_ids?: number[] }) => {
+export const createBlog = async (payload: Partial<Blog> & { tag_ids?: number[]; app_ids?: number[] }) => {
   const { data } = await api.post('/blogs', payload);
   return data.id as number;
 };
-export const updateBlog = async (id: number, payload: Partial<Blog> & { tag_ids?: number[] }) => {
+export const updateBlog = async (id: number, payload: Partial<Blog> & { tag_ids?: number[]; app_ids?: number[] }) => {
   await api.put(`/blogs/${id}`, payload);
 };
 export const deleteBlog = async (id: number) => {
@@ -321,6 +322,14 @@ export interface AppItem {
 }
 export const getApps = async () => {
   const { data } = await api.get('/apps');
+  return data.items as AppItem[];
+};
+export const searchApps = async (params: { q?: string; ids?: number[]; limit?: number } = {}) => {
+  const query: Record<string, any> = {};
+  if (params.q) query.q = params.q;
+  if (params.ids && params.ids.length) query.ids = params.ids.join(',');
+  if (typeof params.limit !== 'undefined') query.limit = params.limit;
+  const { data } = await api.get('/apps/search', { params: query });
   return data.items as AppItem[];
 };
 export const createApp = async (payload: Partial<AppItem>) => {

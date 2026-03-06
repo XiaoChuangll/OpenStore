@@ -54,6 +54,13 @@
         </div>
       </div>
       <div class="article-content markdown-body" v-html="renderedContent"></div>
+      
+      <div class="related-apps" v-if="relatedApps.length">
+        <h3 class="related-title">关联应用</h3>
+        <div class="related-apps-grid">
+          <AppCard v-for="app in relatedApps" :key="app.id" :app="app" @click="goAppDetail(app)" />
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -70,6 +77,7 @@ import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
 import { getPublicBlogBySlug, type Blog } from '../services/api';
 import { useLayoutStore } from '../stores/layout';
+import AppCard from '../components/AppCard.vue';
 
 defineOptions({ name: 'ArticleDetailView' });
 
@@ -131,6 +139,14 @@ const tagList = computed(() => {
     color: (colors[index] || '').trim()
   })).filter(tag => tag.name);
 });
+
+const relatedApps = computed(() => article.value?.apps || []);
+
+const goAppDetail = (app: any) => {
+  if (app?.id) {
+    router.push({ path: `/apps/${app.id}`, query: { title: app.name } });
+  }
+};
 
 const fetchDetail = async (password?: string) => {
   const slug = String(route.params.slug || '');
@@ -257,6 +273,20 @@ watch(() => route.params.slug, () => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.related-apps {
+  margin-top: 30px;
+}
+.related-title {
+  margin: 0 0 16px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.related-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
 }
 .article-content {
   background: var(--el-bg-color);

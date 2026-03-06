@@ -127,6 +127,12 @@ db.serialize(() => {
     PRIMARY KEY (blog_id, tag_id)
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS blog_app_relations (
+    blog_id INTEGER NOT NULL,
+    app_id INTEGER NOT NULL,
+    PRIMARY KEY (blog_id, app_id)
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS blog_versions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     blog_id INTEGER NOT NULL,
@@ -215,6 +221,10 @@ db.serialize(() => {
     icon_url TEXT,
     download_url TEXT,
     enabled INTEGER DEFAULT 1,
+    kind_name TEXT,
+    average_rating TEXT,
+    download_count_str TEXT,
+    original_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
@@ -335,6 +345,10 @@ db.serialize(() => {
   ensureColumn('announcements', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
   ensureColumn('group_chats', 'enabled', 'INTEGER DEFAULT 1');
   ensureColumn('apps', 'icon_url', 'TEXT');
+  ensureColumn('apps', 'kind_name', 'TEXT');
+  ensureColumn('apps', 'average_rating', 'TEXT');
+  ensureColumn('apps', 'download_count_str', 'TEXT');
+  ensureColumn('apps', 'original_id', 'TEXT');
   ensureColumn('about_page', 'github_repo', 'TEXT');
   ensureColumn('about_page', 'author_avatar', 'TEXT');
   ensureColumn('about_page', 'author_github', 'TEXT');

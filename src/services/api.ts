@@ -432,6 +432,8 @@ export interface Blog {
   tag_names?: string | null;
   tag_colors?: string | null;
   has_password?: number | null;
+  app_ids?: string | number[] | null;
+  apps?: AppItem[];
 }
 export interface BlogCategory {
   id: number;
@@ -496,6 +498,7 @@ export interface AppItem {
   name: string;
   provider?: string;
   bg_url?: string;
+  icon_url?: string;
   download_url?: string;
   enabled: number;
 }
@@ -793,16 +796,22 @@ export const getTopics = async (page: number = 0, pageSize: number = 20): Promis
 export const getTopicDetail = async (substanceId: string): Promise<FullSubstanceInfo> => {
   try {
     const response = await apiClient.get(`/v0/substance/${substanceId}`);
+    
     let data = response.data;
 
-    // Normalize data structure
+    // Check if data is wrapped in another data property
     if (data && data.data) {
       data = data.data;
     }
-
+    
     // Unwrap apps if necessary (some APIs return wrapped app info)
     if (data && Array.isArray(data.apps)) {
       data.apps = data.apps.map((app: any) => app.info || app);
+    }
+    
+    // If data is still undefined or null, throw error
+    if (!data) {
+      throw new Error('No data received');
     }
 
     return data;
