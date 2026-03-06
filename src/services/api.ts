@@ -410,6 +410,61 @@ export const offlineAnnouncement = async (id: number): Promise<void> => {
   await apiClient.post(`/announcements/${id}/offline`);
 };
 
+export interface Blog {
+  id: number;
+  title: string;
+  slug: string;
+  content_html?: string;
+  content_markdown?: string;
+  summary?: string | null;
+  cover_url?: string | null;
+  cover_focus?: string | null;
+  author_names?: string | null;
+  status: 'draft' | 'published' | 'offline';
+  category_id?: number | null;
+  category_name?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  seo_keywords?: string | null;
+  published_at?: string | null;
+  updated_at?: string | null;
+  tag_ids?: string | number[] | null;
+  tag_names?: string | null;
+  tag_colors?: string | null;
+  has_password?: number | null;
+  app_ids?: string | number[] | null;
+  apps?: AppItem[];
+  views?: number;
+}
+export interface BlogCategory {
+  id: number;
+  name: string;
+  parent_id?: number | null;
+}
+export interface BlogTag {
+  id: number;
+  name: string;
+  color?: string | null;
+  group_name?: string | null;
+  usage_count?: number;
+}
+export const getPublicBlogCategories = async (): Promise<BlogCategory[]> => {
+  const response = await apiClient.get('/public/blog-categories');
+  return response.data.items || [];
+};
+export const getPublicBlogTags = async (): Promise<BlogTag[]> => {
+  const response = await apiClient.get('/public/blog-tags');
+  return response.data.items || [];
+};
+export const getPublicBlogs = async (params: { limit?: number; category_id?: number; tag_id?: number } = {}): Promise<Blog[]> => {
+  const response = await apiClient.get('/public/blogs', { params });
+  return response.data.items || [];
+};
+export const getPublicBlogBySlug = async (slug: string, password?: string): Promise<Blog> => {
+  const response = await apiClient.get(`/public/blogs/${slug}`, { params: password ? { password } : {} });
+  return response.data;
+};
+
 // Changelogs
 export interface Changelog {
   id: number;
@@ -444,6 +499,7 @@ export interface AppItem {
   name: string;
   provider?: string;
   bg_url?: string;
+  icon_url?: string;
   download_url?: string;
   enabled: number;
 }
@@ -741,16 +797,22 @@ export const getTopics = async (page: number = 0, pageSize: number = 20): Promis
 export const getTopicDetail = async (substanceId: string): Promise<FullSubstanceInfo> => {
   try {
     const response = await apiClient.get(`/v0/substance/${substanceId}`);
+    
     let data = response.data;
 
-    // Normalize data structure
+    // Check if data is wrapped in another data property
     if (data && data.data) {
       data = data.data;
     }
-
+    
     // Unwrap apps if necessary (some APIs return wrapped app info)
     if (data && Array.isArray(data.apps)) {
       data.apps = data.apps.map((app: any) => app.info || app);
+    }
+    
+    // If data is still undefined or null, throw error
+    if (!data) {
+      throw new Error('No data received');
     }
 
     return data;

@@ -6,7 +6,7 @@ import { useLayoutStore } from './stores/layout';
 import { usePlayerStore } from './stores/player';
 import { useRouter, useRoute } from 'vue-router';
 import MiniPlayer from './components/MiniPlayer.vue';
-import { Moon, Sunny, ArrowLeft, Compass, Menu, Refresh, ArrowDown, UserFilled, Collection, Close, Monitor, Edit, InfoFilled, CaretRight } from '@element-plus/icons-vue';
+import { Moon, Sunny, ArrowLeft, Compass, Menu, Refresh, ArrowDown, UserFilled, Collection, Close, Monitor, Edit, InfoFilled, CaretRight, Document } from '@element-plus/icons-vue';
 import { useAuthStore } from './stores/auth';
 
 const themeStore = useThemeStore();
@@ -20,6 +20,7 @@ const isDockHovered = ref(false);
 
 const subDockItems = [
   { path: '/submit', label: '投稿', icon: Edit },
+  { path: '/articles', label: '文章', icon: Document },
   { path: '/about', label: '关于', icon: InfoFilled },
 ];
 
@@ -28,7 +29,7 @@ const isMobileMenuOpen = ref(false);
 const isAuthed = computed(() => authStore.isLoggedIn());
 const adminUsername = computed(() => authStore.username || '管理员');
 
-const activeTab = computed(() => route.path);
+const activeTab = computed(() => route.path.startsWith('/articles') ? '/articles' : route.path);
 
 const navItems = [
   { path: '/', label: '探索', icon: Compass },
@@ -167,6 +168,8 @@ const activeIcon = computed(() => {
       return Refresh;
     case '/submit':
       return Edit;
+    case '/articles':
+      return Document;
     case '/about':
       return InfoFilled;
     default:
@@ -188,7 +191,7 @@ watch(
   () => [route.fullPath, route.meta.title, route.query.title],
   () => {
     const title = (route.query.title as string) || (route.meta.title as string) || 'OpenStore';
-    const isRoot = ['/', '/apps', '/updates', '/topics', '/submit', '/about'].includes(route.path);
+    const isRoot = ['/', '/apps', '/updates', '/topics', '/submit', '/articles', '/about'].includes(route.path);
     layoutStore.setPageInfo(title, !isRoot, () => router.back());
   },
   { immediate: true }
@@ -283,7 +286,7 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
     </el-header>
     <el-main class="main-content">
       <router-view v-slot="{ Component }">
-        <keep-alive include="HomeView,MusicView,AppsView,UpdatesView,TopicView,TotalRankView,GrowthRankView,HistoryRankView,NonHuaweiRankView,AppCardView" :max="20">
+        <keep-alive include="HomeView,MusicView,AppsView,UpdatesView,TopicView,TotalRankView,GrowthRankView,HistoryRankView,NonHuaweiRankView,AppCardView,ArticlesView" :max="20">
           <component :is="Component" :key="route.path" />
         </keep-alive>
       </router-view>
@@ -624,12 +627,22 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
 }
 
 .sub-dock-nav.is-visible {
-  max-width: 200px;
+  max-width: 90vw;
   padding: 6px 8px;
   margin-left: 12px;
   opacity: 1;
   border-width: 1px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sub-dock-nav.is-visible::-webkit-scrollbar {
+  display: none;
+}
+.sub-dock-nav .nav-item {
+  flex: 0 0 auto;
 }
 
 /* Removed old transition classes */

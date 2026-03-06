@@ -14,6 +14,8 @@ const AppsView = () => import('../views/AppsView.vue');
 const UpdatesView = () => import('../views/UpdatesView.vue');
 const UpdatesAppDetailView = () => import('../views/UpdatesAppDetailView.vue');
 const TopicView = () => import('../views/TopicView.vue');
+const ArticlesView = () => import('../views/ArticlesView.vue');
+const ArticleDetailView = () => import('../views/ArticleDetailView.vue');
 const AdminDashboardView = () => import('../views/admin/AdminDashboardView.vue');
 const SubmissionView = () => import('../views/SubmissionView.vue');
 const AboutView = () => import('../views/AboutView.vue');
@@ -118,6 +120,18 @@ const router = createRouter({
       name: 'non-huawei-rank',
       component: NonHuaweiRankView,
       meta: { title: '非华为榜', description: '探索非华为设备上的热门应用。' }
+    },
+    {
+      path: '/articles',
+      name: 'articles',
+      component: ArticlesView,
+      meta: { title: '文章', description: '阅读OpenStore发布的最新文章与专题内容。' }
+    },
+    {
+      path: '/articles/:slug',
+      name: 'article-detail',
+      component: ArticleDetailView,
+      meta: { title: '文章详情', description: '查看文章详细内容。' }
     },
     {
       path: '/submit',

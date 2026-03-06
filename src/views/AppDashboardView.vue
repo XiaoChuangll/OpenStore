@@ -433,6 +433,17 @@ const fetchData = async () => {
     layoutStore.setPageInfo(title, true, () => router.back());
     document.title = `OpenStore | ${title}`;
 
+    const description = info.description || info.intro || '';
+    if (description) {
+      let el = document.querySelector('meta[name="description"]');
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute('name', 'description');
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', description.slice(0, 160));
+    }
+
     if (info.pkg_name) {
       try {
         const metricsRes = await hmApi.get<any>(`apps/metrics/${encodeURIComponent(info.pkg_name)}`);

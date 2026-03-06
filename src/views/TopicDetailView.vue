@@ -76,11 +76,31 @@ const fetchDetail = async () => {
 
   try {
     const data = await getTopicDetail(id);
+    if (!data) {
+      throw new Error('专题数据为空');
+    }
     topic.value = data;
     
     // Set page title
-    layoutStore.setPageInfo(data.title || '专题详情', true, () => router.back());
-    document.title = `OpenStore | ${data.title || '专题详情'}`;
+    const title = data.title || '专题详情';
+    layoutStore.setPageInfo(title, true, () => router.back());
+    document.title = `OpenStore | ${title}`;
+
+    // Use subtitle as description if available, otherwise fallback to comment (if string)
+    const description = (data.subtitle || (typeof data.comment === 'string' ? data.comment : '')) || '';
+    if (description) {
+      let el = document.querySelector('meta[name=\"description\"]');
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute('name', 'description');
+        document.head.appendChild(el);
+      }
+      try {
+        el.setAttribute('content', description.slice(0, 160));
+      } catch (e) {
+        console.warn('Failed to set description', e);
+      }
+    }
   } catch (err: any) {
     console.error(err);
     error.value = '无法加载专题详情，请稍后再试';

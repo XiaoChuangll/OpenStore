@@ -16,6 +16,9 @@
       <el-tab-pane label="公告管理" name="announcements">
         <AnnouncementsView :embedded="true" />
       </el-tab-pane>
+      <el-tab-pane label="文章管理" name="articles">
+        <ArticlesAdminView :embedded="true" />
+      </el-tab-pane>
       <el-tab-pane label="环境变量" name="env">
         <EnvManagerView :embedded="true" />
       </el-tab-pane>
@@ -56,6 +59,7 @@ import MusicApisAdminView from './MusicApisAdminView.vue';
   import GroupChatsView from './GroupChatsView.vue';
   import AppsAdminView from './AppsAdminView.vue';
   import AnnouncementsView from './AnnouncementsView.vue';
+  import ArticlesAdminView from './ArticlesAdminView.vue';
   import EnvManagerView from './EnvManagerView.vue';
 import VisitorLogsView from './VisitorLogsView.vue';
 import SystemLogsView from './SystemLogsView.vue';
@@ -66,7 +70,7 @@ import AboutManageView from './AboutManageView.vue';
 import FeedbackAdminView from './FeedbackAdminView.vue';
 import SystemSettingsView from './SystemSettingsView.vue';
 
-const active = ref<'links' | 'groups' | 'apps' | 'announcements' | 'env' | 'visitors' | 'logs' | 'changelogs' | 'site-cards' | 'about' | 'incidents' | 'music-apis' | 'feedbacks' | 'settings'>('music-apis');
+const active = ref<'links' | 'groups' | 'apps' | 'announcements' | 'articles' | 'env' | 'visitors' | 'logs' | 'changelogs' | 'site-cards' | 'about' | 'incidents' | 'music-apis' | 'feedbacks' | 'settings'>('music-apis');
 const router = useRouter();
   const layoutStore = useLayoutStore();
   const goHome = () => router.push('/');
