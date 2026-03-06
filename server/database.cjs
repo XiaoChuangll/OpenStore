@@ -367,6 +367,7 @@ db.serialize(() => {
   ensureColumn('blogs', 'scheduled_at', 'DATETIME');
   ensureColumn('blogs', 'published_at', 'DATETIME');
   ensureColumn('blogs', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+  ensureColumn('blogs', 'views', 'INTEGER DEFAULT 0');
 });
 
 module.exports = db;

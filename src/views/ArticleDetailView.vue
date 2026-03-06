@@ -38,9 +38,10 @@
         <h1 class="article-title">{{ article?.title }}</h1>
         <p v-if="article?.summary" class="article-summary">{{ article.summary }}</p>
         <div class="article-meta">
-          <span>{{ authorText }}</span>
-          <span>{{ displayDate }}</span>
-          <span v-if="article?.category_name">{{ article.category_name }}</span>
+          <span class="meta-item"><el-icon><User /></el-icon>{{ authorText }}</span>
+          <span class="meta-item"><el-icon><Calendar /></el-icon>{{ displayDate }}</span>
+          <span v-if="article?.category_name" class="meta-item"><el-icon><Folder /></el-icon>{{ article.category_name }}</span>
+          <span v-if="article?.views !== undefined" class="meta-item"><el-icon><View /></el-icon>{{ formatViews(article.views) }} 次阅读</span>
         </div>
         <div class="article-tags" v-if="tagList.length">
           <el-tag
@@ -58,7 +59,7 @@
       <div class="related-apps" v-if="relatedApps.length">
         <h3 class="related-title">关联应用</h3>
         <div class="related-apps-grid">
-          <AppCard v-for="app in relatedApps" :key="app.id" :app="app" @click="goAppDetail(app)" />
+          <MobileAppCard v-for="app in relatedApps" :key="app.id" :app="app" @click="goAppDetail(app)" />
         </div>
       </div>
     </div>
@@ -76,8 +77,10 @@ import 'github-markdown-css/github-markdown.css';
 import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
 import { getPublicBlogBySlug, type Blog } from '../services/api';
+import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
-import AppCard from '../components/AppCard.vue';
+import MobileAppCard from '../components/MobileAppCard.vue';
+import { User, Calendar, Folder, View } from '@element-plus/icons-vue';
 
 defineOptions({ name: 'ArticleDetailView' });
 
@@ -87,6 +90,7 @@ const layoutStore = useLayoutStore();
 
 const loading = ref(true);
 const article = ref<Blog | null>(null);
+const fullAppDetails = ref<Record<string, any>>({});
 const error = ref('');
 const passwordRequired = ref(false);
 
@@ -130,6 +134,13 @@ const displayDate = computed(() => {
   });
 });
 
+const formatViews = (views: number) => {
+  if (views >= 10000) {
+    return (views / 10000).toFixed(1) + '万';
+  }
+  return views;
+};
+
 const tagList = computed(() => {
   if (!article.value) return [];
   const names = article.value.tag_names ? article.value.tag_names.split(',') : [];
@@ -140,11 +151,49 @@ const tagList = computed(() => {
   })).filter(tag => tag.name);
 });
 
-const relatedApps = computed(() => article.value?.apps || []);
+const relatedApps = computed(() => {
+  return (article.value?.apps || []).map((app: any) => {
+    // Merge local data with remote details if available
+    const remote = fullAppDetails.value[app.original_id] || {};
+    
+    // Check nested structures common in API responses
+    const remoteData = remote.data || remote;
+    
+    return {
+      ...app,
+      ...remoteData, // Remote details override local ones where applicable
+      // Ensure we have valid display fields
+      name: remoteData.name || app.name,
+      icon_url: remoteData.icon || remoteData.icon_url || app.icon_url || app.icon,
+      // API might return 'author' instead of 'developer_name' or 'provider'
+      developer_name: remoteData.author || remoteData.developer_name || remoteData.provider || app.provider || app.developer_name,
+      // API might return 'download_count' or 'down_count'
+      download_count: remoteData.down_count || remoteData.download_count || app.download_count || app.download_count_str || app.down_count,
+      // API might return 'rating' object or 'average_rating'
+      average_rating: (typeof remoteData.rating === 'object' ? remoteData.rating.average : remoteData.rating) || remoteData.average_rating || remoteData.score || app.average_rating || app.score,
+      kind_name: remoteData.kind_name || remoteData.category || app.kind_name || app.category
+    };
+  });
+});
 
 const goAppDetail = (app: any) => {
-  if (app?.id) {
-    router.push({ path: `/apps/${app.id}`, query: { title: app.name } });
+  const appId = app.original_id || app.id;
+  if (appId) {
+    // Check if the route uses query parameter (dashboard style) or path parameter (apps/:id style)
+    // Based on router config:
+    // path: '/dashboard', name: 'app-dashboard' -> uses query param ?app_id=...
+    // path: '/apps/:id', name: 'next-app-detail' -> uses path param
+    
+    // The user mentioned "http://localhost:3000/dashboard?title=..." is wrong
+    // And AppDashboardView expects 'app_id' in query
+    
+    router.push({ 
+      name: 'app-dashboard', 
+      query: { 
+        app_id: appId,
+        title: app.name 
+      }
+    });
   }
 };
 
@@ -174,6 +223,26 @@ const fetchDetail = async (password?: string) => {
         el.setAttribute('content', content);
       };
       updateMeta('description', description);
+    }
+
+    // Fetch remote details for related apps
+    if (data.apps && data.apps.length > 0) {
+      data.apps.forEach(async (app: any) => {
+        if (app.original_id) {
+          try {
+            const detail = await getAppDetail(app.original_id);
+            if (detail) {
+              console.log('Fetched app detail for', app.original_id, detail);
+              fullAppDetails.value = {
+                ...fullAppDetails.value,
+                [app.original_id]: detail
+              };
+            }
+          } catch (e) {
+            console.warn('Failed to fetch remote app detail', app.original_id, e);
+          }
+        }
+      });
     }
   } catch (err: any) {
     const status = err?.response?.status;
@@ -265,9 +334,15 @@ watch(() => route.params.slug, () => {
 .article-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 16px;
   font-size: 13px;
   color: var(--el-text-color-secondary);
+  align-items: center;
+}
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .article-tags {
   display: flex;
@@ -284,9 +359,9 @@ watch(() => route.params.slug, () => {
   color: var(--el-text-color-primary);
 }
 .related-apps-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 .article-content {
   background: var(--el-bg-color);

@@ -1017,6 +1017,10 @@ app.get('/api/public/blogs/:slug', (req, res) => {
       if (row.password && row.password !== password) {
         return res.status(403).json({ error: 'password_required' });
       }
+
+      // Increment view count
+      db.run(`UPDATE blogs SET views = views + 1 WHERE id = ?`, [row.id]);
+
       db.all(
         `SELECT a.*
          FROM blog_app_relations ar

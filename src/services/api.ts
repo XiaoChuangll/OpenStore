@@ -434,6 +434,7 @@ export interface Blog {
   has_password?: number | null;
   app_ids?: string | number[] | null;
   apps?: AppItem[];
+  views?: number;
 }
 export interface BlogCategory {
   id: number;
