@@ -432,6 +432,7 @@ export interface Blog {
   tag_names?: string | null;
   tag_colors?: string | null;
   has_password?: number | null;
+  allow_comments?: number | null;
   app_ids?: string | number[] | null;
   apps?: AppItem[];
   views?: number;

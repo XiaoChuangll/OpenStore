@@ -84,7 +84,7 @@
                         v-model="contentMarkdown" 
                         class="markdown-editor"
                         placeholder="在此编写 Markdown 内容"
-                        :autosize="{ minRows: 20, maxRows: 30 }"
+                        :autosize="{ minRows: 20 }"
                         resize="none"
                       />
                     </div>
@@ -117,7 +117,11 @@ import { getChangelogs, createChangelog, updateChangelog, deleteChangelog } from
 import { onWS } from '../../services/ws';
 import type { Changelog } from '../../services/api';
 import MarkdownIt from 'markdown-it';
-import 'github-markdown-css';
+import markdownItKatex from 'markdown-it-katex';
+import hljs from 'highlight.js';
+import 'github-markdown-css/github-markdown-light.css';
+import 'highlight.js/styles/atom-one-light.css';
+import 'katex/dist/katex.min.css';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
@@ -145,8 +149,17 @@ const md = new MarkdownIt({
   html: true,
   linkify: true,
   typographer: true,
-  breaks: true, // Support GFM line breaks
+  breaks: true,
+  highlight: function (str, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return hljs.highlight(str, { language: lang }).value;
+      } catch (__) {}
+    }
+    return ''; // use external default escaping
+  }
 });
+md.use(markdownItKatex);
 
 const markdownPreview = computed(() => md.render(contentMarkdown.value || ''));
 

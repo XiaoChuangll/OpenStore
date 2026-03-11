@@ -7,7 +7,7 @@
     </el-page-header>
 
     <el-row :gutter="20">
-      <el-col :md="8" :xs="24">
+      <el-col :span="24">
         <el-card class="mb-4">
           <div class="card-header"><h3>公告分类</h3><el-button size="small" @click="openCreateCategory">新增分类</el-button></div>
           <el-table :data="categories" :height="categoryTableHeight">
@@ -21,7 +21,7 @@
           </el-table>
         </el-card>
       </el-col>
-      <el-col :md="16" :xs="24">
+      <el-col :span="24">
         <el-card class="mb-4">
           <div class="card-header"><h3>公告列表</h3><el-button type="primary" size="small" @click="openCreate">新增公告</el-button></div>
           <div class="toolbar">
@@ -153,7 +153,7 @@
                         v-model="contentMarkdown" 
                         class="markdown-editor"
                         placeholder="在此编写 Markdown 内容"
-                        :autosize="{ minRows: 20, maxRows: 30 }"
+                        :autosize="{ minRows: 20 }"
                         resize="none"
                       />
                     </div>
@@ -200,6 +200,11 @@ import { ElMessage } from 'element-plus';
 import { useRouter } from 'vue-router';
 import { getAnnouncementCategories, createAnnouncementCategory, updateAnnouncementCategory, deleteAnnouncementCategory, getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, publishAnnouncement, offlineAnnouncement, type AnnouncementCategory, type Announcement } from '../../services/admin';
 import MarkdownIt from 'markdown-it';
+import markdownItKatex from 'markdown-it-katex';
+import hljs from 'highlight.js';
+import 'github-markdown-css/github-markdown-light.css';
+import 'highlight.js/styles/atom-one-light.css';
+import 'katex/dist/katex.min.css';
 import { QuillEditor } from '@vueup/vue-quill';
 import '@vueup/vue-quill/dist/vue-quill.snow.css';
 
@@ -222,10 +227,20 @@ const scheduled = ref<string | null>(null);
 const form = ref<Partial<Announcement>>({ title: '', content_html: '', status: 'draft', category_id: null, scheduled_at: null });
 const markdownMode = ref<boolean>(false);
 const md = new MarkdownIt({
-  html: true, // 启用HTML标签
-  linkify: true, // 自动将URL转换为链接
-  typographer: true, // 启用一些语言中性的替换和引用美化
+  html: true,
+  linkify: true,
+  typographer: true,
+  breaks: true,
+  highlight: function (str, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return hljs.highlight(str, { language: lang }).value;
+      } catch (__) {}
+    }
+    return ''; // use external default escaping
+  }
 });
+md.use(markdownItKatex);
   const contentMarkdown = ref<string>('');
   const markdownPreview = computed(() => md.render(contentMarkdown.value || ''));
   // 移动端适配：检测窗口宽度

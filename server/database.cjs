@@ -133,6 +133,34 @@ db.serialize(() => {
     PRIMARY KEY (blog_id, app_id)
   )`);
 
+  // New table for standalone article-related apps (decoupled from main apps table)
+  db.run(`CREATE TABLE IF NOT EXISTS blog_related_apps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    blog_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    icon_url TEXT,
+    developer_name TEXT,
+    kind_name TEXT,
+    average_rating TEXT,
+    download_count_str TEXT,
+    original_id TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    blog_id INTEGER NOT NULL,
+    parent_id INTEGER,
+    nickname TEXT NOT NULL,
+    email TEXT,
+    content TEXT NOT NULL,
+    status TEXT DEFAULT 'pending', -- pending, approved, spam, trash
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS blog_versions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     blog_id INTEGER NOT NULL,

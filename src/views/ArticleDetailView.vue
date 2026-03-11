@@ -62,6 +62,13 @@
           <MobileAppCard v-for="app in relatedApps" :key="app.id" :app="app" @click="goAppDetail(app)" />
         </div>
       </div>
+
+      <div class="comments-section" v-if="article?.allow_comments">
+        <h3 class="comments-title">
+          评论
+        </h3>
+        <CommentSection :blog-id="article.id" />
+      </div>
     </div>
   </div>
 </template>
@@ -73,14 +80,15 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import MarkdownIt from 'markdown-it';
 import markdownItKatex from 'markdown-it-katex';
 import hljs from 'highlight.js';
-import 'github-markdown-css/github-markdown.css';
-import 'highlight.js/styles/github.css';
+import 'github-markdown-css/github-markdown-light.css';
+import 'highlight.js/styles/atom-one-light.css';
 import 'katex/dist/katex.min.css';
 import { getPublicBlogBySlug, type Blog } from '../services/api';
 import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
 import MobileAppCard from '../components/MobileAppCard.vue';
 import { User, Calendar, Folder, View } from '@element-plus/icons-vue';
+import CommentSection from '../components/CommentSection.vue';
 
 defineOptions({ name: 'ArticleDetailView' });
 
@@ -101,11 +109,13 @@ const md = new MarkdownIt({
   breaks: true
 });
 md.set({
-  highlight: (str, lang) => {
+  highlight: function (str, lang) {
     if (lang && hljs.getLanguage(lang)) {
-      return `<pre class="hljs"><code>${hljs.highlight(str, { language: lang }).value}</code></pre>`;
+      try {
+        return hljs.highlight(str, { language: lang }).value;
+      } catch (__) {}
     }
-    return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`;
+    return ''; // use external default escaping
   }
 });
 md.use(markdownItKatex);
@@ -154,7 +164,10 @@ const tagList = computed(() => {
 const relatedApps = computed(() => {
   return (article.value?.apps || []).map((app: any) => {
     // Merge local data with remote details if available
-    const remote = fullAppDetails.value[app.original_id] || {};
+    // For apps from standalone table, app.original_id is the key
+    // For apps from legacy relation, we also use original_id if available
+    const remoteId = app.original_id || String(app.id);
+    const remote = fullAppDetails.value[remoteId] || {};
     
     // Check nested structures common in API responses
     const remoteData = remote.data || remote;
@@ -349,52 +362,92 @@ watch(() => route.params.slug, () => {
   flex-wrap: wrap;
   gap: 8px;
 }
-.related-apps {
-  margin-top: 30px;
-}
-.related-title {
-  margin: 0 0 16px 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-.related-apps-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 .article-content {
   background: var(--el-bg-color);
   border-radius: 16px;
   padding: 20px;
   border: 1px solid var(--el-border-color-lighter);
 }
+.related-apps {
+  margin-top: 20px;
+}
+.comments-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+.related-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.related-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.comments-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+.comments-placeholder {
+  background: var(--el-bg-color);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid var(--el-border-color-lighter);
+}
+
 .markdown-body {
   color: var(--el-text-color-primary);
+  background-color: transparent;
 }
-.markdown-body :deep(pre) {
-  background: #0f172a;
+/* Dark mode adaptation for markdown-body */
+html.dark .markdown-body {
+  color: #c9d1d9;
 }
-.markdown-body :deep(code) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+html.dark .markdown-body table tr {
+  background-color: #0d1117;
+  border-top-color: #30363d;
 }
-.markdown-body :deep(blockquote) {
-  border-left: 4px solid var(--el-border-color);
-  padding-left: 12px;
-  color: var(--el-text-color-secondary);
+html.dark .markdown-body table tr:nth-child(2n) {
+  background-color: #161b22;
 }
-.markdown-body :deep(img) {
-  max-width: 100%;
+html.dark .markdown-body table th,
+html.dark .markdown-body table td {
+  border-color: #30363d;
+}
+html.dark .markdown-body code {
+  background-color: rgba(110, 118, 129, 0.4);
+}
+html.dark .markdown-body pre {
+  background-color: #161b22;
+}
+html.dark .markdown-body blockquote {
+  color: #8b949e;
+  border-left-color: #30363d;
+}
+html.dark .markdown-body hr {
+  background-color: #30363d;
+}
+html.dark .markdown-body a {
+  color: #58a6ff;
+}
+html.dark .markdown-body h1,
+html.dark .markdown-body h2,
+html.dark .markdown-body h3,
+html.dark .markdown-body h4,
+html.dark .markdown-body h5,
+html.dark .markdown-body h6 {
+  color: #c9d1d9;
+  border-bottom-color: #21262d;
 }
 @media (max-width: 768px) {
   .article-detail-view {
     padding: 16px;
-  }
-  .detail-cover {
-    height: 220px;
-  }
-  .article-title {
-    font-size: 22px;
   }
 }
 </style>

@@ -20,11 +20,11 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Static uploads
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
+// Ensure /uploads is served correctly before SPA fallback
 app.use('/uploads', express.static(uploadsDir));
 
 // Serve static frontend assets
@@ -332,8 +332,40 @@ app.post('/api/upload', requireAuth, upload.single('file'), (req, res) => {
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
   const host = req.headers['host'];
   // const url = `${protocol}://${host}/uploads/${req.file.filename}`;
+  // Ensure the path starts with /uploads/
   const url = `/uploads/${req.file.filename}`;
   res.json({ url });
+});
+
+// List uploaded files endpoint
+app.get('/api/uploads', requireAuth, (req, res) => {
+  fs.readdir(uploadsDir, (err, files) => {
+    if (err) {
+      console.error('Failed to list uploads:', err);
+      return res.status(500).json({ error: 'Failed to list uploads' });
+    }
+
+    // Filter for image files and sort by modification time (newest first)
+    const fileStats = files
+      .map(file => {
+        try {
+          const filePath = path.join(uploadsDir, file);
+          const stats = fs.statSync(filePath);
+          return {
+            name: file,
+            url: `/uploads/${file}`,
+            mtime: stats.mtimeMs,
+            size: stats.size
+          };
+        } catch (e) {
+          return null;
+        }
+      })
+      .filter(f => f && /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(f.name))
+      .sort((a, b) => b.mtime - a.mtime);
+
+    res.json({ items: fileStats });
+  });
 });
 
 // Proxy to UptimeRobot
@@ -813,6 +845,186 @@ app.get('/api/apps', requireAuth, (req, res) => {
     res.json({ items: rows });
   });
 });
+
+// --- Comment System ---
+
+// Get comments for a blog post (public)
+app.get('/api/public/comments', (req, res) => {
+  const { blog_id, page = 1, pageSize = 20 } = req.query;
+  if (!blog_id) return res.status(400).json({ error: 'Missing blog_id' });
+
+  const limit = Number(pageSize);
+  const offset = (Number(page) - 1) * limit;
+
+  db.all(
+    `SELECT * FROM comments WHERE blog_id = ? AND status = 'approved' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    [blog_id, limit, offset],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      db.get(`SELECT COUNT(*) as total FROM comments WHERE blog_id = ? AND status = 'approved'`, [blog_id], (e2, count) => {
+        if (e2) return res.status(500).json({ error: e2.message });
+        res.json({ items: rows, total: count.total, page: Number(page), pageSize: limit });
+      });
+    }
+  );
+});
+
+// Post a new comment (public)
+app.post('/api/public/comments', (req, res) => {
+  const { blog_id, parent_id, nickname, email, content } = req.body;
+  if (!blog_id || !nickname || !content) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  // Basic validation
+  if (content.length > 1000) return res.status(400).json({ error: 'Content too long' });
+
+  // Default status: pending for moderation
+  const status = 'pending'; 
+  
+  db.run(
+    `INSERT INTO comments (blog_id, parent_id, nickname, email, content, status, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [blog_id, parent_id || null, nickname, email || null, content, status, req.ip, req.get('User-Agent')],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ id: this.lastID, status });
+    }
+  );
+});
+
+// Get all comments for admin (with filtering)
+app.get('/api/admin/comments', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const page = Number(req.query.page || 1);
+  const pageSize = Number(req.query.pageSize || 20);
+  const offset = (page - 1) * pageSize;
+  const status = req.query.status;
+  const blogId = req.query.blog_id;
+
+  let whereClause = '1=1';
+  const params = [];
+
+  if (status && status !== 'all') {
+    whereClause += ' AND c.status = ?';
+    params.push(status);
+  }
+  if (blogId) {
+    whereClause += ' AND c.blog_id = ?';
+    params.push(blogId);
+  }
+
+  const countSql = `SELECT COUNT(*) as total FROM comments c WHERE ${whereClause}`;
+  db.get(countSql, params, (err, countResult) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    const sql = `
+      SELECT c.*, b.title as blog_title 
+      FROM comments c 
+      LEFT JOIN blogs b ON c.blog_id = b.id 
+      WHERE ${whereClause} 
+      ORDER BY c.created_at DESC 
+      LIMIT ? OFFSET ?
+    `;
+    db.all(sql, [...params, pageSize, offset], (err2, rows) => {
+      if (err2) return res.status(500).json({ error: err2.message });
+      res.json({ items: rows, total: countResult?.total || 0, page, pageSize });
+    });
+  });
+});
+
+// Update comment (status, content, etc.)
+app.put('/api/admin/comments/:id', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const id = Number(req.params.id);
+  const { status, content, nickname, email } = req.body || {};
+
+  const updates = [];
+  const params = [];
+
+  if (status !== undefined) {
+    updates.push('status = ?');
+    params.push(status);
+  }
+  if (content !== undefined) {
+    updates.push('content = ?');
+    params.push(content);
+  }
+  if (nickname !== undefined) {
+    updates.push('nickname = ?');
+    params.push(nickname);
+  }
+  if (email !== undefined) {
+    updates.push('email = ?');
+    params.push(email);
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No fields to update' });
+  }
+
+  updates.push('updated_at = CURRENT_TIMESTAMP');
+  params.push(id);
+
+  db.run(`UPDATE comments SET ${updates.join(', ')} WHERE id = ?`, params, (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    logAction(req.user?.username, 'update', 'comments', id, { status, content });
+    res.json({ success: true });
+  });
+});
+
+// Delete comment(s)
+app.delete('/api/admin/comments/:id', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const id = Number(req.params.id);
+  db.run('DELETE FROM comments WHERE id = ?', [id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    logAction(req.user?.username, 'delete', 'comments', id, {});
+    res.json({ success: true, deleted: 1 });
+  });
+});
+
+// Batch delete comments
+app.post('/api/admin/comments/batch-delete', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const { ids } = req.body || {};
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'No IDs provided' });
+  }
+  const placeholders = ids.map(() => '?').join(',');
+  db.run(`DELETE FROM comments WHERE id IN (${placeholders})`, ids, (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    logAction(req.user?.username, 'batch-delete', 'comments', 0, { count: ids.length });
+    res.json({ success: true, deleted: ids.length });
+  });
+});
+
+// Batch update comment status
+app.post('/api/admin/comments/batch-status', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const { ids, status } = req.body || {};
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'No IDs provided' });
+  }
+  if (!status) {
+    return res.status(400).json({ error: 'No status provided' });
+  }
+  const placeholders = ids.map(() => '?').join(',');
+  db.run(`UPDATE comments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`, [status, ...ids], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    logAction(req.user?.username, 'batch-status', 'comments', 0, { count: ids.length, status });
+    res.json({ success: true, updated: ids.length });
+  });
+});
+
+// Get blogs list for filtering
+app.get('/api/admin/comments/blogs', requireAuth, (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  db.all('SELECT id, title FROM blogs ORDER BY id DESC LIMIT 100', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ items: rows });
+  });
+});
+
 app.get('/api/apps/search', requireAuth, (req, res) => {
   const q = String(req.query.q || '').trim();
   const idsRaw = String(req.query.ids || '').trim();
@@ -1021,12 +1233,9 @@ app.get('/api/public/blogs/:slug', (req, res) => {
       // Increment view count
       db.run(`UPDATE blogs SET views = views + 1 WHERE id = ?`, [row.id]);
 
+      // Fetch related apps from standalone table
       db.all(
-        `SELECT a.*
-         FROM blog_app_relations ar
-         JOIN apps a ON ar.app_id = a.id
-         WHERE ar.blog_id = ? AND a.enabled = 1
-         ORDER BY a.id DESC`,
+        `SELECT * FROM blog_related_apps WHERE blog_id = ? ORDER BY id DESC`,
         [row.id],
         (e2, apps) => {
           if (e2) return res.status(500).json({ error: e2.message });
@@ -1236,18 +1445,35 @@ app.get('/api/blogs', requireAuth, (req, res) => {
      ORDER BY b.updated_at DESC
      LIMIT ? OFFSET ?`,
     [...params, ps, offset],
-    (err, rows) => {
+    async (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
+      
+      // Fetch related apps from standalone table for each blog
+      const enrichBlogs = async () => {
+        const enrichedRows = [];
+        for (const row of rows) {
+          const apps = await new Promise((resolve) => {
+            db.all(`SELECT * FROM blog_related_apps WHERE blog_id = ? ORDER BY id DESC`, [row.id], (e, r) => {
+              resolve(e ? [] : r);
+            });
+          });
+          enrichedRows.push({ ...row, apps });
+        }
+        return enrichedRows;
+      };
+
+      const items = await enrichBlogs();
+      
       db.get(`SELECT COUNT(*) AS total FROM blogs b ${where}`, params, (e2, c) => {
         if (e2) return res.status(500).json({ error: e2.message });
-        res.json({ items: rows, total: c.total, page: p, pageSize: ps });
+        res.json({ items, total: c.total, page: p, pageSize: ps });
       });
     }
   );
 });
 
 app.post('/api/blogs', requireAuth, (req, res) => {
-  const { title, slug, content_html, content_markdown, summary, cover_url, cover_focus, author_names, status = 'draft', category_id, seo_title, seo_description, seo_keywords, password, allow_comments = 1, scheduled_at, tag_ids = [], app_ids = [] } = req.body;
+  const { title, slug, content_html, content_markdown, summary, cover_url, cover_focus, author_names, status = 'draft', category_id, seo_title, seo_description, seo_keywords, password, allow_comments = 1, scheduled_at, tag_ids = [], related_apps = [] } = req.body;
   db.run(
     `INSERT INTO blogs (title, slug, content_html, content_markdown, summary, cover_url, cover_focus, author_names, status, category_id, seo_title, seo_description, seo_keywords, password, allow_comments, scheduled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [title, slug, content_html || '', content_markdown || null, summary || null, cover_url || null, cover_focus || null, author_names || null, status, category_id || null, seo_title || null, seo_description || null, seo_keywords || null, password || null, Number(allow_comments) ? 1 : 0, scheduled_at || null],
@@ -1258,9 +1484,13 @@ app.post('/api/blogs', requireAuth, (req, res) => {
       tagIds.forEach((tid) => {
         db.run(`INSERT OR IGNORE INTO blog_tag_relations (blog_id, tag_id) VALUES (?,?)`, [blogId, tid]);
       });
-      const appIds = Array.isArray(app_ids) ? app_ids : [];
-      appIds.forEach((aid) => {
-        db.run(`INSERT OR IGNORE INTO blog_app_relations (blog_id, app_id) VALUES (?,?)`, [blogId, aid]);
+      // Handle related apps (standalone table)
+      const apps = Array.isArray(related_apps) ? related_apps : [];
+      apps.forEach((app) => {
+        db.run(
+          `INSERT INTO blog_related_apps (blog_id, name, icon_url, developer_name, kind_name, average_rating, download_count_str, original_id) VALUES (?,?,?,?,?,?,?,?)`,
+          [blogId, app.name, app.icon_url || null, app.developer_name || null, app.kind_name || null, app.average_rating || null, app.download_count_str || null, app.original_id || null]
+        );
       });
       logAction(req.user?.username, 'create', 'blogs', blogId, { title });
       res.json({ id: blogId });
@@ -1270,7 +1500,7 @@ app.post('/api/blogs', requireAuth, (req, res) => {
 
 app.put('/api/blogs/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
-  const { title, slug, content_html, content_markdown, summary, cover_url, cover_focus, author_names, status, category_id, seo_title, seo_description, seo_keywords, password, allow_comments = 1, scheduled_at, tag_ids = [], app_ids = [] } = req.body;
+  const { title, slug, content_html, content_markdown, summary, cover_url, cover_focus, author_names, status, category_id, seo_title, seo_description, seo_keywords, password, allow_comments = 1, scheduled_at, tag_ids = [], related_apps = [] } = req.body;
   db.run(
     `UPDATE blogs SET title=?, slug=?, content_html=?, content_markdown=?, summary=?, cover_url=?, cover_focus=?, author_names=?, status=?, category_id=?, seo_title=?, seo_description=?, seo_keywords=?, password=?, allow_comments=?, scheduled_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
     [title, slug, content_html || '', content_markdown || null, summary || null, cover_url || null, cover_focus || null, author_names || null, status, category_id || null, seo_title || null, seo_description || null, seo_keywords || null, password || null, Number(allow_comments) ? 1 : 0, scheduled_at || null, id],
@@ -1282,10 +1512,14 @@ app.put('/api/blogs/:id', requireAuth, (req, res) => {
           db.run(`INSERT OR IGNORE INTO blog_tag_relations (blog_id, tag_id) VALUES (?,?)`, [id, tid]);
         });
       });
-      db.run(`DELETE FROM blog_app_relations WHERE blog_id=?`, [id], () => {
-        const appIds = Array.isArray(app_ids) ? app_ids : [];
-        appIds.forEach((aid) => {
-          db.run(`INSERT OR IGNORE INTO blog_app_relations (blog_id, app_id) VALUES (?,?)`, [id, aid]);
+      // Update related apps: delete old ones and insert new ones
+      db.run(`DELETE FROM blog_related_apps WHERE blog_id=?`, [id], () => {
+        const apps = Array.isArray(related_apps) ? related_apps : [];
+        apps.forEach((app) => {
+          db.run(
+            `INSERT INTO blog_related_apps (blog_id, name, icon_url, developer_name, kind_name, average_rating, download_count_str, original_id) VALUES (?,?,?,?,?,?,?,?)`,
+            [id, app.name, app.icon_url || null, app.developer_name || null, app.kind_name || null, app.average_rating || null, app.download_count_str || null, app.original_id || null]
+          );
         });
       });
       logAction(req.user?.username, 'update', 'blogs', id, { title });
@@ -1299,7 +1533,7 @@ app.delete('/api/blogs/:id', requireAuth, (req, res) => {
   db.run(`DELETE FROM blogs WHERE id=?`, [id], function(err){
     if (err) return res.status(500).json({ error: err.message });
     db.run(`DELETE FROM blog_tag_relations WHERE blog_id=?`, [id]);
-    db.run(`DELETE FROM blog_app_relations WHERE blog_id=?`, [id]);
+    db.run(`DELETE FROM blog_related_apps WHERE blog_id=?`, [id]);
     logAction(req.user?.username, 'delete', 'blogs', id);
     res.json({ deleted: this.changes });
   });

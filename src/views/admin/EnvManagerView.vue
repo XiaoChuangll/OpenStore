@@ -11,7 +11,7 @@
     </div>
 
     <el-row :gutter="20">
-      <el-col :md="8" :xs="24" v-for="(list, cat) in envMap" :key="String(cat)">
+      <el-col :span="24" v-for="(list, cat) in envMap" :key="String(cat)">
         <el-card class="mb-4">
           <div class="card-header"><h3>{{ labels[String(cat)] || String(cat) }}</h3></div>
           <el-table :data="list" @row-click="selectItem">

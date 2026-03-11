@@ -624,6 +624,59 @@ export const updateFeedback = async (id: number, data: { status?: 'pending' | 'a
   await api.put(`/feedbacks/${id}`, data);
 };
 
+export interface Comment {
+  id: number;
+  blog_id: number;
+  parent_id: number | null;
+  nickname: string;
+  email: string | null;
+  website: string | null;
+  content: string;
+  status: 'pending' | 'approved' | 'spam' | 'trash';
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+  updated_at: string;
+  blog_title?: string;
+}
+
+export interface CommentQuery {
+  status?: string;
+  blog_id?: number;
+}
+
+export const getComments = async (page = 1, pageSize = 20, query: CommentQuery = {}) => {
+  const params: Record<string, any> = { page, pageSize };
+  if (query.status) params.status = query.status;
+  if (query.blog_id) params.blog_id = query.blog_id;
+  const { data } = await api.get('/comments', { params });
+  return data as { items: Comment[]; total: number; page: number; pageSize: number };
+};
+
+export const updateComment = async (id: number, data: { status?: string; content?: string; nickname?: string; email?: string | null; website?: string }) => {
+  await api.put(`/comments/${id}`, data);
+};
+
+export const deleteComment = async (id: number) => {
+  const { data } = await api.delete(`/comments/${id}`);
+  return data as { success: boolean; deleted: number };
+};
+
+export const deleteComments = async (ids: number[]) => {
+  const { data } = await api.post('/comments/batch-delete', { ids });
+  return data as { success: boolean; deleted: number };
+};
+
+export const updateCommentsStatus = async (ids: number[], status: string) => {
+  const { data } = await api.post('/comments/batch-status', { ids, status });
+  return data as { success: boolean; updated: number };
+};
+
+export const getCommentBlogs = async () => {
+  const { data } = await api.get('/comments/blogs');
+  return data.items as { id: number; title: string }[];
+};
+
 // System Settings
 export const getSystemSettings = async () => {
   const { data } = await api.get('/settings');

@@ -7,7 +7,7 @@
     </el-page-header>
 
     <el-row :gutter="20">
-      <el-col :md="8" :xs="24">
+      <el-col :span="24">
         <el-card class="mb-4">
           <div class="card-header">
             <h3>文章分类</h3>
@@ -23,7 +23,9 @@
             </el-table-column>
           </el-table>
         </el-card>
+      </el-col>
 
+      <el-col :span="24">
         <el-card class="mb-4">
           <div class="card-header">
             <h3>标签管理</h3>
@@ -48,7 +50,7 @@
         </el-card>
       </el-col>
 
-      <el-col :md="16" :xs="24">
+      <el-col :span="24">
         <el-card class="mb-4">
           <div class="card-header">
             <h3>文章列表</h3>
@@ -268,9 +270,26 @@
               <div class="recent-uploads" v-if="recentUploads.length">
                 <div class="recent-title">媒体库</div>
                 <div class="recent-list">
-                  <el-tag v-for="item in recentUploads" :key="item.url" class="recent-item" @click="insertUpload(item)">
-                    {{ item.name }}
-                  </el-tag>
+                  <div 
+                    v-for="item in recentUploads" 
+                    :key="item.url" 
+                    class="recent-item-wrapper" 
+                    @click="insertUpload(item)"
+                    :title="item.name"
+                  >
+                    <el-image 
+                      :src="item.url" 
+                      class="recent-item-img" 
+                      fit="cover" 
+                      loading="lazy"
+                    >
+                      <template #error>
+                        <div class="image-slot">
+                          <el-icon><Picture /></el-icon>
+                        </div>
+                      </template>
+                    </el-image>
+                  </div>
                 </div>
               </div>
 
@@ -287,7 +306,7 @@
                   <el-col :xs="24" :md="12" class="markdown-col">
                     <div class="markdown-editor-wrapper">
                       <div class="sub-label">编辑区域</div>
-                      <el-input ref="markdownInputRef" type="textarea" v-model="contentMarkdown" class="markdown-editor" placeholder="在此编写 Markdown 内容" :autosize="{ minRows: 20, maxRows: 32 }" resize="none" />
+                      <el-input ref="markdownInputRef" type="textarea" v-model="contentMarkdown" class="markdown-editor" placeholder="在此编写 Markdown 内容" :autosize="{ minRows: 20 }" resize="none" />
                     </div>
                   </el-col>
                   <el-col :xs="24" :md="12" class="markdown-col">
@@ -380,17 +399,18 @@
 import { ref, onMounted, computed, watch, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { getBlogCategories, createBlogCategory, updateBlogCategory, deleteBlogCategory, getBlogTags, createBlogTag, updateBlogTag, deleteBlogTag, getBlogs, createBlog, updateBlog, deleteBlog, publishBlog, offlineBlog, getBlogVersions, createBlogVersion, restoreBlogVersion, uploadFile, createApp, getApps, type BlogCategory, type BlogTag, type Blog, type BlogVersion, type AppItem } from '../../services/admin';
+import { getBlogCategories, createBlogCategory, updateBlogCategory, deleteBlogCategory, getBlogTags, createBlogTag, updateBlogTag, deleteBlogTag, getBlogs, createBlog, updateBlog, deleteBlog, publishBlog, offlineBlog, getBlogVersions, createBlogVersion, restoreBlogVersion, uploadFile, getApps, type BlogCategory, type BlogTag, type Blog, type BlogVersion, type AppItem } from '../../services/admin';
 import { searchApps as searchNextApps } from '../../services/next-api';
 import { QuillEditor } from '@vueup/vue-quill';
 import '@vueup/vue-quill/dist/vue-quill.snow.css';
 import MarkdownIt from 'markdown-it';
 import markdownItKatex from 'markdown-it-katex';
 import hljs from 'highlight.js';
-import 'github-markdown-css/github-markdown.css';
-import 'highlight.js/styles/github.css';
+import 'github-markdown-css/github-markdown-light.css';
+import 'highlight.js/styles/atom-one-light.css';
 import 'katex/dist/katex.min.css';
 import { useAuthStore } from '../../stores/auth';
+import { Picture } from '@element-plus/icons-vue';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
@@ -593,23 +613,45 @@ const fetchAppsByIds = async (ids: number[]) => {
   mergeAppOptions(matches);
 };
 const fetchList = async () => {
-  const { items: its, total: t } = await getBlogs({
+  const data = await getBlogs({
     status: status.value || undefined,
     page: page.value,
     pageSize: pageSize.value,
     category_id: categoryFilter.value || undefined,
     tag_id: tagFilter.value || undefined
   });
-  items.value = its;
-  total.value = t;
+  items.value = data.items;
+  total.value = data.total;
 };
 
 onMounted(async () => {
   await fetchCategories();
   await fetchTags();
   await fetchList();
-  loadRecentUploads();
+  await loadRecentUploads();
 });
+import axios from 'axios';
+const getUploads = async () => {
+  const token = localStorage.getItem('token');
+  const res = await axios.get('/api/uploads', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.data.items;
+};
+
+const loadRecentUploads = async () => {
+  try {
+    const files = await getUploads();
+    // Only take top 20
+    recentUploads.value = files.slice(0, 20).map((f: any) => ({
+      name: f.name,
+      url: f.url,
+      type: 'image' // Assume image for now
+    }));
+  } catch (e) {
+    console.error('Failed to load uploads', e);
+  }
+};
 
 watch(status, fetchList);
 watch([categoryFilter, tagFilter], fetchList);
@@ -689,14 +731,36 @@ const editRow = (row: Blog) => {
     : (row.tag_ids ? row.tag_ids.split(',').map((s: string) => Number(s)) : []);
   selectedTags.value = tagIds;
   
-  const appIds = Array.isArray((row as any).app_ids) 
-    ? (row as any).app_ids
-    : ((row as any).app_ids ? (row as any).app_ids.split(',').map((s: string) => Number(s)) : []);
-  selectedApps.value = appIds;
-  // If editing, we need to load the selected apps into options so they display correctly
-  if (appIds.length > 0) {
-    // Fetch apps details
-    fetchAppsByIds(appIds);
+  // Handle related apps (new logic: use apps array from row if available, otherwise fallback)
+  // row.apps comes from the API response which now includes the related apps from blog_related_apps table
+  if ((row as any).apps && Array.isArray((row as any).apps)) {
+    const apps = (row as any).apps;
+    // Map apps to options format
+    const options = apps.map((app: any) => ({
+      id: app.original_id || String(app.id), // Use original_id as key for remote apps
+      name: app.name,
+      icon_url: app.icon_url,
+      provider: app.developer_name,
+      kind_name: app.kind_name,
+      average_rating: app.average_rating,
+      download_count_str: app.download_count_str,
+      enabled: 1
+    }));
+    
+    // Add to options
+    mergeAppOptions(options);
+    
+    // Set selected values (use ID string for remote apps)
+    selectedApps.value = options.map((o: any) => o.id);
+  } else {
+    // Fallback for legacy data (app_ids)
+    const appIds = Array.isArray((row as any).app_ids) 
+      ? (row as any).app_ids
+      : ((row as any).app_ids ? (row as any).app_ids.split(',').map((s: string) => Number(s)) : []);
+    selectedApps.value = appIds;
+    if (appIds.length > 0) {
+      fetchAppsByIds(appIds);
+    }
   }
 
   fullScreen.value = true;
@@ -804,50 +868,45 @@ const save = async () => {
     form.value.scheduled_at = scheduled.value || null;
     form.value.allow_comments = allowComments.value ? 1 : 0;
     
-    // Resolve apps (import remote ones)
-    const finalAppIds: number[] = [];
+    // Prepare related apps payload (standalone structure)
+    const relatedApps = [];
     for (const app of selectedApps.value) {
       if (typeof app === 'number') {
-        finalAppIds.push(app);
+        // Local app ID selected - fetch details to store snapshot
+        // Ideally we should have the full app object, but selectedApps only has IDs for local apps
+        // We need to find the app in appOptions
+        const localApp = appOptions.value.find(a => a.id === app);
+        if (localApp) {
+          relatedApps.push({
+            name: localApp.name,
+            icon_url: localApp.icon_url,
+            developer_name: (localApp as any).provider || (localApp as any).developer_name,
+            kind_name: (localApp as any).kind_name,
+            average_rating: String((localApp as any).average_rating || ''),
+            download_count_str: (localApp as any).download_count_str || String((localApp as any).download_count || ''),
+            original_id: (localApp as any).original_id || String(localApp.id)
+          });
+        }
       } else if (typeof app === 'string') {
-        // It's a remote ID
+        // It's a remote ID - find in options
         const remoteApp = appOptions.value.find(a => String(a.id) === app);
         if (remoteApp) {
-          try {
-            // Check if app already exists locally by original_id
-            // Ideally we should have an API to check existence or rely on createApp returning existing ID
-            // My API implementation of createApp checks original_id and returns existing if found
-            
-            const created = await createApp({
-              name: remoteApp.name,
-              icon_url: remoteApp.icon_url,
-              kind_name: (remoteApp as any).kind_name,
-              average_rating: String((remoteApp as any).average_rating || ''),
-              download_count_str: (remoteApp as any).download_count_str || String((remoteApp as any).download_count || ''),
-              original_id: String(remoteApp.id),
-              enabled: 1
-            } as any);
-
-            // The backend implementation of createApp (in server/index.cjs) handles deduplication:
-            // if (original_id) check DB, if exists return { id: row.id, existed: true }
-            // So calling createApp here is actually correct behavior: it either creates a new local record 
-            // OR returns the existing local record ID if it was already imported.
-            // This is necessary because the blog_app_relations table links to local app IDs, not remote original_ids.
-            
-            if (created && (created as any).id) {
-              finalAppIds.push((created as any).id);
-            } else if (typeof created === 'number') {
-              finalAppIds.push(created);
-            }
-          } catch (e) {
-            console.error('Failed to import app:', remoteApp.name, e);
-          }
+          relatedApps.push({
+            name: remoteApp.name,
+            icon_url: remoteApp.icon_url,
+            developer_name: (remoteApp as any).developer_name || (remoteApp as any).provider,
+            kind_name: (remoteApp as any).kind_name || (remoteApp as any).category,
+            average_rating: String((remoteApp as any).average_rating || (remoteApp as any).score || ''),
+            download_count_str: (remoteApp as any).download_count_str || String((remoteApp as any).download_count || (remoteApp as any).down_count || ''),
+            original_id: String(remoteApp.id)
+          });
         }
       }
     }
 
     const tagIds = await resolveTagIds();
-    const payload: Partial<Omit<Blog, 'tag_ids' | 'app_ids'>> & { tag_ids: number[]; app_ids: number[] } = { ...form.value, tag_ids: tagIds, app_ids: finalAppIds };
+    // We no longer send app_ids, instead we send related_apps
+    const payload: Partial<Omit<Blog, 'tag_ids' | 'app_ids'>> & { tag_ids: number[]; related_apps: any[] } = { ...form.value, tag_ids: tagIds, related_apps: relatedApps };
     if (markdownMode.value) {
       payload.content_markdown = contentMarkdown.value;
       payload.content_html = md.render(contentMarkdown.value || '');
@@ -983,20 +1042,14 @@ const toggleFullScreen = () => {
   fullScreen.value = !fullScreen.value;
 };
 
-const loadRecentUploads = () => {
-  try {
-    const raw = localStorage.getItem('article_recent_uploads');
-    recentUploads.value = raw ? JSON.parse(raw) : [];
-  } catch {
-    recentUploads.value = [];
-  }
-};
+// Removed duplicate loadRecentUploads function
 
 const addRecentUpload = (item: { url: string; name: string; type: string }) => {
+  // We are now loading from server, so no need to manage local storage recent uploads manually
+  // But for immediate feedback, we can add to the list
   const list = recentUploads.value.filter(i => i.url !== item.url);
   list.unshift(item);
-  recentUploads.value = list.slice(0, 12);
-  localStorage.setItem('article_recent_uploads', JSON.stringify(recentUploads.value));
+  recentUploads.value = list.slice(0, 20);
 };
 
 const persistDraftToLocal = (clear = false) => {
@@ -1186,9 +1239,12 @@ const openCompare = () => {
   margin-bottom: 12px;
 }
 .recent-uploads { margin-bottom: 12px; }
-.recent-title { font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 6px; }
-.recent-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.recent-item { cursor: pointer; }
+.recent-title { font-size: 14px; font-weight: 500; color: var(--el-text-color-primary); margin-bottom: 8px; }
+.recent-list { display: flex; flex-wrap: wrap; gap: 8px; max-height: 120px; overflow-y: auto; padding-bottom: 4px; }
+.recent-item-wrapper { width: 60px; height: 60px; border-radius: 4px; overflow: hidden; cursor: pointer; border: 1px solid var(--el-border-color); display: flex; align-items: center; justify-content: center; transition: all 0.2s; position: relative; }
+.recent-item-wrapper:hover { border-color: var(--el-color-primary); transform: scale(1.05); z-index: 1; }
+.recent-item-img { width: 100%; height: 100%; object-fit: cover; }
+.image-slot { display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; background: var(--el-fill-color-lighter); color: var(--el-text-color-secondary); }
 .editor-label { font-size: 14px; font-weight: 500; color: var(--el-text-color-primary); margin-bottom: 12px; }
 .editor-section {
   flex: 1;
