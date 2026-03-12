@@ -54,7 +54,16 @@ app.get('/articles/:slug', (req, res, next) => {
       // Inject SEO tags
       const title = `${row.title} - OpenStore`;
       const description = (row.seo_description || row.summary || '查看文章详细内容').replace(/"/g, '&quot;');
-      const keywords = (row.seo_keywords || `${row.title},OpenStore,鸿蒙应用,HarmonyOS`).replace(/"/g, '&quot;');
+      const defaultKeywords = 'OpenStore,华为应用市场看板,鸿蒙应用看板,鸿蒙应用数据面板,鸿蒙,应用商店,应用下载,榜单,更新,应用分发';
+      
+      let keywords = row.seo_keywords ? row.seo_keywords : row.title;
+      if (keywords) {
+        keywords = `${keywords},${defaultKeywords}`;
+      } else {
+        keywords = defaultKeywords;
+      }
+      keywords = keywords.replace(/"/g, '&quot;');
+      
       const image = row.cover_url || '';
 
       let modifiedHtml = html;
@@ -2893,3 +2902,4 @@ app.use('/api/admin', (req, res, next) => {
 app.get(/(.*)/, (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
+  

@@ -211,7 +211,16 @@
           </el-col>
           <el-col :span="24">
             <el-form-item label="SEO 关键词">
-              <el-input v-model="form.seo_keywords" placeholder="关键词（逗号分隔）" />
+              <el-select
+                v-model="seoKeywordsList"
+                multiple
+                filterable
+                allow-create
+                default-first-option
+                :reserve-keyword="false"
+                placeholder="输入关键词并按回车添加"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
 
@@ -222,7 +231,13 @@
           </el-col>
           <el-col :md="12" :xs="24">
             <el-form-item label="密码保护">
-              <el-input v-model="form.password" placeholder="可选，留空为公开" show-password />
+              <el-input 
+                v-model="form.password" 
+                placeholder="可选，留空为公开" 
+                show-password 
+                autocomplete="new-password"
+                name="article-password"
+              />
             </el-form-item>
           </el-col>
 
@@ -448,6 +463,7 @@ const authorOptions = ref<string[]>([]);
 const selectedApps = ref<number[]>([]);
 const appOptions = ref<AppItem[]>([]);
 const appSearchLoading = ref(false);
+const seoKeywordsList = ref<string[]>([]);
 
 const showCatDialog = ref(false);
 const catDialogTitle = ref('新增分类');
@@ -697,6 +713,7 @@ const openCreate = () => {
   selectedTags.value = [];
   selectedApps.value = [];
   appOptions.value = [];
+  seoKeywordsList.value = [];
   autoSaveTip.value = '';
   fullScreen.value = true;
   restoreDraftIfAny();
@@ -726,6 +743,7 @@ const editRow = (row: Blog) => {
   markdownMode.value = !!row.content_markdown;
   allowComments.value = row.allow_comments ? Number(row.allow_comments) === 1 : true;
   authorList.value = row.author_names ? row.author_names.split(',').map(s => s.trim()).filter(Boolean) : [];
+  seoKeywordsList.value = row.seo_keywords ? row.seo_keywords.split(',').map(s => s.trim()).filter(Boolean) : [];
   const tagIds = Array.isArray(row.tag_ids)
     ? row.tag_ids
     : (row.tag_ids ? row.tag_ids.split(',').map((s: string) => Number(s)) : []);
@@ -905,6 +923,9 @@ const save = async () => {
     }
 
     const tagIds = await resolveTagIds();
+    // Update seo_keywords from list
+    form.value.seo_keywords = seoKeywordsList.value.join(',');
+    
     // We no longer send app_ids, instead we send related_apps
     const payload: Partial<Omit<Blog, 'tag_ids' | 'app_ids'>> & { tag_ids: number[]; related_apps: any[] } = { ...form.value, tag_ids: tagIds, related_apps: relatedApps };
     if (markdownMode.value) {

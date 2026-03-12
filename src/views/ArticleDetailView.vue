@@ -224,19 +224,27 @@ const fetchDetail = async (password?: string) => {
     layoutStore.setPageInfo(title, true, () => router.back());
     document.title = `${title} - OpenStore`;
 
-    const description = data.summary || '';
-    if (description) {
-      const updateMeta = (name: string, content: string) => {
-        let el = document.querySelector(`meta[name="${name}"]`);
-        if (!el) {
-          el = document.createElement('meta');
-          el.setAttribute('name', name);
-          document.head.appendChild(el);
-        }
-        el.setAttribute('content', content);
-      };
-      updateMeta('description', description);
+    const description = data.seo_description || data.summary || '';
+    const defaultKeywords = 'OpenStore,华为应用市场看板,鸿蒙应用看板,鸿蒙应用数据面板,鸿蒙,应用商店,应用下载,榜单,更新,应用分发';
+    let keywords = data.seo_keywords ? data.seo_keywords : title;
+    if (keywords) {
+      keywords = `${keywords},${defaultKeywords}`;
+    } else {
+      keywords = defaultKeywords;
     }
+    
+    const updateMeta = (name: string, content: string) => {
+      let el = document.querySelector(`meta[name="${name}"]`);
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute('name', name);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', content);
+    };
+
+    if (description) updateMeta('description', description);
+    if (keywords) updateMeta('keywords', keywords);
 
     // Fetch remote details for related apps
     if (data.apps && data.apps.length > 0) {
