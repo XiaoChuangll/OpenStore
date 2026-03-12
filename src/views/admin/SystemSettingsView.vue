@@ -1,104 +1,272 @@
 <template>
   <div class="admin-page">
-    <div class="card">
-      <div class="card-header-row">
-        <div class="card-title-block">
-          <h3>主题设置</h3>
-        </div>
-        <div class="card-preview-row">
-          <div class="card-preview-block">
-            <div class="preview-card">
-              <div class="preview-header" :style="{ backgroundColor: previewColors.primary }">
-                <span class="preview-title">主题预览</span>
-              </div>
-              <div class="preview-body">
-                <div class="preview-row">
-                  <span class="preview-tag" :style="{ backgroundColor: previewColors.primary }">主要</span>
-                  <span class="preview-tag" :style="{ backgroundColor: previewColors.success }">成功</span>
-                  <span class="preview-tag" :style="{ backgroundColor: previewColors.warning }">警告</span>
-                  <span class="preview-tag" :style="{ backgroundColor: previewColors.danger }">危险</span>
-                </div>
-                <div class="preview-row">
-                  <button class="preview-button" :style="{ backgroundColor: previewColors.primary }">
-                    按钮示例
-                  </button>
-                  <span class="preview-chip" :style="{ borderColor: previewColors.info, color: previewColors.info }">
-                    信息提示
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="card-preview-extra">
-            <div class="preview-extra-card">
-              <div class="preview-extra-header">控件预览</div>
-              <div class="preview-extra-body">
-                <div class="preview-extra-row">
-                  <button class="preview-button" :style="{ backgroundColor: previewColors.primary }">
-                    主按钮
-                  </button>
-                  <button
-                    class="preview-button preview-button-ghost"
-                    :style="{ color: previewColors.primary, borderColor: previewColors.primary }"
-                  >
-                    幽灵按钮
-                  </button>
-                </div>
-                <div class="preview-extra-row">
-                  <span class="preview-tag" :style="{ backgroundColor: previewColors.success }">成功状态</span>
-                  <span class="preview-chip" :style="{ borderColor: previewColors.warning, color: previewColors.warning }">
-                    警告提示
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="form-grid">
-        <div class="form-item">
-          <label>主题色 (Primary)</label>
-          <div class="color-picker-row">
-            <el-color-picker v-model="theme.theme_primary_color" show-alpha />
-            <el-input v-model="theme.theme_primary_color" placeholder="默认蓝色" />
-          </div>
-        </div>
-        <div class="form-item">
-          <label>成功色 (Success)</label>
-          <div class="color-picker-row">
-            <el-color-picker v-model="theme.theme_success_color" show-alpha />
-            <el-input v-model="theme.theme_success_color" placeholder="默认绿色" />
-          </div>
-        </div>
-        <div class="form-item">
-          <label>警告色 (Warning)</label>
-          <div class="color-picker-row">
-            <el-color-picker v-model="theme.theme_warning_color" show-alpha />
-            <el-input v-model="theme.theme_warning_color" placeholder="默认橙色" />
-          </div>
-        </div>
-        <div class="form-item">
-          <label>危险色 (Danger)</label>
-          <div class="color-picker-row">
-            <el-color-picker v-model="theme.theme_danger_color" show-alpha />
-            <el-input v-model="theme.theme_danger_color" placeholder="默认红色" />
-          </div>
-        </div>
-        <div class="form-item">
-          <label>信息色 (Info)</label>
-          <div class="color-picker-row">
-            <el-color-picker v-model="theme.theme_info_color" show-alpha />
-            <el-input v-model="theme.theme_info_color" placeholder="默认灰色" />
-          </div>
-        </div>
-      </div>
-      
-      <div class="actions">
-        <el-button type="primary" @click="saveTheme">保存设置</el-button>
-        <el-button @click="resetTheme">重置表单</el-button>
-      </div>
+    <div class="page-header">
+      <h2 class="page-title">主题设置</h2>
     </div>
+
+    <el-row :gutter="24">
+      <!-- Settings Column -->
+      <el-col :xs="24" :lg="14">
+        <el-card class="settings-card" shadow="hover">
+          <template #header>
+            <div class="card-header">
+              <span>全局配色</span>
+              <el-button link type="primary" @click="resetTheme">恢复默认</el-button>
+            </div>
+          </template>
+
+          <el-form label-position="left">
+            <div class="settings-list">
+              <!-- Primary Color Item -->
+              <div class="setting-item primary-item">
+                <div class="setting-info">
+                  <div class="setting-label">主色调 (Primary)</div>
+                  <div class="setting-desc">用于按钮、链接、激活状态等核心交互元素</div>
+                </div>
+                <div class="setting-control">
+                  <el-color-picker v-model="theme.theme_primary_color" show-alpha />
+                  <div class="hex-input-wrapper">
+                    <el-input v-model="theme.theme_primary_color" placeholder="#409EFF" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="setting-divider"></div>
+
+              <!-- Functional Colors Grid -->
+              <div class="functional-grid">
+                <div class="functional-item">
+                  <div class="func-header">
+                    <span class="dot success"></span>
+                    <span class="func-label">成功 (Success)</span>
+                  </div>
+                  <div class="func-control">
+                    <el-color-picker v-model="theme.theme_success_color" show-alpha size="small" />
+                    <el-input v-model="theme.theme_success_color" placeholder="#67C23A" size="small" />
+                  </div>
+                </div>
+
+                <div class="functional-item">
+                  <div class="func-header">
+                    <span class="dot warning"></span>
+                    <span class="func-label">警告 (Warning)</span>
+                  </div>
+                  <div class="func-control">
+                    <el-color-picker v-model="theme.theme_warning_color" show-alpha size="small" />
+                    <el-input v-model="theme.theme_warning_color" placeholder="#E6A23C" size="small" />
+                  </div>
+                </div>
+
+                <div class="functional-item">
+                  <div class="func-header">
+                    <span class="dot danger"></span>
+                    <span class="func-label">危险 (Danger)</span>
+                  </div>
+                  <div class="func-control">
+                    <el-color-picker v-model="theme.theme_danger_color" show-alpha size="small" />
+                    <el-input v-model="theme.theme_danger_color" placeholder="#F56C6C" size="small" />
+                  </div>
+                </div>
+
+                <div class="functional-item">
+                  <div class="func-header">
+                    <span class="dot info"></span>
+                    <span class="func-label">信息 (Info)</span>
+                  </div>
+                  <div class="func-control">
+                    <el-color-picker v-model="theme.theme_info_color" show-alpha size="small" />
+                    <el-input v-model="theme.theme_info_color" placeholder="#909399" size="small" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <el-button type="primary" size="large" @click="saveTheme" :loading="saving" class="save-btn">
+                保存配置
+              </el-button>
+            </div>
+          </el-form>
+        </el-card>
+      </el-col>
+
+      <!-- Preview Column -->
+      <el-col :xs="24" :lg="10">
+        <div class="preview-container">
+          <el-divider content-position="center">实时预览</el-divider>
+          
+          <!-- Mock Interface -->
+          <div class="mock-window">
+            <div class="mock-header" :style="{ backgroundColor: previewColors.primary }">
+              <div class="mock-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <div class="mock-title">Dashboard</div>
+              <div class="mock-user"></div>
+            </div>
+            
+            <div class="mock-body">
+              <div class="mock-sidebar">
+                <div 
+                  class="mock-menu-item" 
+                  :class="{ active: activePreviewTab === 'overview' }"
+                  :style="activePreviewTab === 'overview' ? { color: previewColors.primary, backgroundColor: fadeColor(previewColors.primary, 0.1) } : {}"
+                  @click="activePreviewTab = 'overview'"
+                >
+                  <div class="mock-icon" :style="activePreviewTab === 'overview' ? { backgroundColor: previewColors.primary } : {}"></div>
+                  <span>概览</span>
+                </div>
+                <div 
+                  class="mock-menu-item" 
+                  :class="{ active: activePreviewTab === 'analytics' }"
+                  :style="activePreviewTab === 'analytics' ? { color: previewColors.primary, backgroundColor: fadeColor(previewColors.primary, 0.1) } : {}"
+                  @click="activePreviewTab = 'analytics'"
+                >
+                  <div class="mock-icon" :style="activePreviewTab === 'analytics' ? { backgroundColor: previewColors.primary } : {}"></div>
+                  <span>分析</span>
+                </div>
+                <div 
+                  class="mock-menu-item" 
+                  :class="{ active: activePreviewTab === 'settings' }"
+                  :style="activePreviewTab === 'settings' ? { color: previewColors.primary, backgroundColor: fadeColor(previewColors.primary, 0.1) } : {}"
+                  @click="activePreviewTab = 'settings'"
+                >
+                  <div class="mock-icon" :style="activePreviewTab === 'settings' ? { backgroundColor: previewColors.primary } : {}"></div>
+                  <span>设置</span>
+                </div>
+              </div>
+              
+              <div class="mock-content">
+                <!-- Overview Tab -->
+                <template v-if="activePreviewTab === 'overview'">
+                  <!-- Stats Cards -->
+                  <div class="mock-stats-row">
+                    <div class="mock-stat-card">
+                      <div class="stat-value" :style="{ color: previewColors.primary }">98.5%</div>
+                      <div class="stat-label">活跃度</div>
+                    </div>
+                    <div class="mock-stat-card">
+                      <div class="stat-value" :style="{ color: previewColors.success }">+12%</div>
+                      <div class="stat-label">增长</div>
+                    </div>
+                  </div>
+
+                  <!-- Components Showcase -->
+                  <div class="mock-section">
+                    <div class="mock-subtitle">组件示例</div>
+                    <div class="mock-buttons">
+                      <button class="mock-btn primary" :style="{ backgroundColor: previewColors.primary }">主要按钮</button>
+                      <button class="mock-btn success" :style="{ backgroundColor: previewColors.success }">成功</button>
+                      <button class="mock-btn warning" :style="{ backgroundColor: previewColors.warning }">警告</button>
+                      <button class="mock-btn danger" :style="{ backgroundColor: previewColors.danger }">危险</button>
+                    </div>
+                    
+                    <div class="mock-tags">
+                      <span class="mock-tag" :style="{ color: previewColors.primary, borderColor: previewColors.primary, backgroundColor: fadeColor(previewColors.primary, 0.1) }">标签一</span>
+                      <span class="mock-tag" :style="{ color: previewColors.success, borderColor: previewColors.success, backgroundColor: fadeColor(previewColors.success, 0.1) }">标签二</span>
+                      <span class="mock-tag" :style="{ color: previewColors.warning, borderColor: previewColors.warning, backgroundColor: fadeColor(previewColors.warning, 0.1) }">标签三</span>
+                    </div>
+
+                    <div class="mock-alert" :style="{ backgroundColor: fadeColor(previewColors.info, 0.1), borderLeftColor: previewColors.info }">
+                      <div class="alert-icon" :style="{ backgroundColor: previewColors.info }"></div>
+                      <div class="alert-text" :style="{ color: previewColors.info }">这是一条普通的消息提示</div>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Analytics Tab -->
+                <template v-if="activePreviewTab === 'analytics'">
+                  <div class="mock-section">
+                    <div class="mock-subtitle">数据趋势</div>
+                    <div class="mock-chart-placeholder" :style="{ borderColor: fadeColor(previewColors.primary, 0.3), backgroundColor: fadeColor(previewColors.primary, 0.05) }">
+                       <div class="mock-chart-line" :style="{ borderColor: previewColors.primary }"></div>
+                    </div>
+                  </div>
+                  <div class="mock-section">
+                    <div class="mock-subtitle">状态分布</div>
+                    <div class="mock-progress-list">
+                      <div class="mock-progress-item">
+                        <div class="mock-progress-label">已完成</div>
+                        <div class="mock-progress-bar-bg"><div class="mock-progress-bar" :style="{ width: '80%', backgroundColor: previewColors.success }"></div></div>
+                      </div>
+                      <div class="mock-progress-item">
+                        <div class="mock-progress-label">处理中</div>
+                        <div class="mock-progress-bar-bg"><div class="mock-progress-bar" :style="{ width: '45%', backgroundColor: previewColors.primary }"></div></div>
+                      </div>
+                      <div class="mock-progress-item">
+                        <div class="mock-progress-label">异常</div>
+                        <div class="mock-progress-bar-bg"><div class="mock-progress-bar" :style="{ width: '15%', backgroundColor: previewColors.danger }"></div></div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Settings Tab -->
+                <template v-if="activePreviewTab === 'settings'">
+                  <div class="mock-card-container">
+                    <div class="mock-card">
+                      <div class="mock-card-header">
+                        <div class="mock-card-title">个人资料</div>
+                        <div class="mock-card-btn" :style="{ color: previewColors.primary }">编辑</div>
+                      </div>
+                      <div class="mock-form-group">
+                        <div class="mock-avatar-row">
+                          <div class="mock-avatar-large"></div>
+                          <div class="mock-avatar-info">
+                            <div class="mock-avatar-name">Admin User</div>
+                            <div class="mock-avatar-role">Administrator</div>
+                          </div>
+                        </div>
+                        <div class="mock-form-item">
+                          <div class="mock-label">用户名</div>
+                          <div class="mock-input-styled">admin</div>
+                        </div>
+                        <div class="mock-form-item">
+                          <div class="mock-label">邮箱</div>
+                          <div class="mock-input-styled">admin@example.com</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="mock-card">
+                      <div class="mock-card-header">
+                        <div class="mock-card-title">偏好设置</div>
+                      </div>
+                      <div class="mock-list-item">
+                        <div class="mock-list-text">
+                          <div class="mock-list-title">消息通知</div>
+                          <div class="mock-list-desc">接收系统更新通知</div>
+                        </div>
+                        <div 
+                          class="mock-switch" 
+                          :style="{ backgroundColor: mockSettings.notifications ? previewColors.primary : '#dcdfe6' }"
+                          @click="mockSettings.notifications = !mockSettings.notifications"
+                        >
+                          <div class="mock-switch-dot" :style="{ transform: mockSettings.notifications ? 'translateX(16px)' : 'translateX(0)' }"></div>
+                        </div>
+                      </div>
+                      <div class="mock-list-item">
+                        <div class="mock-list-text">
+                          <div class="mock-list-title">自动保存</div>
+                          <div class="mock-list-desc">每5分钟自动保存</div>
+                        </div>
+                        <div 
+                          class="mock-switch" 
+                          :style="{ backgroundColor: mockSettings.autoSave ? previewColors.primary : '#dcdfe6' }"
+                          @click="mockSettings.autoSave = !mockSettings.autoSave"
+                        >
+                          <div class="mock-switch-dot" :style="{ transform: mockSettings.autoSave ? 'translateX(16px)' : 'translateX(0)' }"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
@@ -109,6 +277,15 @@ import { getSystemSettings, updateSystemSettings } from '../../services/admin';
 import { useThemeStore } from '../../stores/theme';
 
 const themeStore = useThemeStore();
+const saving = ref(false);
+const activePreviewTab = ref('overview');
+
+// Mock state for interactions
+const mockSettings = ref({
+  notifications: true,
+  autoSave: false
+});
+
 const theme = ref<Record<string, string>>({
   theme_primary_color: '',
   theme_success_color: '',
@@ -117,20 +294,31 @@ const theme = ref<Record<string, string>>({
   theme_info_color: '',
 });
 
+// Helper to simulate fade/alpha color
+// Simple hex to rgba approximation for preview
+const fadeColor = (hex: string, alpha: number) => {
+  if (!hex) return 'rgba(0,0,0,0.1)';
+  let c = hex.substring(1).split('');
+  if(c.length === 3) c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+  const r = parseInt(c[0]+c[1], 16);
+  const g = parseInt(c[2]+c[3], 16);
+  const b = parseInt(c[4]+c[5], 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
 const previewColors = computed(() => {
-  const rootStyle = getComputedStyle(document.documentElement);
-  const primary = theme.value.theme_primary_color || rootStyle.getPropertyValue('--el-color-primary').trim() || '#409EFF';
-  const success = theme.value.theme_success_color || rootStyle.getPropertyValue('--el-color-success').trim() || '#67C23A';
-  const warning = theme.value.theme_warning_color || rootStyle.getPropertyValue('--el-color-warning').trim() || '#E6A23C';
-  const danger = theme.value.theme_danger_color || rootStyle.getPropertyValue('--el-color-danger').trim() || '#F56C6C';
-  const info = theme.value.theme_info_color || rootStyle.getPropertyValue('--el-color-info').trim() || '#909399';
+  // Use default Element Plus colors if empty
+  const primary = theme.value.theme_primary_color || '#409EFF';
+  const success = theme.value.theme_success_color || '#67C23A';
+  const warning = theme.value.theme_warning_color || '#E6A23C';
+  const danger = theme.value.theme_danger_color || '#F56C6C';
+  const info = theme.value.theme_info_color || '#909399';
   return { primary, success, warning, danger, info };
 });
 
 const loadSettings = async () => {
   try {
     const settings = await getSystemSettings();
-    // Fill theme refs
     Object.keys(theme.value).forEach(k => {
       if (settings[k]) theme.value[k] = settings[k];
     });
@@ -140,18 +328,20 @@ const loadSettings = async () => {
 };
 
 const saveTheme = async () => {
+  saving.value = true;
   try {
     const payload: Record<string, string> = {};
     Object.keys(theme.value).forEach(k => {
-      payload[k] = theme.value[k] || ''; // Send empty string if cleared
+      payload[k] = theme.value[k] || ''; 
     });
     
     await updateSystemSettings(payload);
-    ElMessage.success('保存成功');
-    // Reload theme in store to apply immediately
+    ElMessage.success('主题配置已保存');
     themeStore.loadThemeSettings();
   } catch (e) {
     ElMessage.error('保存失败');
+  } finally {
+    saving.value = false;
   }
 };
 
@@ -172,198 +362,574 @@ onMounted(() => {
 
 <style scoped>
 .admin-page {
-  padding: 20px;
-  max-width: 920px;
+  padding: 24px;
+  max-width: 1200px;
   margin: 0 auto;
 }
-.card {
-  background: var(--el-bg-color);
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
+
+.page-header {
+  margin-bottom: 24px;
 }
-.card-preview-row {
-  display: flex;
-  align-items: stretch;
-  gap: 20px;
-}
-.card-header-row {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-.card-title-block h3 {
-  margin: 0 0 8px 0;
-  font-size: 18px;
-}
-.tip {
-  margin-bottom: 4px;
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
-}
-.card-preview-block {
-  flex-shrink: 0;
-}
-.card-preview-extra {
-  flex: 1;
-}
-.preview-card {
-  border-radius: 10px;
-  border: 1px solid var(--el-border-color-lighter);
-  overflow: hidden;
-  min-width: 260px;
-  max-width: 320px;
-  background: var(--el-fill-color-light);
-}
-.preview-header {
-  padding: 10px 14px;
-  color: #fff;
-}
-.preview-title {
-  font-size: 14px;
+
+.page-title {
+  font-size: 24px;
   font-weight: 600;
-}
-.preview-body {
-  padding: 12px 14px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.preview-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-.preview-tag {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  color: #fff;
-  white-space: nowrap;
-}
-.preview-button {
-  border: none;
-  outline: none;
-  padding: 6px 14px;
-  border-radius: 999px;
-  font-size: 13px;
-  color: #fff;
-  cursor: pointer;
-}
-.preview-chip {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  border-width: 1px;
-  border-style: solid;
-  background-color: transparent;
-}
-.preview-extra-card {
-  border-radius: 10px;
-  border: 1px dashed var(--el-border-color-lighter);
-  background: var(--el-bg-color);
-  padding: 12px 14px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.preview-extra-header {
-  font-size: 14px;
-  font-weight: 600;
+  margin: 0;
   color: var(--el-text-color-primary);
 }
-.preview-extra-body {
+
+.settings-card {
+  border-radius: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* New List Styles */
+.settings-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
-.preview-extra-row {
+
+.setting-item {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 8px 0;
 }
-.preview-button-ghost {
-  background-color: transparent;
-  color: inherit;
-  border: 1px solid currentColor;
+
+.setting-info {
+  flex: 1;
+  padding-right: 24px;
 }
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 24px;
-  margin-top: 8px;
+
+.setting-label {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--el-text-color-primary);
+  margin-bottom: 4px;
 }
-.form-item {
-  width: 100%;
+
+.setting-desc {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
-.form-item label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: bold;
-}
-.color-picker-row {
+
+.setting-control {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.color-picker-row .el-color-picker {
-  flex-shrink: 0;
+
+.hex-input-wrapper {
+  width: 140px;
 }
-.color-picker-row .el-color-picker__trigger {
-  width: 32px;
-  height: 32px;
+
+.setting-divider {
+  height: 1px;
+  background-color: var(--el-border-color-lighter);
+  margin: 24px 0;
+}
+
+/* Functional Colors Grid */
+.functional-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.functional-item {
+  background: var(--el-fill-color-light);
   border-radius: 8px;
-  padding: 0;
-  box-shadow: 0 0 0 1px var(--el-border-color-lighter);
-}
-.color-picker-row .el-color-picker__color-inner {
-  border-radius: 6px;
-}
-.color-picker-row .el-input {
-  flex: 1;
-}
-.color-picker-row .el-input__wrapper {
-  width: 100%;
-}
-.actions {
-  margin-top: 30px;
+  padding: 16px;
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 12px;
 }
-.actions .el-button + .el-button {
-  margin-left: 0;
+
+.func-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-@media (max-width: 900px) {
-  .card-header-row {
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot.success { background-color: #67C23A; }
+.dot.warning { background-color: #E6A23C; }
+.dot.danger { background-color: #F56C6C; }
+.dot.info { background-color: #909399; }
+
+.func-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--el-text-color-regular);
+}
+
+.func-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-actions {
+  margin-top: 32px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.save-btn {
+  min-width: 120px;
+}
+
+@media (max-width: 768px) {
+  .setting-item {
     flex-direction: column;
+    gap: 12px;
   }
-  .card-preview-row {
-    flex-direction: column;
-  }
-  .card-preview-block {
+  .setting-control {
     width: 100%;
   }
-  .preview-card {
-    max-width: 100%;
+  .hex-input-wrapper {
+    flex: 1;
   }
-}
-@media (max-width: 768px) {
-  .admin-page {
-    padding: 12px;
-  }
-  .form-grid {
+  .functional-grid {
     grid-template-columns: 1fr;
   }
-  .actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .actions .el-button {
-    width: 100%;
-  }
+}
+
+/* Preview Styles */
+.preview-container {
+  position: sticky;
+  top: 24px;
+}
+
+.mock-window {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.08);
+  border: 1px solid var(--el-border-color-lighter);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.mock-header {
+  height: 48px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: white;
+}
+
+.mock-dots {
+  display: flex;
+  gap: 6px;
+}
+.mock-dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.4);
+}
+
+.mock-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.mock-user {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.4);
+}
+
+.mock-body {
+  display: flex;
+  height: 320px;
+}
+
+.mock-sidebar {
+  width: 60px;
+  background: #f8f9fa;
+  border-right: 1px solid #eee;
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.mock-menu-item {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 9px;
+  color: #909399;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mock-menu-item:hover {
+  background: rgba(0,0,0,0.02);
+}
+
+.mock-menu-item.active {
+  font-weight: 600;
+}
+
+/* Mock Chart */
+.mock-chart-placeholder {
+  height: 80px;
+  border: 1px dashed;
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 10px;
+}
+
+.mock-chart-line {
+  width: 100%;
+  height: 40px;
+  border-top: 2px solid;
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  transform: scaleX(1.5);
+}
+
+/* Mock Progress */
+.mock-progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mock-progress-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mock-progress-label {
+  font-size: 11px;
+  width: 40px;
+  color: #606266;
+}
+.mock-progress-bar-bg {
+  flex: 1;
+  height: 6px;
+  background: #f0f2f5;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.mock-progress-bar {
+  height: 100%;
+  border-radius: 3px;
+}
+
+/* Mock Settings Card */
+.mock-card-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #f5f7fa;
+  padding: 16px;
+  margin: -20px;
+  /* Ensure it fills height and allows scroll if needed */
+  min-height: calc(100% + 40px);
+  overflow-y: auto;
+}
+
+.mock-content {
+  flex: 1;
+  padding: 20px;
+  background: #fff;
+  overflow-y: auto;
+  position: relative;
+}
+
+.mock-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  overflow: hidden;
+}
+
+.mock-card-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mock-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.mock-card-btn {
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mock-form-group {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mock-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.mock-avatar-large {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #e4e7ed;
+}
+
+.mock-avatar-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.mock-avatar-role {
+  font-size: 12px;
+  color: #909399;
+}
+
+.mock-input-styled {
+  font-size: 13px;
+  color: #606266;
+  padding: 6px 10px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.mock-form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mock-label {
+  font-size: 12px;
+  color: #606266;
+}
+
+.mock-switch {
+  width: 32px;
+  height: 16px;
+  border-radius: 8px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  /* justify-content: flex-end; Removed to allow absolute positioning logic or transform */
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.mock-switch-dot {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.3s;
+}
+
+.mock-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f5f7fa;
+}
+
+.mock-list-item:last-child {
+  border-bottom: none;
+}
+
+.mock-list-title {
+  font-size: 13px;
+  color: #303133;
+  margin-bottom: 2px;
+}
+
+.mock-list-desc {
+  font-size: 11px;
+  color: #909399;
+}
+
+/* Dark mode for new elements */
+html.dark .mock-card-container {
+  background: #141414;
+}
+html.dark .mock-card {
+  background: #1d1e1f;
+  box-shadow: none;
+  border: 1px solid #303030;
+}
+html.dark .mock-card-header,
+html.dark .mock-list-item {
+  border-color: #303030;
+}
+html.dark .mock-card-title,
+html.dark .mock-avatar-name,
+html.dark .mock-list-title {
+  color: #E5EAF3;
+}
+html.dark .mock-input-styled {
+  background: #262727;
+  color: #cfd3dc;
+}
+html.dark .mock-avatar-large {
+  background: #303030;
+}
+
+.mock-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: #dcdfe6;
+}
+
+.mock-content {
+  flex: 1;
+  padding: 20px;
+  background: #fff;
+}
+
+.mock-stats-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.mock-stat-card {
+  flex: 1;
+  background: #fcfcfc;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #909399;
+}
+
+.mock-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mock-subtitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.mock-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mock-btn {
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.mock-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mock-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+.mock-alert {
+  padding: 10px;
+  border-radius: 4px;
+  border-left: 3px solid;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alert-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.alert-text {
+  font-size: 12px;
+}
+
+/* Dark mode overrides for preview container (not mock window content) */
+html.dark .mock-window {
+  background: #1d1e1f;
+  border-color: #363637;
+}
+
+html.dark .mock-sidebar {
+  background: #2b2b2c;
+  border-color: #363637;
+}
+
+html.dark .mock-content {
+  background: #1d1e1f;
+}
+
+html.dark .mock-stat-card {
+  background: #262727;
+  border-color: #363637;
+}
+
+html.dark .mock-subtitle {
+  color: #e5eaf3;
 }
 </style>

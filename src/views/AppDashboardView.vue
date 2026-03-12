@@ -92,6 +92,10 @@
               <div class="meta-kv-key">应用ID</div>
               <div class="meta-kv-value" :title="appDetail.app_id">{{ appDetail.app_id || '—' }}</div>
             </div>
+            <div class="meta-kv" v-if="appDetail.app_recordal_info">
+              <div class="meta-kv-key">备案号</div>
+              <div class="meta-kv-value" :title="appDetail.app_recordal_info">{{ appDetail.app_recordal_info }}</div>
+            </div>
           </div>
 
           <div class="meta-group">

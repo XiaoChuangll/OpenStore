@@ -27,6 +27,114 @@ if (!fs.existsSync(uploadsDir)) {
 // Ensure /uploads is served correctly before SPA fallback
 app.use('/uploads', express.static(uploadsDir));
 
+// SEO: Server-side meta injection for articles - MUST BE BEFORE STATIC ASSETS
+app.get('/articles/:slug', (req, res, next) => {
+  // Check if request accepts html
+  if (req.headers.accept && !req.headers.accept.includes('text/html')) {
+    return next();
+  }
+
+  const slug = req.params.slug;
+  const indexPath = path.join(__dirname, '../dist/index.html');
+
+  // If dist/index.html doesn't exist (dev mode maybe?), fallback to next()
+  if (!fs.existsSync(indexPath)) return next();
+
+  // Fallback function to serve static index.html via next() (let express.static handle it or SPA fallback)
+  const serveDefault = () => next();
+
+  if (!slug) return serveDefault();
+
+  db.get('SELECT title, summary, cover_url, seo_description, seo_keywords FROM blogs WHERE slug = ?', [slug], (err, row) => {
+    if (err || !row) return serveDefault();
+
+    fs.readFile(indexPath, 'utf8', (err, html) => {
+      if (err) return serveDefault();
+
+      // Inject SEO tags
+      const title = `${row.title} - OpenStore`;
+      const description = (row.seo_description || row.summary || '查看文章详细内容').replace(/"/g, '&quot;');
+      const keywords = (row.seo_keywords || `${row.title},OpenStore,鸿蒙应用,HarmonyOS`).replace(/"/g, '&quot;');
+      const image = row.cover_url || '';
+
+      let modifiedHtml = html;
+      
+      // Replace Title
+      if (modifiedHtml.includes('<title>')) {
+        modifiedHtml = modifiedHtml.replace(/<title>.*?<\/title>/, `<title>${title}</title>`);
+      } else {
+        modifiedHtml = modifiedHtml.replace('</head>', `<title>${title}</title>\n</head>`);
+      }
+
+      // Replace Description
+      // Use regex with 's' flag (dotAll) is not supported in all node versions, but multiline matching is needed.
+      // Instead, we use [\s\S]*? to match across newlines.
+      if (modifiedHtml.includes('name="description"')) {
+        modifiedHtml = modifiedHtml.replace(/<meta\s+name="description"\s+content="[\s\S]*?"\s*\/?>/i, `<meta name="description" content="${description}" />`);
+      } else {
+        modifiedHtml = modifiedHtml.replace('</head>', `<meta name="description" content="${description}" />\n</head>`);
+      }
+      
+      // Update keywords
+      if (modifiedHtml.includes('name="keywords"')) {
+        modifiedHtml = modifiedHtml.replace(/<meta\s+name="keywords"\s+content="[\s\S]*?"\s*\/?>/i, `<meta name="keywords" content="${keywords}" />`);
+      } else {
+        modifiedHtml = modifiedHtml.replace('</head>', `<meta name="keywords" content="${keywords}" />\n</head>`);
+      }
+
+      // Replace OG Title
+      if (modifiedHtml.includes('property="og:title"')) {
+        modifiedHtml = modifiedHtml.replace(/<meta\s+property="og:title"\s+content="[\s\S]*?"\s*\/?>/i, `<meta property="og:title" content="${title}" />`);
+      } else {
+        modifiedHtml = modifiedHtml.replace('</head>', `<meta property="og:title" content="${title}" />\n</head>`);
+      }
+
+      // Replace OG Description
+      if (modifiedHtml.includes('property="og:description"')) {
+        modifiedHtml = modifiedHtml.replace(/<meta\s+property="og:description"\s+content="[\s\S]*?"\s*\/?>/i, `<meta property="og:description" content="${description}" />`);
+      } else {
+        modifiedHtml = modifiedHtml.replace('</head>', `<meta property="og:description" content="${description}" />\n</head>`);
+      }
+
+      // Add or update og:image
+      if (image) {
+        if (modifiedHtml.includes('property="og:image"')) {
+          modifiedHtml = modifiedHtml.replace(/<meta\s+property="og:image"\s+content="[\s\S]*?"\s*\/?>/i, `<meta property="og:image" content="${image}" />`);
+        } else {
+          modifiedHtml = modifiedHtml.replace('</head>', `<meta property="og:image" content="${image}" />\n</head>`);
+        }
+        
+        // Twitter Image
+        if (modifiedHtml.includes('name="twitter:image"')) {
+          modifiedHtml = modifiedHtml.replace(/<meta\s+name="twitter:image"\s+content="[\s\S]*?"\s*\/?>/i, `<meta name="twitter:image" content="${image}" />`);
+        } else {
+          modifiedHtml = modifiedHtml.replace('</head>', `<meta name="twitter:image" content="${image}" />\n</head>`);
+        }
+      }
+
+      // Add twitter card tags if missing
+      if (!modifiedHtml.includes('name="twitter:card"')) {
+        modifiedHtml = modifiedHtml.replace('</head>', `<meta name="twitter:card" content="summary_large_image" />\n</head>`);
+      }
+      
+      // Twitter Title & Desc
+      if (modifiedHtml.includes('name="twitter:title"')) {
+        modifiedHtml = modifiedHtml.replace(/<meta\s+name="twitter:title"\s+content="[\s\S]*?"\s*\/?>/i, `<meta name="twitter:title" content="${title}" />`);
+      } else {
+        modifiedHtml = modifiedHtml.replace('</head>', `<meta name="twitter:title" content="${title}" />\n</head>`);
+      }
+      
+      if (modifiedHtml.includes('name="twitter:description"')) {
+        modifiedHtml = modifiedHtml.replace(/<meta\s+name="twitter:description"\s+content="[\s\S]*?"\s*\/?>/i, `<meta name="twitter:description" content="${description}" />`);
+      } else {
+        modifiedHtml = modifiedHtml.replace('</head>', `<meta name="twitter:description" content="${description}" />\n</head>`);
+      }
+
+      res.send(modifiedHtml);
+    });
+  });
+});
+
 // Serve static frontend assets
 // Make sure to serve static files *after* the /uploads route so /uploads isn't caught by the SPA fallback or static middleware
 app.use(express.static(path.join(__dirname, '../dist')));
@@ -850,18 +958,42 @@ app.get('/api/apps', requireAuth, (req, res) => {
 
 // Get comments for a blog post (public)
 app.get('/api/public/comments', (req, res) => {
-  const { blog_id, page = 1, pageSize = 20 } = req.query;
+  const { blog_id, page = 1, pageSize = 20, include_ids } = req.query;
   if (!blog_id) return res.status(400).json({ error: 'Missing blog_id' });
 
   const limit = Number(pageSize);
   const offset = (Number(page) - 1) * limit;
 
+  // Process include_ids (ids of comments that should be visible even if not approved)
+  let extraIds = [];
+  if (include_ids) {
+    if (Array.isArray(include_ids)) {
+      extraIds = include_ids.map(Number).filter(n => !isNaN(n));
+    } else if (typeof include_ids === 'string') {
+      extraIds = include_ids.split(',').map(Number).filter(n => !isNaN(n));
+    }
+  }
+
+  // Build query
+  let whereSql = "blog_id = ? AND (status = 'approved'";
+  let params = [blog_id];
+
+  if (extraIds.length > 0) {
+    const placeholders = extraIds.map(() => '?').join(',');
+    whereSql += ` OR id IN (${placeholders})`;
+    params.push(...extraIds);
+  }
+  whereSql += ")";
+
+  const sql = `SELECT * FROM comments WHERE ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+  const countSql = `SELECT COUNT(*) as total FROM comments WHERE ${whereSql}`;
+
   db.all(
-    `SELECT * FROM comments WHERE blog_id = ? AND status = 'approved' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-    [blog_id, limit, offset],
+    sql,
+    [...params, limit, offset],
     (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
-      db.get(`SELECT COUNT(*) as total FROM comments WHERE blog_id = ? AND status = 'approved'`, [blog_id], (e2, count) => {
+      db.get(countSql, params, (e2, count) => {
         if (e2) return res.status(500).json({ error: e2.message });
         res.json({ items: rows, total: count.total, page: Number(page), pageSize: limit });
       });
@@ -2755,6 +2887,7 @@ app.use('/api/admin', (req, res, next) => {
     app.handle(req, res, next);
   });
 });
+
 
 // SPA Fallback - Must be last
 app.get(/(.*)/, (req, res) => {
