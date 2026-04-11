@@ -317,13 +317,43 @@ const handleResize = () => {
   matrixChartInstance?.resize();
 };
 
+let resizeObserver: ResizeObserver | null = null;
+
 onMounted(() => {
   fetchData();
   window.addEventListener('resize', handleResize);
+
+  // Add ResizeObserver to handle chart rendering when container size changes
+  // Useful when chart is rendered in a hidden tab or container
+  if (chartRef.value) {
+    resizeObserver = new ResizeObserver(() => {
+      chartInstance?.resize();
+    });
+    resizeObserver.observe(chartRef.value);
+  }
+  
+  if (matrixChartRef.value) {
+    const matrixObserver = new ResizeObserver(() => {
+      matrixChartInstance?.resize();
+    });
+    matrixObserver.observe(matrixChartRef.value);
+    
+    // Store in the same variable or array if you want to disconnect it properly
+    // Let's use a simple approach by re-using or storing multiple
+    if (!resizeObserver) resizeObserver = matrixObserver;
+    else {
+      // Just track both elements with the same observer
+      resizeObserver.observe(matrixChartRef.value);
+    }
+  }
 });
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
   chartInstance?.dispose();
   matrixChartInstance?.dispose();
 });

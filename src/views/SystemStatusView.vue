@@ -116,7 +116,7 @@ const targets = ref({
   },
   nextApi: {
     url: import.meta.env.VITE_NEXT_API_TARGET,
-    proxyPath: '/next-api/apps/devices', // 通过本站代理访问，使用存在的接口
+    proxyPath: '/next-api/apps/device-overview', // 通过本站代理访问，使用存在的接口
     online: false,
     latency: 0,
     lastCheck: '',

@@ -61,7 +61,10 @@
         @click="handleCategoryClick(category)"
       >
         <div class="category-name">{{ category.name }}</div>
-        <div class="category-count">{{ category.count }}个应用</div>
+        <div class="category-count-badge">
+          <span class="category-count-badge-number">{{ formatCategoryCount(category.count) }}</span>
+          <span class="category-count-badge-unit">应用</span>
+        </div>
         <div class="category-icon-bg">
           <el-icon><component :is="category.icon || Connection" /></el-icon>
         </div>
@@ -297,6 +300,16 @@ const fetchCategories = async () => {
     console.error('Failed to fetch categories:', error);
   } finally {
     loading.value = false;
+  }
+};
+
+const formatCategoryCount = (count: unknown) => {
+  const n = typeof count === 'number' ? count : Number(count);
+  if (!Number.isFinite(n)) return String(count ?? '-');
+  try {
+    return new Intl.NumberFormat('zh-CN').format(n);
+  } catch {
+    return String(n);
   }
 };
 
@@ -646,14 +659,33 @@ watch(activeDevice, () => {
   text-align: center;
 }
 
-.category-count {
-  font-size: 12px;
+.category-count-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background-color: rgba(255,255,255,0.22);
+  border: 1px solid rgba(255,255,255,0.28);
+  color: rgba(255,255,255,0.95);
+  line-height: 1;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.category-count-badge-number {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.category-count-badge-unit {
+  font-size: 11px;
   opacity: 0.9;
-  margin-top: 4px;
-  z-index: 1;
-  background-color: rgba(0,0,0,0.2);
-  padding: 2px 8px;
-  border-radius: 10px;
 }
 
 .category-icon-bg {
@@ -694,6 +726,21 @@ watch(activeDevice, () => {
 
   .category-name {
     font-size: 14px;
+  }
+
+  .category-count-badge {
+    top: 8px;
+    right: 8px;
+    padding: 2px 8px;
+    gap: 3px;
+  }
+
+  .category-count-badge-number {
+    font-size: 12px;
+  }
+
+  .category-count-badge-unit {
+    font-size: 10px;
   }
 }
 

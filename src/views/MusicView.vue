@@ -735,6 +735,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { useTitle } from '@vueuse/core';
 import { usePlayerStore } from '../stores/player';
 import { useLayoutStore } from '../stores/layout';
 import { proxyRequest, getMusicApis } from '../services/api';
@@ -750,6 +751,26 @@ const router = useRouter();
 const playerStore = usePlayerStore();
 const layoutStore = useLayoutStore();
 const pageHeaderRef = ref<HTMLElement | null>(null);
+
+// Title & Description Management
+const documentTitleRef = useTitle();
+watch(() => playerStore.currentTrack, (track) => {
+  if (track) {
+    documentTitleRef.value = track.name;
+    
+    const artist = track.ar?.map((a: any) => a.name).join('/') || track.artists?.map((a: any) => a.name).join('/') || '未知歌手';
+    const album = track.al?.name || track.album?.name || '';
+    
+    const desc = `歌手：${artist}${album ? ` | 专辑：${album}` : ''}`;
+    
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute('content', desc);
+  } else {
+    documentTitleRef.value = 'OpenStore | 音乐';
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute('content', '畅听海量音乐，发现你的专属歌单。');
+  }
+}, { immediate: true });
 
 // Greeting Logic
 const greeting = computed(() => {

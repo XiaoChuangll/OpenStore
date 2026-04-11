@@ -442,13 +442,35 @@ const handleResize = () => {
   matrixChartInstance?.resize();
 };
 
+let resizeObserver: ResizeObserver | null = null;
+
 onMounted(() => {
   fetchData();
   window.addEventListener('resize', handleResize);
+
+  if (chartRef.value) {
+    resizeObserver = new ResizeObserver(() => {
+      chartInstance?.resize();
+    });
+    resizeObserver.observe(chartRef.value);
+  }
+  
+  if (matrixChartRef.value) {
+    if (!resizeObserver) {
+      resizeObserver = new ResizeObserver(() => {
+        matrixChartInstance?.resize();
+      });
+    }
+    resizeObserver.observe(matrixChartRef.value);
+  }
 });
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
   chartInstance?.dispose();
   matrixChartInstance?.dispose();
 });

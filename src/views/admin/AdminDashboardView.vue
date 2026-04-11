@@ -1,6 +1,9 @@
 <template>
   <div class="admin-dashboard">
     <el-tabs v-model="active" type="border-card">
+      <el-tab-pane label="数据总览" name="overview">
+        <DashboardOverviewView @switch-tab="handleSwitchTab" />
+      </el-tab-pane>
       <el-tab-pane label="接口管理" name="music-apis">
         <MusicApisAdminView :embedded="true" />
       </el-tab-pane>
@@ -73,12 +76,17 @@ import SiteCardsAdminView from './SiteCardsAdminView.vue';
 import AboutManageView from './AboutManageView.vue';
 import FeedbackAdminView from './FeedbackAdminView.vue';
 import SystemSettingsView from './SystemSettingsView.vue';
+import DashboardOverviewView from './DashboardOverviewView.vue';
 
-const active = ref<'links' | 'groups' | 'apps' | 'announcements' | 'articles' | 'comments' | 'env' | 'visitors' | 'logs' | 'changelogs' | 'site-cards' | 'about' | 'incidents' | 'music-apis' | 'feedbacks' | 'settings'>('music-apis');
+const active = ref<'overview' | 'links' | 'groups' | 'apps' | 'announcements' | 'articles' | 'comments' | 'env' | 'visitors' | 'logs' | 'changelogs' | 'site-cards' | 'about' | 'incidents' | 'music-apis' | 'feedbacks' | 'settings'>('overview');
 const router = useRouter();
   const layoutStore = useLayoutStore();
   const goHome = () => router.push('/');
   
+  const handleSwitchTab = (tabName: any) => {
+    active.value = tabName;
+  };
+
   onMounted(() => {
     layoutStore.setPageInfo('后台管理', true, goHome);
   });

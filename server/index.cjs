@@ -307,7 +307,7 @@ app.get('/api/v0/charts/rating', (req, res) => {
   res.json({ status: 'ok', version: 'v0' });
 });
 
-app.get('/next-api/apps/devices', (req, res) => {
+app.get('/next-api/apps/device-overview', (req, res) => {
   res.json({ status: 'ok', service: 'next-api' });
 });
 
@@ -2652,6 +2652,37 @@ app.post('/api/admin/auth/change-password', requireAuth, (req, res) => {
       logAction(req.user?.username, 'password_change', 'users', uid);
       res.json({ ok: true });
     });
+  });
+});
+
+// Admin Overview Dashboard Stats
+app.get('/api/admin/overview', requireAuth, (req, res) => {
+  const stats = {
+    visitorCount: 0,
+    appCount: 0,
+    feedbackCount: 0,
+    commentCount: 0,
+    articleCount: 0,
+    systemUptime: process.uptime()
+  };
+
+  const queries = [
+    new Promise((resolve) => db.get(`SELECT COUNT(*) as count FROM visitors`, [], (err, row) => resolve(err ? 0 : (row ? row.count : 0)))),
+    new Promise((resolve) => db.get(`SELECT COUNT(*) as count FROM apps`, [], (err, row) => resolve(err ? 0 : (row ? row.count : 0)))),
+    new Promise((resolve) => db.get(`SELECT COUNT(*) as count FROM feedbacks WHERE status='pending'`, [], (err, row) => resolve(err ? 0 : (row ? row.count : 0)))),
+    new Promise((resolve) => db.get(`SELECT COUNT(*) as count FROM comments WHERE status='pending'`, [], (err, row) => resolve(err ? 0 : (row ? row.count : 0)))),
+    new Promise((resolve) => db.get(`SELECT COUNT(*) as count FROM blogs`, [], (err, row) => resolve(err ? 0 : (row ? row.count : 0))))
+  ];
+
+  Promise.all(queries).then(results => {
+    stats.visitorCount = results[0];
+    stats.appCount = results[1];
+    stats.feedbackCount = results[2];
+    stats.commentCount = results[3];
+    stats.articleCount = results[4];
+    res.json(stats);
+  }).catch(err => {
+    res.status(500).json({ error: err.message });
   });
 });
 

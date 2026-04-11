@@ -4,6 +4,44 @@ const api = axios.create({
   baseURL: '/next-api',
 });
 
+let statsAccessToken = '';
+let tokenExpirationTime = 0;
+
+export const getStatsAccessToken = async () => {
+  if (statsAccessToken && Date.now() < tokenExpirationTime) {
+    return statsAccessToken;
+  }
+  
+  try {
+    const { data } = await axios.get('/next-api/apps/stats-access-token');
+    if (data?.success && data?.data?.token) {
+      statsAccessToken = data.data.token;
+      const expiresIn = data.data.expires_in || 90;
+      tokenExpirationTime = Date.now() + (expiresIn - 5) * 1000;
+    }
+  } catch (error) {
+    console.error('Failed to get stats access token', error);
+  }
+  
+  return statsAccessToken;
+};
+
+api.interceptors.request.use(async (config) => {
+  const isStatsEndpoint =
+    config.url?.includes('category-overview') ||
+    config.url?.includes('device-overview');
+  
+  if (isStatsEndpoint) {
+    const token = await getStatsAccessToken();
+    if (token) {
+      if (config.headers) {
+        config.headers['X-Stats-Access-Token'] = token;
+      }
+    }
+  }
+  return config;
+});
+
 export interface NextAppCategory {
   id: number;
   name: string;
@@ -35,12 +73,12 @@ export const getCategories = async (device?: number) => {
   if (device !== undefined) {
     params.device = device;
   }
-  const { data } = await api.get('/apps/categories', { params });
+  const { data } = await api.get('/apps/category-overview', { params });
   return data;
 };
 
 export const getDevices = async () => {
-  const { data } = await api.get('/apps/devices');
+  const { data } = await api.get('/apps/device-overview');
   return data;
 };
 

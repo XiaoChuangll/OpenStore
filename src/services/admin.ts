@@ -687,3 +687,17 @@ export const updateSystemSettings = async (settings: Record<string, string>) => 
   const { data } = await api.put('/settings', settings);
   return data as { updated: number };
 };
+
+export interface AdminOverviewStats {
+  visitorCount: number;
+  appCount: number;
+  feedbackCount: number;
+  commentCount: number;
+  articleCount: number;
+  systemUptime: number;
+}
+
+export const getAdminOverviewStats = async () => {
+  const { data } = await api.get('/overview');
+  return data as AdminOverviewStats;
+};
