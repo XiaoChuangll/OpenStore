@@ -29,6 +29,10 @@
         </span>
       </div>
     </div>
+
+    <div v-if="rank !== undefined" class="app-rank-badge">
+      {{ rank }}
+    </div>
     
     <div class="time-badge" v-if="showTimeBadge && timeAgo">
       {{ timeAgo }}
@@ -42,6 +46,7 @@ import { Picture } from '@element-plus/icons-vue';
 
 const props = defineProps<{
   app: any;
+  rank?: number;
   showTimeBadge?: boolean;
   timeField?: string;
 }>();
@@ -226,5 +231,37 @@ const handleClick = () => {
   white-space: nowrap;
   flex-shrink: 0;
   border: 1px solid var(--el-color-primary-light-8);
+}
+
+.app-rank-badge {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .app-rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-left: 6px;
+    border-radius: 999px;
+    background: var(--el-color-primary-light-9);
+    color: var(--el-color-primary);
+    border: 1px solid var(--el-color-primary-light-7);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-rank-badge {
+    width: 22px;
+    height: 22px;
+    margin-left: 4px;
+    font-size: 10px;
+  }
 }
 </style>

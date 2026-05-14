@@ -26,48 +26,76 @@
       </el-input>
     </div>
 
-    <!-- Device Tabs (Segmented Control) -->
-    <div v-if="viewMode === 'home'" class="device-tabs-wrapper">
-      <div class="device-tabs">
-        <div 
-          class="tab-glider" 
-          :style="{ 
-            transform: `translateX(${devices.findIndex(d => d.key === activeDevice) * 100}%)`,
-            width: `${100 / devices.length}%`
-          }"
-        ></div>
-        <div 
-          v-for="device in devices" 
-          :key="device.key"
-          class="device-tab"
-          :class="{ active: activeDevice === device.key }"
-          @click="activeDevice = device.key"
-          :style="{ width: `${100 / devices.length}%` }"
-        >
-          <el-icon><component :is="device.icon" /></el-icon>
-          <span class="tab-label">{{ device.label }}</span>
-          <span v-if="deviceStats[device.key]" class="count-badge">{{ deviceStats[device.key] }}</span>
+    <div v-if="viewMode === 'home'" class="home-content">
+      <!-- Device Tabs (Segmented Control) -->
+      <div class="device-tabs-wrapper">
+        <div class="device-tabs">
+          <div
+            v-if="categoriesLoading"
+            class="device-tabs-progress-bar"
+            :style="{ width: `${skeletonProgress}%` }"
+          ></div>
+          <div 
+            class="tab-glider" 
+            :style="{ 
+              transform: `translateX(${devices.findIndex(d => d.key === activeDevice) * 100}%)`,
+              width: `${100 / devices.length}%`
+            }"
+          ></div>
+          <div 
+            v-for="device in devices" 
+            :key="device.key"
+            class="device-tab"
+            :class="{ active: activeDevice === device.key }"
+            @click="activeDevice = device.key"
+            :style="{ width: `${100 / devices.length}%` }"
+          >
+            <el-icon><component :is="device.icon" /></el-icon>
+            <span class="tab-label">{{ device.label }}</span>
+            <span v-if="deviceStats[device.key]" class="count-badge">{{ deviceStats[device.key] }}</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Categories Grid -->
-    <div v-if="viewMode === 'home'" class="categories-grid">
-      <div 
-        v-for="(category, index) in categories" 
-        :key="index"
-        class="category-card"
-        :style="{ backgroundColor: category.color }"
-        @click="handleCategoryClick(category)"
-      >
-        <div class="category-name">{{ category.name }}</div>
-        <div class="category-count-badge">
-          <span class="category-count-badge-number">{{ formatCategoryCount(category.count) }}</span>
-          <span class="category-count-badge-unit">应用</span>
+      <!-- Categories Grid -->
+      <div class="categories-grid-wrapper">
+        <div v-if="showHomeSkeleton" class="categories-grid categories-grid-skeleton" aria-hidden="true">
+          <div v-for="i in 12" :key="`category-skeleton-${i}`" class="category-card skeleton-category-card">
+            <el-skeleton animated>
+              <template #template>
+                <div class="category-skeleton-content">
+                  <el-skeleton-item variant="h3" class="category-skeleton-title" />
+                  <div class="category-skeleton-count">
+                    <el-skeleton-item variant="text" class="category-skeleton-number" />
+                    <el-skeleton-item variant="text" class="category-skeleton-unit" />
+                  </div>
+                  <el-skeleton-item variant="circle" class="category-skeleton-icon" />
+                </div>
+              </template>
+            </el-skeleton>
+          </div>
         </div>
-        <div class="category-icon-bg">
-          <el-icon><component :is="category.icon || Connection" /></el-icon>
-        </div>
+
+        <transition v-else name="categories-page" mode="out-in">
+          <div :key="categoryPageKey" class="categories-grid categories-page-shell">
+            <div 
+              v-for="(category, index) in categories" 
+              :key="index"
+              class="category-card"
+              :style="{ backgroundColor: category.color }"
+              @click="handleCategoryClick(category)"
+            >
+              <div class="category-name">{{ category.name }}</div>
+              <div class="category-count-badge">
+                <span class="category-count-badge-number">{{ formatCategoryCount(category.count) }}</span>
+                <span class="category-count-badge-unit">应用</span>
+              </div>
+              <div class="category-icon-bg">
+                <el-icon><component :is="category.icon || Connection" /></el-icon>
+              </div>
+            </div>
+          </div>
+        </transition>
       </div>
     </div>
 
@@ -78,6 +106,7 @@
           <el-icon><ArrowLeft /></el-icon>
         </el-button>
         <h2 class="view-title">{{ pageTitle }}</h2>
+        <div class="view-total-badge">共 {{ formatCategoryCount(totalCount || appList.length) }} 个应用</div>
       </div>
 
       <div class="apps-grid-container">
@@ -104,9 +133,10 @@
         <el-empty v-else-if="appList.length === 0" description="暂无应用" />
         <div class="apps-grid" v-else>
           <AppCard 
-            v-for="app in appList" 
+            v-for="(app, index) in appList" 
             :key="app.app_id || app.id" 
             :app="app"
+            :rank="(currentPage - 1) * pageSize + index + 1"
             @click="handleAppClick"
           />
         </div>
@@ -139,7 +169,7 @@ defineOptions({
   name: 'AppsView'
 });
 
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onBeforeUnmount } from 'vue';
 import { 
   Search, Menu, Cellphone, Monitor, Van, Platform, Reading, Connection,
   Tools, MapLocation, Coffee, School, House, Suitcase, Lollipop, Wallet,
@@ -159,10 +189,18 @@ const activeDevice = ref('all');
 const categories = ref<any[]>([]);
 const appList = ref<any[]>([]);
 const loading = ref(false);
+const categoriesLoading = ref(false);
+const deviceStatsLoading = ref(false);
 const currentPage = ref(1);
 const pageSize = ref(20);
 const totalCount = ref(0);
 const hasMore = ref(false);
+let categoriesRequestId = 0;
+const categoryPageVersion = ref(0);
+const categorySnapshots = new Map<string, any[]>();
+const skeletonProgress = ref(12);
+let skeletonProgressTimer: number | null = null;
+let prewarmStarted = false;
 
 const viewMode = computed(() => {
   if (route.query.q) return 'search';
@@ -175,6 +213,9 @@ const pageTitle = computed(() => {
   if (viewMode.value === 'category') return route.query.category as string;
   return '应用分类';
 });
+
+const showHomeSkeleton = computed(() => categoriesLoading.value && categories.value.length === 0);
+const categoryPageKey = computed(() => `${activeDevice.value}-${categoryPageVersion.value}`);
 
 const deviceStats = ref<Record<string, number | string>>({
   phone: '-',
@@ -192,6 +233,8 @@ const devices = [
   { key: 'car', label: '车机', icon: Van },
   { key: 'pc', label: 'PC', icon: Platform }
 ];
+
+const DEVICE_KEYS = new Set(devices.map((device) => device.key));
 
 // Colors for categories
 const colors = [
@@ -242,10 +285,82 @@ const CATEGORY_ICON_MAP: Record<string, any> = {
   '社交通讯': ChatDotRound
 };
 
+const mapCategoryList = (list: any[]) => {
+  return list.map((item: any, index: number) => ({
+    ...item,
+    color: colors[index % colors.length],
+    count: item.count || item.app_count || 0,
+    icon: CATEGORY_ICON_MAP[item.name] || item.icon || 'Connection'
+  }));
+};
+
+const loadCategoriesForDevice = async (deviceKey: string) => {
+  const deviceId = DEVICE_MAP[deviceKey];
+  const res = await getCategories(deviceId);
+
+  let list: any[] = [];
+  if (Array.isArray(res)) {
+    list = res;
+  } else if (res.data && Array.isArray(res.data)) {
+    list = res.data;
+  } else if (res.items && Array.isArray(res.items)) {
+    list = res.items;
+  }
+
+  return mapCategoryList(list);
+};
+
+const startSkeletonProgress = () => {
+  if (skeletonProgressTimer) {
+    clearInterval(skeletonProgressTimer);
+  }
+
+  skeletonProgress.value = 12;
+  skeletonProgressTimer = window.setInterval(() => {
+    if (skeletonProgress.value < 78) {
+      skeletonProgress.value += 7;
+    } else if (skeletonProgress.value < 92) {
+      skeletonProgress.value += 1;
+    }
+  }, 180);
+};
+
+const stopSkeletonProgress = () => {
+  if (skeletonProgressTimer) {
+    clearInterval(skeletonProgressTimer);
+    skeletonProgressTimer = null;
+  }
+  skeletonProgress.value = 100;
+  window.setTimeout(() => {
+    if (!showHomeSkeleton.value) {
+      skeletonProgress.value = 12;
+    }
+  }, 180);
+};
+
+const prewarmCategorySnapshots = async () => {
+  if (prewarmStarted) return;
+  prewarmStarted = true;
+
+  const queue = devices
+    .map((device) => device.key)
+    .filter((deviceKey) => !categorySnapshots.has(deviceKey));
+
+  for (const deviceKey of queue) {
+    try {
+      const mappedCategories = await loadCategoriesForDevice(deviceKey);
+      categorySnapshots.set(deviceKey, mappedCategories);
+    } catch (error) {
+      console.warn(`Failed to prewarm categories for ${deviceKey}`, error);
+    }
+  }
+};
+
 const fetchDeviceStats = async () => {
+  deviceStatsLoading.value = true;
   try {
     const res = await getDevices();
-    let list = [];
+    let list: any[] = [];
     if (Array.isArray(res)) list = res;
     else if (res.data && Array.isArray(res.data)) list = res.data;
     else if (res.items && Array.isArray(res.items)) list = res.items;
@@ -270,36 +385,38 @@ const fetchDeviceStats = async () => {
      });
   } catch (e) {
     console.error('Failed to fetch device stats', e);
+  } finally {
+    deviceStatsLoading.value = false;
   }
 };
 
 const fetchCategories = async () => {
-  loading.value = true;
-  try {
-    const deviceId = DEVICE_MAP[activeDevice.value];
-    const res = await getCategories(deviceId);
-    
-    // Check response structure
-    let list = [];
-    if (Array.isArray(res)) {
-      list = res;
-    } else if (res.data && Array.isArray(res.data)) {
-      list = res.data;
-    } else if (res.items && Array.isArray(res.items)) {
-        list = res.items;
-    }
+  const requestId = ++categoriesRequestId;
+  const deviceKey = activeDevice.value;
+  const cachedCategories = categorySnapshots.get(deviceKey);
 
-    // Map to view model
-    categories.value = list.map((item: any, index: number) => ({
-      ...item,
-      color: colors[index % colors.length],
-      count: item.count || item.app_count || 0, // Handle different count field names
-      icon: CATEGORY_ICON_MAP[item.name] || item.icon || 'Connection'
-    }));
+  if (cachedCategories) {
+    categories.value = cachedCategories;
+  } else {
+    categories.value = [];
+  }
+
+  categoriesLoading.value = true;
+  try {
+    const mappedCategories = await loadCategoriesForDevice(deviceKey);
+
+    if (requestId === categoriesRequestId) {
+      categorySnapshots.set(deviceKey, mappedCategories);
+      categories.value = mappedCategories;
+      categoryPageVersion.value += 1;
+      void prewarmCategorySnapshots();
+    }
   } catch (error) {
     console.error('Failed to fetch categories:', error);
   } finally {
-    loading.value = false;
+    if (requestId === categoriesRequestId) {
+      categoriesLoading.value = false;
+    }
   }
 };
 
@@ -332,8 +449,10 @@ const fetchApps = async () => {
       }
     } else if (viewMode.value === 'category') {
       const cat = route.query.category as string;
+      const deviceKey = route.query.device as string | undefined;
+      const deviceId = deviceKey && DEVICE_KEYS.has(deviceKey) ? DEVICE_MAP[deviceKey] : undefined;
       if (cat) {
-        res = await getAppsByCategory(cat, currentPage.value, pageSize.value);
+        res = await getAppsByCategory(cat, currentPage.value, pageSize.value, deviceId);
       }
     }
 
@@ -388,7 +507,12 @@ const handleSearch = () => {
 };
 
 const handleCategoryClick = (category: any) => {
-  router.push({ query: { category: category.name } });
+  router.push({
+    query: {
+      category: category.name,
+      ...(activeDevice.value !== 'all' ? { device: activeDevice.value } : {})
+    }
+  });
 };
 
 const handleBack = () => {
@@ -411,6 +535,13 @@ const handleAppClick = async (app: any) => {
 watch(
   () => route.query,
   () => {
+    const routeDevice = route.query.device;
+    if (typeof routeDevice === 'string' && DEVICE_KEYS.has(routeDevice)) {
+      activeDevice.value = routeDevice;
+    } else if (viewMode.value === 'home') {
+      activeDevice.value = 'all';
+    }
+
     if (viewMode.value === 'home') {
       fetchCategories();
       fetchDeviceStats();
@@ -428,6 +559,20 @@ watch(activeDevice, () => {
   }
 });
 
+watch(showHomeSkeleton, (visible) => {
+  if (visible) {
+    startSkeletonProgress();
+  } else {
+    stopSkeletonProgress();
+  }
+}, { immediate: true });
+
+onBeforeUnmount(() => {
+  if (skeletonProgressTimer) {
+    clearInterval(skeletonProgressTimer);
+  }
+});
+
 </script>
 
 <style scoped>
@@ -438,7 +583,8 @@ watch(activeDevice, () => {
 }
 
 .search-container {
-  max-width: 700px;
+  width: 100%;
+  max-width: 800px;
   margin: 10px auto 30px;
 }
 
@@ -508,6 +654,110 @@ watch(activeDevice, () => {
   max-width: 800px;
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
   box-sizing: border-box;
+}
+
+.home-content {
+  position: relative;
+}
+
+.categories-grid-wrapper {
+  position: relative;
+}
+
+.categories-page-shell {
+  width: 100%;
+}
+
+.categories-grid-skeleton {
+  pointer-events: none;
+}
+
+.categories-grid-skeleton .category-card {
+  min-height: 100px;
+}
+
+.skeleton-category-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  cursor: default;
+  background: var(--el-bg-color);
+}
+
+.device-tabs-progress-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(64, 158, 255, 0.1) 0%, rgba(64, 158, 255, 0.2) 100%);
+  transition: width 0.2s linear;
+  pointer-events: none;
+}
+
+.category-skeleton-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100px;
+}
+
+.category-skeleton-title {
+  width: 44%;
+  height: 22px;
+  margin-bottom: 14px;
+}
+
+.category-skeleton-count {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.category-skeleton-number {
+  width: 68px;
+  height: 24px;
+}
+
+.category-skeleton-unit {
+  width: 32px;
+  height: 16px;
+}
+
+.category-skeleton-icon {
+  width: 42px;
+  height: 42px;
+  margin-top: 18px;
+  align-self: flex-end;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.categories-page-enter-active,
+.categories-page-leave-active {
+  transition: opacity 0.28s ease, transform 0.28s ease, filter 0.28s ease;
+}
+
+.categories-page-enter-from {
+  opacity: 0;
+  transform: translateX(28px) rotateY(-10deg);
+  filter: blur(2px);
+}
+
+.categories-page-leave-to {
+  opacity: 0;
+  transform: translateX(-28px) rotateY(10deg);
+  filter: blur(2px);
 }
 
 .tab-glider {
@@ -599,6 +849,8 @@ watch(activeDevice, () => {
   align-items: center;
   gap: 8px;
   margin-bottom: 24px;
+  position: relative;
+  min-height: 32px;
 }
 
 .view-title {
@@ -606,10 +858,35 @@ watch(activeDevice, () => {
   font-size: 20px;
   font-weight: 600;
   color: var(--el-text-color-primary);
-  display: flex;
-  align-items: center;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   height: 32px; /* Explicit height to match button */
   line-height: 32px;
+  text-align: center;
+  white-space: nowrap;
+  max-width: calc(100% - 180px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.view-total-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--el-bg-color) 0%, var(--el-fill-color-light) 100%);
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: center;
+  line-height: 32px;
+  border: 1px solid var(--el-border-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
 .back-btn {
@@ -618,21 +895,27 @@ watch(activeDevice, () => {
   width: 32px;
   height: 32px;
   line-height: 32px;
-  color: var(--el-text-color-regular);
+  color: var(--el-color-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  background-color: transparent;
+  border: 1px solid var(--el-color-primary-light-7);
+  background-color: var(--el-color-primary-light-9);
+  box-shadow: 0 4px 10px rgba(64, 158, 255, 0.12);
+  transition: all 0.2s ease;
 }
 
 .back-btn:hover {
-  background-color: var(--el-fill-color-light);
+  background-color: var(--el-color-primary-light-8);
+  border-color: var(--el-color-primary-light-5);
   color: var(--el-color-primary);
+  box-shadow: 0 6px 14px rgba(64, 158, 255, 0.18);
+  transform: translateX(-1px);
 }
 
-.back-btn:hover {
-  color: var(--el-color-primary);
+.back-btn:active {
+  transform: translateX(0);
+  box-shadow: 0 2px 6px rgba(64, 158, 255, 0.14);
 }
 
 .apps-grid {
@@ -742,6 +1025,22 @@ watch(activeDevice, () => {
   .category-count-badge-unit {
     font-size: 10px;
   }
+
+  .view-header {
+    gap: 6px;
+  }
+
+  .view-title {
+    font-size: 18px;
+    max-width: calc(100% - 150px);
+  }
+
+  .view-total-badge {
+    height: 30px;
+    padding: 0 12px;
+    font-size: 12px;
+    line-height: 30px;
+  }
 }
 
 .pagination-container {
@@ -772,6 +1071,7 @@ watch(activeDevice, () => {
   display: flex;
   align-items: center;
   width: 100%;
+  min-height: 84px;
 }
 
 .skeleton-icon {
@@ -790,5 +1090,177 @@ watch(activeDevice, () => {
 
 .skeleton-meta {
   display: flex;
+}
+
+@media (min-width: 1280px) {
+  .categories-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+
+  .category-card,
+  .categories-grid-skeleton .category-card {
+    min-height: 112px;
+  }
+
+  .category-skeleton-content {
+    min-height: 112px;
+  }
+
+  .apps-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    column-gap: 28px;
+    row-gap: 40px;
+  }
+
+  .skeleton-card {
+    padding: 14px;
+  }
+
+  .skeleton-icon {
+    width: 60px !important;
+    height: 60px !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  .apps-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    column-gap: 20px;
+    row-gap: 28px;
+  }
+
+  .apps-grid-container {
+    min-height: 680px;
+  }
+}
+
+@media (max-width: 768px) {
+  .categories-grid-skeleton .category-card {
+    min-height: 90px;
+  }
+
+  .category-skeleton-content {
+    min-height: 90px;
+  }
+
+  .category-skeleton-title {
+    width: 54%;
+    height: 18px;
+    margin-bottom: 10px;
+  }
+
+  .category-skeleton-number {
+    width: 54px;
+    height: 18px;
+  }
+
+  .category-skeleton-unit {
+    width: 24px;
+    height: 14px;
+  }
+
+  .category-skeleton-icon {
+    width: 34px;
+    height: 34px;
+    margin-top: 12px;
+  }
+
+  .apps-grid {
+    grid-template-columns: 1fr;
+    row-gap: 32px;
+  }
+
+  .apps-grid-container {
+    min-height: 520px;
+  }
+
+  .skeleton-card {
+    padding: 10px;
+    border-radius: 10px;
+  }
+
+  .skeleton-content {
+    min-height: 72px;
+  }
+
+  .skeleton-icon {
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 10px;
+    margin-right: 10px;
+  }
+
+  .skeleton-info {
+    margin-right: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .view-header {
+    min-height: 30px;
+  }
+
+  .view-title {
+    max-width: calc(100% - 124px);
+  }
+
+  .view-total-badge {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 11px;
+    line-height: 28px;
+  }
+
+  .categories-grid-skeleton .category-card {
+    min-height: 82px;
+  }
+
+  .category-skeleton-content {
+    min-height: 82px;
+  }
+
+  .category-skeleton-title {
+    width: 58%;
+    height: 16px;
+    margin-bottom: 8px;
+  }
+
+  .category-skeleton-number {
+    width: 46px;
+    height: 16px;
+  }
+
+  .category-skeleton-unit {
+    width: 20px;
+    height: 12px;
+  }
+
+  .category-skeleton-icon {
+    width: 28px;
+    height: 28px;
+    margin-top: 10px;
+  }
+
+  .apps-grid {
+    row-gap: 26px;
+  }
+
+  .skeleton-card {
+    padding: 8px;
+  }
+
+  .skeleton-content {
+    min-height: 64px;
+  }
+
+  .skeleton-icon {
+    width: 42px !important;
+    height: 42px !important;
+    margin-right: 8px;
+  }
+
+  .skeleton-meta {
+    gap: 6px;
+  }
 }
 </style>

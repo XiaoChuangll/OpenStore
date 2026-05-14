@@ -16,6 +16,7 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const app = express();
 app.set('trust proxy', true);
 const PORT = process.env.PORT || 3001;
+const HM_API_TARGET = (process.env.VITE_API_TARGET || 'http://shenjack.top:10003').replace(/\/$/, '');
 
 app.use(cors());
 app.use(express.json());
@@ -309,6 +310,207 @@ app.get('/api/v0/charts/rating', (req, res) => {
 
 app.get('/next-api/apps/device-overview', (req, res) => {
   res.json({ status: 'ok', service: 'next-api' });
+});
+
+const APP_OVERVIEW_CACHE_TTL = 5 * 60 * 1000;
+const appOverviewCache = new Map();
+const APP_CATEGORY_GROUPS = [
+  { label: '工具', aliases: ['工具', 'Tools'] },
+  { label: '旅游', aliases: ['旅游', 'Travel'] },
+  { label: '休闲益智', aliases: ['休闲益智', '休闲', '益智解谜'] },
+  { label: '教育', aliases: ['教育'] },
+  { label: '生活服务', aliases: ['生活服务', 'Lifestyle'] },
+  { label: '商务', aliases: ['商务', 'Business'] },
+  { label: '儿童', aliases: ['儿童', 'শিশু'] },
+  { label: '金融理财', aliases: ['金融理财', 'Finance'] },
+  { label: '新闻', aliases: ['新闻', 'News', 'Current affairs'] },
+  { label: '拍摄美化', aliases: ['拍摄美化'] },
+  { label: '运动健康', aliases: ['运动健康', 'Sports & health'] },
+  { label: '动作射击', aliases: ['动作射击', '动作', '射击', 'Action'] },
+  { label: '角色扮演', aliases: ['角色扮演'] },
+  { label: '购物', aliases: ['购物', '購物'] },
+  { label: '经营策略', aliases: ['经营策略', '经营建造', '策略', '模拟养成'] },
+  { label: '出行导航', aliases: ['出行导航', 'Navigation', 'Навигация'] },
+  { label: '社交', aliases: ['社交', '社交通讯', 'Social'] },
+  { label: '汽车', aliases: ['汽车'] },
+  { label: '医疗', aliases: ['医疗'] },
+  { label: '体育竞速', aliases: ['体育竞速', '体育', '竞速', '竞技'] },
+  { label: '棋牌桌游', aliases: ['棋牌桌游', '棋牌'] },
+  { label: '资讯', aliases: ['资讯', '新闻阅读'] },
+  { label: '美食', aliases: ['美食'] },
+  { label: '效率', aliases: ['效率', 'Productivity'] },
+  { label: '休闲娱乐', aliases: ['休闲娱乐', '影音娱乐', '影音娛樂'] },
+  { label: '音乐', aliases: ['音乐'] },
+  { label: '艺术与设计', aliases: ['艺术与设计'] },
+  { label: '派对游戏', aliases: ['派对游戏'] },
+  { label: '主题', aliases: ['主题', '主题个性'] },
+  { label: '阅读与工具书', aliases: ['阅读与工具书'] },
+  { label: '卡牌', aliases: ['卡牌'] },
+  { label: '影视与直播', aliases: ['影视与直播'] },
+  { label: '实用工具', aliases: ['实用工具', '實用工具'] },
+  { label: '房产与装修', aliases: ['房产与装修', 'House & home'] },
+  { label: '便捷生活', aliases: ['便捷生活'] },
+  { label: '旅游住宿', aliases: ['旅游住宿', '旅遊'] },
+  { label: '购物比价', aliases: ['购物比价'] }
+];
+const APP_DEVICE_GROUPS = [
+  { key: 'phone', label: '手机', code: 0 },
+  { key: 'tv', label: '智慧屏', code: 3 },
+  { key: 'tablet', label: '平板', code: 4 },
+  { key: 'car', label: '车机', code: 7 },
+  { key: 'pc', label: 'PC', code: 15 }
+];
+
+const runWithConcurrency = async (items, limit, worker) => {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex++;
+      results[currentIndex] = await worker(items[currentIndex]);
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
+};
+
+const extractApiTotal = (payload) => {
+  return Number(
+    payload?.total ??
+    payload?.total_count ??
+    payload?.data?.total ??
+    payload?.data?.total_count ??
+    0
+  );
+};
+
+const fetchCategoryCount = async (categoryName, deviceCode) => {
+  if (deviceCode === undefined || deviceCode === null) {
+    const response = await axios.get(`${HM_API_TARGET}/api/v0/apps/list/0`, {
+      params: {
+        search_key: 'kind_name',
+        search_value: categoryName,
+        search_exact: true,
+        page_size: 1,
+        detail: false
+      },
+      timeout: 10000
+    });
+
+    return extractApiTotal(response?.data);
+  }
+
+  const response = await axios.post(
+    `${HM_API_TARGET}/api/v0/apps/query?page=0&page_size=1&detail=false`,
+    {
+      and: [
+        { key: 'kind_name', value: categoryName, op: 'eq' },
+        { key: 'main_device_codes', value: String(deviceCode), op: 'array_contains' }
+      ]
+    },
+    {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000
+    }
+  );
+
+  return extractApiTotal(response?.data);
+};
+
+const fetchDeviceCount = async (deviceCode) => {
+  const response = await axios.get(`${HM_API_TARGET}/api/v0/apps/list/0`, {
+    params: {
+      search_key: 'main_device_codes',
+      search_value: deviceCode,
+      search_exact: false,
+      page_size: 1,
+      detail: false
+    },
+    timeout: 10000
+  });
+
+  return extractApiTotal(response?.data);
+};
+
+app.get('/api/public/apps/overview', async (req, res) => {
+  const deviceParam = req.query.device;
+  const deviceCode =
+    deviceParam === undefined || deviceParam === null || deviceParam === ''
+      ? undefined
+      : Number(deviceParam);
+  const cacheKey = deviceCode === undefined || Number.isNaN(deviceCode) ? 'all' : `device:${deviceCode}`;
+  const cachedOverview = appOverviewCache.get(cacheKey);
+
+  if (cachedOverview && Date.now() - cachedOverview.timestamp < APP_OVERVIEW_CACHE_TTL) {
+    return res.json({
+      success: true,
+      data: cachedOverview.data,
+      cached: true
+    });
+  }
+
+  try {
+    const categories = await runWithConcurrency(APP_CATEGORY_GROUPS, 6, async (group) => {
+      const counts = await Promise.all(
+        group.aliases.map(async (alias) => {
+          try {
+            return await fetchCategoryCount(alias, deviceCode);
+          } catch (error) {
+            console.warn(`[apps-overview] Failed to count category ${alias} for ${cacheKey}:`, error.message);
+            return 0;
+          }
+        })
+      );
+
+      return {
+        name: group.label,
+        count: counts.reduce((sum, count) => sum + count, 0)
+      };
+    });
+    const devices = await runWithConcurrency(APP_DEVICE_GROUPS, 5, async (device) => {
+      try {
+        const count = await fetchDeviceCount(device.code);
+        return {
+          key: device.key,
+          label: device.label,
+          code: device.code,
+          count
+        };
+      } catch (error) {
+        console.warn(`[apps-overview] Failed to count device ${device.key}:`, error.message);
+        return {
+          key: device.key,
+          label: device.label,
+          code: device.code,
+          count: 0
+        };
+      }
+    });
+
+    const data = {
+      categories: categories.filter((item) => item.count > 0).sort((a, b) => b.count - a.count),
+      devices
+    };
+
+    appOverviewCache.set(cacheKey, {
+      timestamp: Date.now(),
+      data
+    });
+
+    res.json({
+      success: true,
+      data,
+      cached: false
+    });
+  } catch (error) {
+    console.error('Failed to build apps overview:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to build apps overview'
+    });
+  }
 });
 
 // Proxy Middleware Helper

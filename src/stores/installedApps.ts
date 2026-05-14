@@ -49,7 +49,11 @@ export const useInstalledAppsStore = defineStore('installedApps', () => {
       // Fetch some popular apps to simulate installation
       // We use search or category to get a list
       const res = await searchApps('', 1, 10);
-      const apps = res.data?.data || [];
+      const apps =
+        (Array.isArray((res as any)?.data) ? (res as any).data : null) ||
+        (Array.isArray((res as any)?.items) ? (res as any).items : null) ||
+        (Array.isArray((res as any)?.data?.data) ? (res as any).data.data : null) ||
+        [];
       
       if (apps.length > 0) {
         // Randomly pick 5 apps to be "installed"
