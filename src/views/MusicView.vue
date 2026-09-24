@@ -832,10 +832,6 @@ const checkingApi = ref(true);
 const loading = ref(false);
 const availableApis = ref<any[]>([]);
 
-// User State (Moved to Store)
-// const userProfile = ref<any>(null);
-// const checkingLogin = ref(false);
-// const showLoginDialog = ref(false);
 const qrImg = ref('');
 const loginStatus = ref('');
 let loginTimer: any = null;
@@ -1009,9 +1005,7 @@ const openMore = async (mode: 'radar' | 'recommend' | 'rank' | 'mine') => {
              }
         }
     } else if (mode === 'rank') {
-        // topList already has all data from init
     } else if (mode === 'mine') {
-        // Fetch user playlists if empty
         if (mineSubMode.value === 'playlist') {
             if (userPlaylists.value.length === 0) fetchUserPlaylists();
         } else if (mineSubMode.value === 'podcast') {
@@ -1033,10 +1027,8 @@ const fetchUserPodcasts = async () => {
         const limit = 10;
         const offset = (userPodcastPage.value - 1) * limit;
 
-        // DJ Sublist (Subscribed Podcasts)
         const res = await proxyRequest(`${baseUrl}/dj/sublist?limit=${limit}&offset=${offset}&cookie=${cookieEncoded}`, 'GET', headers, {});
         
-        // Debug
         console.log('DJ Sublist Response:', res.data);
 
         if (res.data?.djRadios) {
@@ -1138,12 +1130,6 @@ const handleUserPodcastPageChange = (page: number) => {
 };
 
 const openPodcast = (podcast: any) => {
-    // Re-use playlist dialog logic if structure is similar, or just log for now
-    // Podcasts usually have tracks/programs.
-    // Let's treat it as a playlist for now, might need adjustment for API endpoints.
-    // For now, let's use a simple alert or reuse openPlaylist if compatible.
-    // Actually, DJ radios have programs, not tracks in the same way.
-    // Let's try to fetch programs.
     openDjRadio(podcast);
 };
 
@@ -1169,7 +1155,6 @@ const fetchPodcastPrograms = async (radio: any, offset: number, limit: number) =
                 picUrl: p.coverUrl
             }));
             
-            // Fill array
             for (let i = 0; i < tracks.length; i++) {
                 if (offset + i < playlistTracks.value.length) {
                     playlistTracks.value[offset + i] = tracks[i];
@@ -1204,7 +1189,6 @@ const openDjRadio = async (radio: any) => {
         const headers = cookie ? { Cookie: cookie } : {};
         const cookieEncoded = cookie ? encodeURIComponent(cookie) : '';
         
-        // Initial fetch to get count and first page
         const res = await proxyRequest(`${baseUrl}/dj/program?rid=${radio.id}&limit=50&offset=0&cookie=${cookieEncoded}`, 'GET', headers, {});
         
         if (res.data?.count) {
@@ -1379,7 +1363,6 @@ const findBestApi = async () => {
           currentApi.value = bestApi;
           playerStore.setApiUrl(bestApi.url);
           
-          // Init data
           initData();
       } else {
           ElMessage.error('无可用 API 接口，请在后台添加');
@@ -1412,10 +1395,8 @@ const initData = async () => {
 const fetchDiscovery = async (forceRefresh = false) => {
    if (!currentApi.value) return;
    
-   // Cache Key
    const CACHE_KEY = 'discovery_data';
    
-   // Check Cache
    if (!forceRefresh) {
        const cached = musicCache.get<any>(CACHE_KEY);
        if (cached) {
@@ -1432,7 +1413,6 @@ const fetchDiscovery = async (forceRefresh = false) => {
    
    const baseUrl = currentApi.value.baseUrl;
    
-   // Parallel fetch
    try {
        const [radarRes, recRes, topRes] = await Promise.all([
            proxyRequest(`${baseUrl}/personalized?limit=7`, 'GET', {}, null), // Radar/Personalized
@@ -1457,7 +1437,6 @@ const fetchDiscovery = async (forceRefresh = false) => {
        recommendPlaylists.value = recommend;
        topList.value = tops;
        
-       // Set Cache
        musicCache.set(CACHE_KEY, {
            radar,
            recommend,
@@ -1552,7 +1531,6 @@ const openLogin = async () => {
      playerStore.showLoginDialog = false;
      return;
   }
-  // showLoginDialog.value = true; // Controlled by store
   loginStatus.value = '正在获取二维码...';
   qrImg.value = '';
   
@@ -1828,9 +1806,6 @@ const toggleSelectionMode = () => {
     selectedTracks.value = [];
 };
 
-// Removed handleSelectionChange as we manage it manually now
-// const handleSelectionChange = (val: any[]) => { ... };
-
 const executeBatchDownload = async () => {
     if (selectedTracks.value.length === 0) return;
     
@@ -2037,7 +2012,6 @@ const openPlaylist = async (list: any) => {
     }
 };
 
-// Scroll Handler
 let ticking = false;
 
 const checkScrollPosition = () => {
@@ -2062,7 +2036,6 @@ const handleScroll = () => {
 onMounted(async () => {
     document.documentElement.classList.add('no-scrollbar');
     
-    // Load APIs
     findBestApi();
 
     window.addEventListener('scroll', handleScroll);
@@ -2422,8 +2395,6 @@ onUnmounted(() => {
   font-weight: 500;
 }
 .qr-code img {
-  /* Removed simple img style in favor of wrapper */
-  /* width: 180px; height: 180px; display: block; margin: 0 auto 16px; */
 }
 .qr-status {
   font-size: 14px;
@@ -2500,9 +2471,18 @@ onUnmounted(() => {
   box-shadow: var(--el-box-shadow);
 }
 
-.daily-card { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%); color: #fff; }
-.fm-card { background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); color: #fff; }
-.like-card { background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%); color: #fff; }
+/* 去掉粉/紫/青高饱和渐变，改用中性面色 + 语义色图标 */
+.daily-card,
+.fm-card,
+.like-card {
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+  color: var(--el-text-color-primary);
+}
+
+.daily-card .card-icon { color: var(--el-color-danger); }
+.fm-card .card-icon { color: var(--el-color-primary); }
+.like-card .card-icon { color: var(--el-color-success); }
 
 .card-icon {
   font-size: 32px;
@@ -3006,8 +2986,7 @@ onUnmounted(() => {
     scroll-snap-align: start;
   }
 
-  /* .rank-card::after style moved to global */
-  
+
   .rank-cover-wrapper {
     width: 80px;
     height: 80px;

@@ -49,7 +49,7 @@
       :title="isEdit ? '编辑接口' : '添加接口'"
       width="500px"
     >
-      <el-form :model="form" label-width="80px">
+      <el-form :model="form" label-position="top">
         <el-form-item label="名称">
           <el-input v-model="form.name" placeholder="例如：自建 API 1" />
         </el-form-item>

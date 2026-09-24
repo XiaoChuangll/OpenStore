@@ -6,7 +6,7 @@ import { useLayoutStore } from './stores/layout';
 import { usePlayerStore } from './stores/player';
 import { useRouter, useRoute } from 'vue-router';
 import MiniPlayer from './components/MiniPlayer.vue';
-import { Moon, Sunny, ArrowLeft, Compass, Menu, Refresh, ArrowDown, UserFilled, Collection, Close, Monitor, Edit, InfoFilled, CaretRight, Document } from '@element-plus/icons-vue';
+import { Moon, Sunny, ArrowLeft, Compass, Menu, Refresh, Collection, Close, Monitor, Edit, InfoFilled, CaretRight, Document } from '@element-plus/icons-vue';
 import { useAuthStore } from './stores/auth';
 
 const themeStore = useThemeStore();
@@ -27,7 +27,8 @@ const subDockItems = [
 const adminMenuLoading = ref(false);
 const isMobileMenuOpen = ref(false);
 const isAuthed = computed(() => authStore.isLoggedIn());
-const adminUsername = computed(() => authStore.username || '管理员');
+// 后台管理页的侧边栏需要独立固定滚动，el-main 默认的 overflow:auto 会让内部的 sticky 失效
+const isAdminDashboard = computed(() => route.path.startsWith('/admin/dashboard'));
 
 const activeTab = computed(() => route.path.startsWith('/articles') ? '/articles' : route.path);
 
@@ -88,11 +89,28 @@ const closeMobileMenu = () => {
   isMobileMenuOpen.value = false;
 };
 
+/*
+  顶栏滚动联动：页面内容往上滚进顶栏区域时，给顶栏开毛玻璃 + 下方渐隐过渡带。
+  只切换一个 class，具体视觉交给 CSS（300ms ease-out 过渡），滚动回调用 rAF 合并。
+*/
+const isHeaderScrolled = ref(false);
+let headerScrollRaf = 0;
+
+const syncHeaderScrolled = () => {
+  headerScrollRaf = 0;
+  isHeaderScrolled.value = window.scrollY > 2;
+};
+
 const handleGlobalScroll = () => {
   isScrolling.value = true;
   
   if (isMobileMenuOpen.value) {
     closeMobileMenu();
+  }
+
+  // 顶栏毛玻璃状态只在这里改写，用 rAF 合并同一帧内的多次滚动回调
+  if (!headerScrollRaf) {
+    headerScrollRaf = window.requestAnimationFrame(syncHeaderScrolled);
   }
 
   clearTimeout(scrollTimer);
@@ -121,13 +139,11 @@ const handleWindowClick = (event: Event) => {
 watch(isMobileMenuOpen, (isOpen) => {
   if (isOpen) {
     nextTick(() => {
-      // scroll is handled globally now
       window.addEventListener('touchmove', handleTouchMove, { passive: true });
       window.addEventListener('click', handleWindowClick);
       window.addEventListener('touchstart', handleWindowClick, { passive: true });
     });
   } else {
-    // window.removeEventListener('scroll', closeMobileMenu); // handled globally
     window.removeEventListener('touchmove', handleTouchMove);
     window.removeEventListener('click', handleWindowClick);
     window.removeEventListener('touchstart', handleWindowClick);
@@ -142,11 +158,13 @@ onMounted(() => {
   nextTick(updateSlider);
   window.addEventListener('resize', updateSlider);
   window.addEventListener('scroll', handleGlobalScroll, { passive: true });
+  syncHeaderScrolled();
 });
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateSlider);
   window.removeEventListener('scroll', handleGlobalScroll);
+  if (headerScrollRaf) window.cancelAnimationFrame(headerScrollRaf);
   window.removeEventListener('touchmove', handleTouchMove);
   window.removeEventListener('click', handleWindowClick);
   window.removeEventListener('touchstart', handleWindowClick);
@@ -190,9 +208,13 @@ const toggleMobileMenu = (event?: Event) => {
 watch(
   () => [route.fullPath, route.meta.title, route.query.title],
   () => {
-    const title = (route.query.title as string) || (route.meta.title as string) || 'OpenStore';
+    // 专题 / 文章详情页正文里已经有标题了，顶栏不再重复显示
+    const isDetailPage = /^\/(topics|articles)\/[^/]+$/.test(route.path);
+    const title = isDetailPage ? '' : ((route.query.title as string) || (route.meta.title as string) || 'OpenStore');
     const isRoot = ['/', '/apps', '/updates', '/topics', '/submit', '/articles', '/about'].includes(route.path);
     layoutStore.setPageInfo(title, !isRoot, () => router.back());
+    // 换页后滚动位置会重置，顶栏毛玻璃状态跟着重新算一次
+    nextTick(syncHeaderScrolled);
   },
   { immediate: true }
 );
@@ -237,7 +259,7 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
 
 <template>
   <el-container class="layout-container">
-    <el-header class="header">
+    <el-header class="header" :class="{ 'is-header-scrolled': isHeaderScrolled }">
       <div class="header-left">
         <el-button 
           v-if="layoutStore.showBackButton" 
@@ -247,10 +269,36 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
         >
           <el-icon :size="24"><ArrowLeft /></el-icon>
         </el-button>
-        <div v-else class="logo-container">
+        <!-- 登录入口放在左侧品牌区：未登录点击进后台登录，已登录点开后台菜单 -->
+        <el-dropdown v-else-if="isAuthed" trigger="click" @command="handleAdminCommand">
+          <div class="logo-container is-clickable" role="button" tabindex="0">
+            <div class="logo-icon mr-2" role="img" aria-label="Logo"></div>
+            <span
+              class="app-title"
+              :class="{ 'is-hidden-on-mobile': layoutStore.showCustomTitle }"
+            >
+              OpenStore
+            </span>
+          </div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="dashboard">进入后台</el-dropdown-item>
+              <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <div
+          v-else
+          class="logo-container is-clickable"
+          role="button"
+          tabindex="0"
+          @click="goAdminLogin"
+          @keydown.enter.prevent="goAdminLogin"
+          @keydown.space.prevent="goAdminLogin"
+        >
           <div class="logo-icon mr-2" role="img" aria-label="Logo"></div>
-          <span 
-            class="app-title" 
+          <span
+            class="app-title"
             :class="{ 'is-hidden-on-mobile': layoutStore.showCustomTitle }"
           >
             OpenStore
@@ -266,25 +314,10 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
       </div>
       
       <div class="header-right">
-        <el-dropdown v-if="isAuthed" trigger="click" @command="handleAdminCommand">
-          <el-button :loading="adminMenuLoading">
-            {{ adminUsername }}
-            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="dashboard">进入后台</el-dropdown-item>
-              <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <el-tooltip v-else content="后台登录" placement="bottom">
-          <el-button :icon="UserFilled" circle @click="goAdminLogin" />
-        </el-tooltip>
         <el-button :icon="themeIcon" circle @click="handleThemeToggle" />
       </div>
     </el-header>
-    <el-main class="main-content">
+    <el-main class="main-content" :class="{ 'main-content--overflow-visible': isAdminDashboard }">
       <router-view v-slot="{ Component }">
         <keep-alive include="HomeView,MusicView,AppsView,UpdatesView,TopicView,TotalRankView,GrowthRankView,HistoryRankView,NonHuaweiRankView,AppCardView,ArticlesView" :max="20">
           <component :is="Component" :key="route.path" />
@@ -383,7 +416,7 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
       </transition>
 
       <!-- Trigger Button -->
-      <div class="mobile-trigger-btn" :class="{ 'has-player': playerStore.currentTrack, 'is-scrolling': isScrolling && !playerStore.currentTrack }" @click="toggleMobileMenu" ref="mobileTriggerRef">
+      <div class="mobile-trigger-btn" :class="{ 'has-player': playerStore.currentTrack }" @click="toggleMobileMenu" ref="mobileTriggerRef">
         
         <!-- Player Trigger (Replaces Logo when playing) -->
         <div class="trigger-logo player-trigger" v-if="playerStore.currentTrack" @click.stop="togglePlay">
@@ -439,21 +472,83 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
   padding-bottom: 100px; /* Space for floating footer */
 }
 
+/*
+  el-main 默认 overflow:auto，会在文档滚动之外自己变成一个滚动容器，
+  导致后台侧边栏的 position:sticky 失效；后台管理页放开裁剪即可。
+*/
+.main-content--overflow-visible {
+  overflow: visible;
+  /* 底部留给悬浮 Dock 的空间改由页面内部承担（见 AdminDashboardView），
+     否则这段空白会把侧边栏的 sticky 顶出可视区 */
+  padding-bottom: 0;
+}
+
 .header {
-  background-color: color-mix(in srgb, var(--el-bg-color) 85%, transparent);
-  backdrop-filter: blur(50px);
-  -webkit-backdrop-filter: blur(50px);
-  /* border-bottom: 1px solid var(--el-border-color); */
+  /*
+    滚动联动的可调参数：
+    --header-blur  顶栏毛玻璃半径，要求 12–20px
+    --header-fade  顶栏下方过渡带高度，要求 8–15px
+  */
+  --header-blur: 16px;
+  --header-fade: 12px;
+  background-color: transparent;
+  -webkit-backdrop-filter: blur(0px) saturate(100%);
+  backdrop-filter: blur(0px) saturate(100%);
+  border-bottom: 1px solid transparent;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-  transition: background-color 0.3s, border-color 0.3s;
+  transition:
+    background-color 300ms ease-out,
+    border-color 300ms ease-out,
+    -webkit-backdrop-filter 300ms ease-out,
+    backdrop-filter 300ms ease-out;
   padding: 0 16px;
   position: sticky;
   top: 0;
-  z-index: 2100;
+  /* 必须低于 Element Plus 弹层的基础层级（2000），否则下拉菜单/气泡会被顶栏盖住一部分 */
+  z-index: 1500;
   height: 60px;
+}
+
+/* 内容滚进顶栏区域：顶栏起毛玻璃，文字/按钮仍然浮在毛玻璃之上 */
+.header.is-header-scrolled {
+  background-color: color-mix(in srgb, var(--el-bg-color) 78%, transparent);
+  -webkit-backdrop-filter: blur(var(--header-blur)) saturate(140%);
+  backdrop-filter: blur(var(--header-blur)) saturate(140%);
+  border-bottom-color: var(--el-border-color-lighter);
+}
+
+/* 顶栏底部往下 8–15px：从完全透明渐隐到轻微模糊，和下方内容自然衔接 */
+.header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: var(--header-fade);
+  pointer-events: none;
+  opacity: 0;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0));
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0));
+  transition: opacity 300ms ease-out;
+}
+
+.header.is-header-scrolled::after {
+  opacity: 1;
+}
+
+/* 不支持 backdrop-filter 的内核：退回纯色背景，保证顶栏内容可读 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .header.is-header-scrolled {
+    background-color: var(--el-bg-color);
+  }
+
+  .header::after {
+    display: none;
+  }
 }
 
 .header-left {
@@ -527,11 +622,29 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
 .logo-container {
   display: flex;
   align-items: center;
+  border-radius: 8px;
+  padding: 4px 6px;
+  margin-left: -6px;
+  transition: background-color 0.2s;
+}
+
+.logo-container.is-clickable {
+  cursor: pointer;
+}
+
+.logo-container.is-clickable:hover {
+  background-color: var(--el-fill-color-light);
+}
+
+.logo-container:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-5);
+  outline-offset: 2px;
 }
 
 .app-title {
-  font-size: 1.2rem;
+  font-size: 1.0625rem;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--el-text-color-primary);
   transition: transform 0.25s ease, opacity 0.25s ease;
 }
@@ -610,7 +723,6 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
   align-items: center;
   gap: 4px;
   
-  /* Initial state: hidden */
   max-width: 0;
   padding: 0;
   margin-left: 0;
@@ -645,8 +757,6 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
   flex: 0 0 auto;
 }
 
-/* Removed old transition classes */
-
 .nav-slider {
   position: absolute;
   top: 6px;
@@ -665,8 +775,8 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 60px;
-  padding: 6px 12px;
+  min-width: 64px;
+  padding: 6px 14px;
   border-radius: 50px;
   color: var(--el-text-color-secondary);
   cursor: pointer;
@@ -677,10 +787,7 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
 }
 
 .nav-item:hover {
-  /* background-color: color-mix(in srgb, var(--el-text-color-primary) 8%, transparent); */
   color: var(--el-text-color-primary);
-  /* backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px); */
 }
 
 /* Add a pseudo-element for hover effect to avoid conflict with slider */
@@ -715,7 +822,7 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
 
 .nav-item:hover .el-icon,
 .nav-item:hover .nav-label {
-  transform: scale(1.1);
+  transform: scale(1.04);
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -725,18 +832,19 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
 
 .nav-item.active {
   color: var(--el-color-primary);
-  /* background-color: color-mix(in srgb, var(--el-color-primary) 15%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px); */
 }
 
 .nav-label {
   font-size: 11px;
   margin-top: 3px;
   font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
-/* Mobile adaptation: Ensure it doesn't get too wide or cover important content */
+.nav-item.active .nav-label {
+  font-weight: 600;
+}
+
 .mobile-nav-container {
   display: none;
 }
@@ -771,29 +879,12 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
     transform: scale(0.95);
   }
 
-  .mobile-trigger-btn.is-scrolling {
-    padding: 8px;
-    border-radius: 50%;
-    width: 42px;
-    height: 42px;
-    justify-content: center;
-    background-color: color-mix(in srgb, var(--el-bg-color) 60%, transparent);
-  }
-
-  .mobile-trigger-btn.is-scrolling .trigger-logo,
-  .mobile-trigger-btn.is-scrolling .trigger-divider {
-    display: none;
-  }
-
   .trigger-logo {
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--el-text-color-primary);
   }
-
-  /* Removed logo-icon-small as it is replaced by dynamic icon */
-
 
   .trigger-divider {
     width: 1px;

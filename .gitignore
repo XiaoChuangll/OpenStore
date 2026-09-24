@@ -16,6 +16,9 @@ server/secret.key
 server/uploads/*
 !server/uploads/.gitkeep
 
+# Server-side caches
+server/.cache
+
 # Logs
 logs
 *.log

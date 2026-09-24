@@ -47,10 +47,8 @@
       :fullscreen="isMobile"
       class="announcement-dialog"
     >
-      <el-form
+      <el-form label-position="top"
         :model="form"
-        :label-position="isMobile ? 'top' : 'right'"
-        :label-width="isMobile ? 'auto' : '100px'"
         class="announcement-form"
       >
         <el-row :gutter="20">

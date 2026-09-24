@@ -25,7 +25,7 @@
           {{ app.version || app.versionName || app.version_name }}
         </span>
         <span class="downloads" v-if="app.down_count || app.download_count || app.download_count_str || app.down_count_desc">
-          {{ app.down_count || app.download_count || app.download_count_str || app.down_count_desc }}次下载
+          {{ downloadText }}次下载
         </span>
       </div>
     </div>
@@ -52,6 +52,23 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits(['click']);
+
+/** 下载量：原始数字太大（如 72133336），统一按 亿 / 万 压缩，已经是带单位的字符串就原样用 */
+const downloadText = computed(() => {
+  const raw =
+    props.app?.down_count ??
+    props.app?.download_count ??
+    props.app?.download_count_str ??
+    props.app?.down_count_desc;
+  if (raw === null || raw === undefined || raw === '') return '';
+
+  const normalized = typeof raw === 'number' ? raw : Number(String(raw).replace(/,/g, ''));
+  if (!Number.isFinite(normalized)) return String(raw);
+
+  if (normalized >= 1e8) return `${(normalized / 1e8).toFixed(1).replace(/\.0$/, '')}亿`;
+  if (normalized >= 1e4) return `${(normalized / 1e4).toFixed(1).replace(/\.0$/, '')}万`;
+  return normalized.toLocaleString('zh-CN');
+});
 
 const timeAgo = computed(() => {
   const time =
@@ -117,6 +134,8 @@ const handleClick = () => {
   background: var(--el-bg-color);
   border-radius: 12px;
   padding: 12px;
+  /* 内边距和边框计入高度：否则在网格里会被撑出行高、把行间距吃掉 */
+  box-sizing: border-box;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -124,7 +143,6 @@ const handleClick = () => {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   border: 1px solid var(--el-border-color-lighter);
-  height: 100%;
 }
 
 .app-card:hover {
@@ -170,21 +188,21 @@ const handleClick = () => {
   font-size: 14px;
   font-weight: 600;
   color: var(--el-text-color-primary);
-  margin: 0 0 10px;
+  margin: 0 0 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.6;
+  line-height: 1.4;
 }
 
 .app-category {
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.6;
+  line-height: 1.4;
 }
 
 .app-meta {

@@ -221,7 +221,8 @@ const fetchDetail = async (password?: string) => {
     article.value = data;
     
     const title = data.title || '文章详情';
-    layoutStore.setPageInfo(title, true, () => router.back());
+    // 顶栏不显示标题（正文里有），只保留返回按钮；浏览器标签标题照旧
+    layoutStore.setPageInfo('', true, () => router.back());
     document.title = `${title} - OpenStore`;
 
     const description = data.seo_description || data.summary || '';
@@ -313,7 +314,7 @@ watch(() => route.params.slug, () => {
 .article-detail-view {
   max-width: 900px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 24px 20px 48px;
 }
 .detail-skeleton {
   display: flex;
@@ -330,7 +331,7 @@ watch(() => route.params.slug, () => {
 .article-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
 }
 .detail-cover {
   width: 100%;
@@ -344,12 +345,15 @@ watch(() => route.params.slug, () => {
 }
 .article-title {
   margin: 0;
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.3px;
 }
 .article-summary {
   margin: 0;
   font-size: 15px;
+  line-height: 1.75;
   color: var(--el-text-color-secondary);
 }
 .article-meta {
@@ -371,10 +375,10 @@ watch(() => route.params.slug, () => {
   gap: 8px;
 }
 .article-content {
-  background: var(--el-bg-color);
-  border-radius: 16px;
-  padding: 20px;
-  border: 1px solid var(--el-border-color-lighter);
+  /* 去掉卡片外框：正文直接排在页面上，只用留白分节 */
+  padding: 0;
+  border: none;
+  background: transparent;
 }
 .related-apps {
   margin-top: 20px;
@@ -412,6 +416,160 @@ watch(() => route.params.slug, () => {
 .markdown-body {
   color: var(--el-text-color-primary);
   background-color: transparent;
+}
+
+/* ---------- 正文排版（v-html 内容在 scoped 样式外，用 :deep 才能命中） ---------- */
+.article-content :deep(h1),
+.article-content :deep(h2),
+.article-content :deep(h3),
+.article-content :deep(h4) {
+  /* github-markdown 默认给 h1/h2 加下划线，看着像被框住，这里一律去掉 */
+  border-bottom: none;
+  color: var(--el-text-color-primary);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.article-content :deep(h1) {
+  margin: 28px 0 16px;
+  font-size: 26px;
+}
+
+.article-content :deep(h2) {
+  position: relative;
+  margin: 34px 0 14px;
+  padding-left: 12px;
+  font-size: 22px;
+}
+
+.article-content :deep(h2)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.3em;
+  bottom: 0.3em;
+  width: 3px;
+  border-radius: 2px;
+  background-color: var(--el-color-primary);
+}
+
+.article-content :deep(h3) {
+  margin: 26px 0 12px;
+  font-size: 18px;
+}
+
+.article-content :deep(h4) {
+  margin: 22px 0 10px;
+  font-size: 16px;
+}
+
+.article-content :deep(p) {
+  margin: 0 0 16px;
+  font-size: 15.5px;
+  line-height: 1.85;
+}
+
+.article-content :deep(ul),
+.article-content :deep(ol) {
+  margin: 0 0 16px;
+  padding-left: 22px;
+}
+
+.article-content :deep(li) {
+  margin: 6px 0;
+  line-height: 1.8;
+}
+
+.article-content :deep(li > p) {
+  margin: 0;
+}
+
+.article-content :deep(blockquote) {
+  margin: 20px 0;
+  padding: 12px 16px;
+  border-left: 3px solid var(--el-color-primary-light-5);
+  border-radius: 0 10px 10px 0;
+  background-color: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
+}
+
+.article-content :deep(blockquote > p) {
+  margin: 0;
+}
+
+.article-content :deep(a) {
+  color: var(--el-color-primary);
+  text-decoration: none;
+  border-bottom: 1px solid var(--el-color-primary-light-7);
+  transition: border-color 0.2s;
+  word-break: break-all;
+}
+
+.article-content :deep(a:hover) {
+  border-bottom-color: var(--el-color-primary);
+}
+
+.article-content :deep(img) {
+  display: block;
+  max-width: 100%;
+  margin: 20px auto;
+  border-radius: 12px;
+}
+
+.article-content :deep(code) {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background-color: var(--el-fill-color);
+  font-size: 0.92em;
+}
+
+.article-content :deep(pre) {
+  margin: 18px 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background-color: var(--el-fill-color-light);
+  overflow-x: auto;
+}
+
+.article-content :deep(pre code) {
+  padding: 0;
+  background-color: transparent;
+  font-size: 13px;
+}
+
+.article-content :deep(hr) {
+  height: 0;
+  margin: 28px 0;
+  border: none;
+  border-top: 1px dashed var(--el-border-color);
+  background: none;
+}
+
+.article-content :deep(table) {
+  display: table;
+  width: 100%;
+  margin: 20px 0;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+}
+
+.article-content :deep(th),
+.article-content :deep(td) {
+  padding: 10px 14px;
+  border: none;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.article-content :deep(th) {
+  background-color: var(--el-fill-color-light);
+  font-weight: 600;
+}
+
+.article-content :deep(tr:last-child td) {
+  border-bottom: none;
 }
 /* Dark mode adaptation for markdown-body */
 html.dark .markdown-body {
@@ -455,7 +613,43 @@ html.dark .markdown-body h6 {
 }
 @media (max-width: 768px) {
   .article-detail-view {
-    padding: 16px;
+    padding: 14px 14px 32px;
+  }
+
+  .article-wrapper {
+    gap: 18px;
+  }
+
+  .detail-cover {
+    height: 200px;
+    border-radius: 14px;
+  }
+
+  .article-title {
+    font-size: 23px;
+    line-height: 1.4;
+  }
+
+  .article-summary {
+    font-size: 14px;
+  }
+
+  .article-content :deep(h1) {
+    font-size: 22px;
+  }
+
+  .article-content :deep(h2) {
+    margin: 28px 0 12px;
+    font-size: 19px;
+  }
+
+  .article-content :deep(h3) {
+    font-size: 17px;
+  }
+
+  .article-content :deep(p) {
+    font-size: 15px;
+    line-height: 1.8;
   }
 }
 </style>

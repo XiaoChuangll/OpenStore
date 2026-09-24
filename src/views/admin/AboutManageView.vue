@@ -7,7 +7,7 @@
     </el-page-header>
 
     <el-card>
-      <el-form :model="form" label-width="120px" class="about-form">
+      <el-form label-position="top" :model="form" class="about-form">
         <el-row :gutter="20">
           <el-col :md="12" :xs="24">
             <el-form-item label="版本号">

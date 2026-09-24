@@ -11,26 +11,181 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { WebSocketServer } = require('ws');
 const db = require('./database.cjs');
+const { createQueuedLookup } = require('./ip-location.cjs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 app.set('trust proxy', true);
 const PORT = process.env.PORT || 3001;
-const HM_API_TARGET = (process.env.VITE_API_TARGET || 'http://shenjack.top:10003').replace(/\/$/, '');
+const HM_API_TARGET = (process.env.VITE_API_TARGET || '').replace(/\/$/, '');
 
 app.use(cors());
-app.use(express.json());
+
+// 兼容字面量 null 请求体：
+// axios 在 Content-Type: application/json 下会把 null 序列化成字符串 "null"，
+// body-parser 的 strict 模式只接受对象/数组，会直接抛 SyntaxError 返回 400，
+// 请求会在到达 /api/v0 代理之前就被拒掉。这里放宽 strict，
+// 并把非对象的 body 归一成 {}，既兼容这类客户端，也避免下游解构 req.body 时报错。
+app.use(express.json({ strict: false }));
+app.use((req, res, next) => {
+  // 只处理 JSON 请求体，避免影响 multipart 等其它类型的请求
+  const isJsonBody = String(req.headers['content-type'] || '').includes('application/json');
+  if (isJsonBody && (req.body === null || typeof req.body !== 'object')) {
+    req.body = {};
+  }
+  next();
+});
+
+// ---- 后端实时日志：环形缓冲 + SSE 广播（后台「后端实时」面板使用）----
+// 访客统计缓存：总数/地区分布/设备分布都是全表聚合，数据量十万级时每次重算要数百毫秒
+const VISITORS_STATS_TTL = 20 * 1000;
+const visitorsStatsCache = new Map();
+
+const cachedVisitorsAll = (key, sql, params, cb) => {
+  const hit = visitorsStatsCache.get(key);
+  if (hit && Date.now() - hit.t < VISITORS_STATS_TTL) return cb(null, hit.data);
+  db.all(sql, params, (err, rows) => {
+    if (err) return cb(err);
+    visitorsStatsCache.set(key, { t: Date.now(), data: rows });
+    cb(null, rows);
+  });
+};
+
+const cachedVisitorsGet = (key, sql, params, cb) => {
+  const hit = visitorsStatsCache.get(key);
+  if (hit && Date.now() - hit.t < VISITORS_STATS_TTL) return cb(null, hit.data);
+  db.get(sql, params, (err, row) => {
+    if (err) return cb(err);
+    visitorsStatsCache.set(key, { t: Date.now(), data: row });
+    cb(null, row);
+  });
+};
+
+const LIVE_LOG_LIMIT = 200;
+const LIVE_LOG_SNAPSHOT = 60;
+const liveLogBuffer = [];
+const liveSseClients = new Set();
+
+const liveMetrics = () => ({
+  uptime: Math.round(process.uptime()),
+  rss: process.memoryUsage().rss,
+  node: process.version,
+  clients: liveSseClients.size,
+  time: Date.now()
+});
+
+/**
+ * meta 里可带结构化信息，供前端做过滤与高亮：
+ * - kind: 'request' | 'cache' | 'upstream' | 'system'
+ * - 请求类：method / path / status / ms
+ */
+const pushLiveLog = (level, message, meta) => {
+  const entry = { t: Date.now(), level, message: String(message).slice(0, 400), ...(meta || {}) };
+  liveLogBuffer.push(entry);
+  if (liveLogBuffer.length > LIVE_LOG_LIMIT) liveLogBuffer.shift();
+
+  const payload = `event: log\ndata: ${JSON.stringify(entry)}\n\n`;
+  for (const client of liveSseClients) {
+    try {
+      client.write(payload);
+    } catch {
+      /* 客户端已断开，忽略 */
+    }
+  }
+  return entry;
+};
+
+// 只记录 /api 请求，避免静态资源刷屏
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  // 重放接口本身的调用不记日志：它真正触发的那个请求会以 kind=replay 记一条，
+  // 否则点一次重放会在日志里多出一行 POST /api/admin/replay
+  if (req.path === '/api/admin/replay') return next();
+  // 重放请求是后端自己发起的：由重放接口统一记一条（带响应预览），这里跳过，
+  // 否则同一次重放会出现两行；同时不计入访客统计，避免刷访客数
+  const isReplayRequest = req.headers['x-openstore-replay'] === '1';
+  if (isReplayRequest) return next();
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - startedAt;
+    const status = res.statusCode;
+    const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
+    pushLiveLog(level, `${req.method} ${req.path} → ${status} · ${ms}ms`, {
+      kind: 'request',
+      method: req.method,
+      path: req.path,
+      status,
+      ms
+    });
+  });
+  next();
+});
+
+// SSE：EventSource 无法自定义 header，因此同时接受 ?token=
+app.get('/api/admin/live', (req, res) => {
+  const auth = req.headers.authorization || '';
+  const headerToken = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  const token = headerToken || String(req.query.token || '');
+
+  try {
+    jwt.verify(token, JWT_SECRET);
+  } catch {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  res.write(
+    `event: hello\ndata: ${JSON.stringify({
+      logs: liveLogBuffer.slice(-LIVE_LOG_SNAPSHOT),
+      metrics: liveMetrics()
+    })}\n\n`
+  );
+
+  liveSseClients.add(res);
+  pushLiveLog('info', `实时面板已连接（在线 ${liveSseClients.size}）`);
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(`event: metrics\ndata: ${JSON.stringify(liveMetrics())}\n\n`);
+    } catch {
+      /* ignore */
+    }
+  }, 5000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    liveSseClients.delete(res);
+  });
+});
 
 const uploadsDir = path.join(__dirname, 'uploads');
+
+// 访客归属地补充：geoip 缺城市时用国内免费接口补省市（串行 + 缓存，避免打爆第三方）
+const lookupVisitorCity = createQueuedLookup({ intervalMs: 150 });
+
+/** 同一 IP 之前若已解析出省市，直接复用，不再请求第三方 */
+const findKnownLocation = (ip) =>
+  new Promise((resolve) => {
+    db.get(
+      `SELECT location FROM visitors WHERE ip = ? AND location LIKE '% %' AND location NOT LIKE 'Unknown%' LIMIT 1`,
+      [ip],
+      (err, row) => resolve(err || !row ? '' : row.location || '')
+    );
+  });
+
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 // Ensure /uploads is served correctly before SPA fallback
 app.use('/uploads', express.static(uploadsDir));
 
-// SEO: Server-side meta injection for articles - MUST BE BEFORE STATIC ASSETS
+// SEO：文章页的服务端 meta 注入，必须排在静态资源之前
 app.get('/articles/:slug', (req, res, next) => {
-  // Check if request accepts html
   if (req.headers.accept && !req.headers.accept.includes('text/html')) {
     return next();
   }
@@ -38,10 +193,8 @@ app.get('/articles/:slug', (req, res, next) => {
   const slug = req.params.slug;
   const indexPath = path.join(__dirname, '../dist/index.html');
 
-  // If dist/index.html doesn't exist (dev mode maybe?), fallback to next()
   if (!fs.existsSync(indexPath)) return next();
 
-  // Fallback function to serve static index.html via next() (let express.static handle it or SPA fallback)
   const serveDefault = () => next();
 
   if (!slug) return serveDefault();
@@ -52,7 +205,6 @@ app.get('/articles/:slug', (req, res, next) => {
     fs.readFile(indexPath, 'utf8', (err, html) => {
       if (err) return serveDefault();
 
-      // Inject SEO tags
       const title = `${row.title} - OpenStore`;
       const description = (row.seo_description || row.summary || '查看文章详细内容').replace(/"/g, '&quot;');
       const defaultKeywords = 'OpenStore,华为应用市场看板,鸿蒙应用看板,鸿蒙应用数据面板,鸿蒙,应用商店,应用下载,榜单,更新,应用分发';
@@ -69,44 +221,37 @@ app.get('/articles/:slug', (req, res, next) => {
 
       let modifiedHtml = html;
       
-      // Replace Title
       if (modifiedHtml.includes('<title>')) {
         modifiedHtml = modifiedHtml.replace(/<title>.*?<\/title>/, `<title>${title}</title>`);
       } else {
         modifiedHtml = modifiedHtml.replace('</head>', `<title>${title}</title>\n</head>`);
       }
 
-      // Replace Description
-      // Use regex with 's' flag (dotAll) is not supported in all node versions, but multiline matching is needed.
-      // Instead, we use [\s\S]*? to match across newlines.
+      // 不用 dotAll 的 /s 标志（部分 Node 版本不支持），改用 [\s\S]*? 跨行匹配
       if (modifiedHtml.includes('name="description"')) {
         modifiedHtml = modifiedHtml.replace(/<meta\s+name="description"\s+content="[\s\S]*?"\s*\/?>/i, `<meta name="description" content="${description}" />`);
       } else {
         modifiedHtml = modifiedHtml.replace('</head>', `<meta name="description" content="${description}" />\n</head>`);
       }
       
-      // Update keywords
       if (modifiedHtml.includes('name="keywords"')) {
         modifiedHtml = modifiedHtml.replace(/<meta\s+name="keywords"\s+content="[\s\S]*?"\s*\/?>/i, `<meta name="keywords" content="${keywords}" />`);
       } else {
         modifiedHtml = modifiedHtml.replace('</head>', `<meta name="keywords" content="${keywords}" />\n</head>`);
       }
 
-      // Replace OG Title
       if (modifiedHtml.includes('property="og:title"')) {
         modifiedHtml = modifiedHtml.replace(/<meta\s+property="og:title"\s+content="[\s\S]*?"\s*\/?>/i, `<meta property="og:title" content="${title}" />`);
       } else {
         modifiedHtml = modifiedHtml.replace('</head>', `<meta property="og:title" content="${title}" />\n</head>`);
       }
 
-      // Replace OG Description
       if (modifiedHtml.includes('property="og:description"')) {
         modifiedHtml = modifiedHtml.replace(/<meta\s+property="og:description"\s+content="[\s\S]*?"\s*\/?>/i, `<meta property="og:description" content="${description}" />`);
       } else {
         modifiedHtml = modifiedHtml.replace('</head>', `<meta property="og:description" content="${description}" />\n</head>`);
       }
 
-      // Add or update og:image
       if (image) {
         if (modifiedHtml.includes('property="og:image"')) {
           modifiedHtml = modifiedHtml.replace(/<meta\s+property="og:image"\s+content="[\s\S]*?"\s*\/?>/i, `<meta property="og:image" content="${image}" />`);
@@ -114,7 +259,6 @@ app.get('/articles/:slug', (req, res, next) => {
           modifiedHtml = modifiedHtml.replace('</head>', `<meta property="og:image" content="${image}" />\n</head>`);
         }
         
-        // Twitter Image
         if (modifiedHtml.includes('name="twitter:image"')) {
           modifiedHtml = modifiedHtml.replace(/<meta\s+name="twitter:image"\s+content="[\s\S]*?"\s*\/?>/i, `<meta name="twitter:image" content="${image}" />`);
         } else {
@@ -122,12 +266,10 @@ app.get('/articles/:slug', (req, res, next) => {
         }
       }
 
-      // Add twitter card tags if missing
       if (!modifiedHtml.includes('name="twitter:card"')) {
         modifiedHtml = modifiedHtml.replace('</head>', `<meta name="twitter:card" content="summary_large_image" />\n</head>`);
       }
       
-      // Twitter Title & Desc
       if (modifiedHtml.includes('name="twitter:title"')) {
         modifiedHtml = modifiedHtml.replace(/<meta\s+name="twitter:title"\s+content="[\s\S]*?"\s*\/?>/i, `<meta name="twitter:title" content="${title}" />`);
       } else {
@@ -145,11 +287,9 @@ app.get('/articles/:slug', (req, res, next) => {
   });
 });
 
-// Serve static frontend assets
-// Make sure to serve static files *after* the /uploads route so /uploads isn't caught by the SPA fallback or static middleware
+// 静态资源排在 /uploads 之后，否则 /uploads 会被 SPA 兜底或这里的静态中间件截走
 app.use(express.static(path.join(__dirname, '../dist')));
 
-// Multer setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
@@ -160,7 +300,6 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Encryption helpers for env values
 const secretKeyPath = path.join(__dirname, 'secret.key');
 function getSecretKey() {
   const envKey = process.env.ENV_SECRET_KEY;
@@ -196,14 +335,14 @@ function decrypt(data) {
   }
 }
 
-// Middleware to track visitors
 app.use((req, res, next) => {
-  // Track public API calls to record visitors
   const isPublicApi = req.path.startsWith('/api/public/') || req.path.startsWith('/api/v0/') || req.path === '/api/monitors' || req.path === '/api/about';
-  
-  if (isPublicApi && req.method === 'GET') {
+
+  // 后端自己发起的重放请求不计入访客统计（否则重放一次公开接口就会多一个"访客"）
+  const isReplayRequest = req.headers['x-openstore-replay'] === '1';
+
+  if (isPublicApi && req.method === 'GET' && !isReplayRequest) {
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
-    // Normalize IP
     let cleanIp = ip.toString().split(',')[0].trim();
     if (cleanIp.startsWith('::ffff:')) {
       cleanIp = cleanIp.substring(7);
@@ -211,33 +350,31 @@ app.use((req, res, next) => {
       cleanIp = '127.0.0.1';
     }
     
-    // Get path from query 'path' (from frontend tracker), then referer, then req.path
+    // 路径优先取前端追踪器传来的 ?path=，其次是 referer，最后才是 req.path
     let requestPath = req.query.path || req.path;
     
     if (req.headers.referer) {
       try {
         const refUrl = new URL(req.headers.referer);
-        // Special case for root to avoid empty path
         const pathFromRef = (refUrl.pathname === '/' ? '/' : refUrl.pathname) + refUrl.search;
-        // Only use referer path if it's not a generic root or if we don't have a specific path from query
         if (!req.query.path) {
           requestPath = pathFromRef;
         }
       } catch (e) {
-        // ignore invalid referer
+        // referer 不合法时忽略
       }
     }
     
-    // If it's still just an API path, map common ones
+    // 只拿到 API 路径时，映射回对应的前台页面
     if (requestPath.startsWith('/api/')) {
        if (requestPath === '/api/monitors' || requestPath.startsWith('/api/public/incidents')) {
-         requestPath = '/'; // Home/Monitor page
+         requestPath = '/';
        } else if (requestPath.startsWith('/api/v0/')) {
-         requestPath = '/exploration'; // Exploration page
+         requestPath = '/exploration';
        }
     }
 
-    // De-duplication: Only record if same IP has not visited this path in the last 1 minute
+    // 去重：同一 IP 同一路径 1 分钟内只记一条
     const now = Date.now();
     const oneMinuteAgo = new Date(now - 60000).toISOString().replace('T', ' ').split('.')[0];
     
@@ -248,7 +385,6 @@ app.use((req, res, next) => {
         if (err) {
           console.error('Error checking visitor de-duplication:', err);
         } else if (!row) {
-          // Record new visitor
           const geo = geoip.lookup(cleanIp);
           const location = geo ? [geo.city, geo.country].filter(Boolean).join(' ') : 'Unknown Local';
           
@@ -278,7 +414,6 @@ app.use((req, res, next) => {
               if (err) {
                 console.error('Error tracking visitor:', err);
               } else {
-                // Broadcast via WebSocket
                 const newVisitor = {
                   id: this.lastID,
                   ip: cleanIp,
@@ -288,6 +423,30 @@ app.use((req, res, next) => {
                   timestamp: new Date().toISOString()
                 };
                 broadcast('visitors:new', newVisitor);
+
+                // geoip 查不到城市时（国内移动 / 宽带 IP 很常见）异步补省市，不阻塞请求
+                if (!geo || !geo.city) {
+                  const countryCode = geo?.country || 'CN';
+                  findKnownLocation(cleanIp)
+                    .then((known) => {
+                      if (known) return known;
+                      return lookupVisitorCity(cleanIp).then((info) => {
+                        if (!info) return '';
+                        const parts = info.parts || [info.city, info.province];
+                        return [...parts, countryCode].filter(Boolean).join(' ');
+                      });
+                    })
+                    .then((resolved) => {
+                      if (!resolved || resolved === location) return;
+                      db.run(
+                        `UPDATE visitors SET location = ? WHERE ip = ? AND location = ?`,
+                        [resolved, cleanIp, location],
+                        () => {}
+                      );
+                      broadcast('visitors:update', { ip: cleanIp, location: resolved });
+                    })
+                    .catch(() => {});
+                }
               }
             }
           );
@@ -298,12 +457,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// Explicit visitor tracking endpoint
 app.get('/api/public/track', (req, res) => {
   res.json({ ok: true });
 });
 
-// Health check endpoints for System Monitor
+// 系统监控用的健康检查
 app.get('/api/v0/charts/rating', (req, res) => {
   res.json({ status: 'ok', version: 'v0' });
 });
@@ -312,8 +470,21 @@ app.get('/next-api/apps/device-overview', (req, res) => {
   res.json({ status: 'ok', service: 'next-api' });
 });
 
-const APP_OVERVIEW_CACHE_TTL = 5 * 60 * 1000;
-const appOverviewCache = new Map();
+// 分类/设备计数变化很慢：新鲜期 30 分钟，过期后仍可用旧数据兜底最多 24 小时
+const APP_OVERVIEW_CACHE_TTL = Number(process.env.APP_OVERVIEW_CACHE_TTL_MS || 30 * 60 * 1000);
+const APP_OVERVIEW_STALE_TTL = Number(process.env.APP_OVERVIEW_STALE_TTL_MS || 24 * 60 * 60 * 1000);
+// 同一时刻最多向上游并发几个请求（原来分组并发 + 组内 Promise.all，峰值不受控）
+const APP_OVERVIEW_CONCURRENCY = 3;
+// 上游风控：同一个 UA 长期高频请求同一个接口会被封。
+// 服务端所有上游请求统一用可识别的 UA，并且全局限流（并发 + 请求间隔）。
+const UPSTREAM_USER_AGENT =
+  process.env.UPSTREAM_USER_AGENT || 'OpenStore/1.0 (+https://next.betahub.tech)';
+const UPSTREAM_MAX_CONCURRENCY = Number(process.env.UPSTREAM_MAX_CONCURRENCY || 2);
+const UPSTREAM_MIN_INTERVAL_MS = Number(process.env.UPSTREAM_MIN_INTERVAL_MS || 250);
+const APP_OVERVIEW_CACHE_DIR = path.join(__dirname, '.cache');
+const APP_OVERVIEW_CACHE_FILE = path.join(APP_OVERVIEW_CACHE_DIR, 'apps-overview.json');
+const appOverviewCache = new Map(); // cacheKey -> { timestamp, data }
+const appOverviewInflight = new Map(); // cacheKey -> Promise（同一个 key 只允许一次刷新在跑）
 const APP_CATEGORY_GROUPS = [
   { label: '工具', aliases: ['工具', 'Tools'] },
   { label: '旅游', aliases: ['旅游', 'Travel'] },
@@ -361,6 +532,11 @@ const APP_DEVICE_GROUPS = [
   { key: 'pc', label: 'PC', code: 15 }
 ];
 
+// 展平成「别名」维度，用统一的并发上限约束上游请求；同名 label 之后合并求和
+const APP_CATEGORY_ALIASES = APP_CATEGORY_GROUPS.flatMap((group) =>
+  group.aliases.map((alias) => ({ label: group.label, alias }))
+);
+
 const runWithConcurrency = async (items, limit, worker) => {
   const results = new Array(items.length);
   let nextIndex = 0;
@@ -376,6 +552,47 @@ const runWithConcurrency = async (items, limit, worker) => {
   return results;
 };
 
+// 全局限流器：保证服务端对上游的请求不超过 UPSTREAM_MAX_CONCURRENCY 个并发，
+// 且两次请求的发起间隔不小于 UPSTREAM_MIN_INTERVAL_MS，避免被判成"长期高频请求"
+let upstreamActive = 0;
+let upstreamLastStart = 0;
+let upstreamTimer = null;
+const upstreamQueue = [];
+
+const pumpUpstreamQueue = () => {
+  if (upstreamTimer || !upstreamQueue.length) return;
+  if (upstreamActive >= UPSTREAM_MAX_CONCURRENCY) return;
+
+  const wait = Math.max(0, upstreamLastStart + UPSTREAM_MIN_INTERVAL_MS - Date.now());
+  if (wait > 0) {
+    upstreamTimer = setTimeout(() => {
+      upstreamTimer = null;
+      pumpUpstreamQueue();
+    }, wait);
+    return;
+  }
+
+  upstreamActive += 1;
+  upstreamLastStart = Date.now();
+  const release = upstreamQueue.shift();
+  release(() => {
+    upstreamActive -= 1;
+    pumpUpstreamQueue();
+  });
+  pumpUpstreamQueue();
+};
+
+const withUpstreamSlot = (task) =>
+  new Promise((resolve, reject) => {
+    upstreamQueue.push((release) => {
+      Promise.resolve()
+        .then(task)
+        .then(resolve, reject)
+        .finally(release);
+    });
+    pumpUpstreamQueue();
+  });
+
 const extractApiTotal = (payload) => {
   return Number(
     payload?.total ??
@@ -388,51 +605,623 @@ const extractApiTotal = (payload) => {
 
 const fetchCategoryCount = async (categoryName, deviceCode) => {
   if (deviceCode === undefined || deviceCode === null) {
-    const response = await axios.get(`${HM_API_TARGET}/api/v0/apps/list/0`, {
-      params: {
-        search_key: 'kind_name',
-        search_value: categoryName,
-        search_exact: true,
-        page_size: 1,
-        detail: false
-      },
-      timeout: 10000
-    });
+    // 统计分类数量统一走 apps/query（POST）
+    const response = await withUpstreamSlot(() =>
+      axios.post(
+        `${HM_API_TARGET}/api/v0/apps/query?page=0&page_size=1&detail=false`,
+        {
+          and: [{ key: 'kind_name', value: categoryName, op: 'eq' }]
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': UPSTREAM_USER_AGENT
+          },
+          timeout: 10000
+        }
+      )
+    );
 
     return extractApiTotal(response?.data);
   }
 
-  const response = await axios.post(
-    `${HM_API_TARGET}/api/v0/apps/query?page=0&page_size=1&detail=false`,
-    {
-      and: [
-        { key: 'kind_name', value: categoryName, op: 'eq' },
-        { key: 'main_device_codes', value: String(deviceCode), op: 'array_contains' }
-      ]
-    },
-    {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 10000
-    }
+  const response = await withUpstreamSlot(() =>
+    axios.post(
+      `${HM_API_TARGET}/api/v0/apps/query?page=0&page_size=1&detail=false`,
+      {
+        and: [
+          { key: 'kind_name', value: categoryName, op: 'eq' },
+          { key: 'main_device_codes', value: String(deviceCode), op: 'array_contains' }
+        ]
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': UPSTREAM_USER_AGENT
+        },
+        timeout: 10000
+      }
+    )
   );
 
   return extractApiTotal(response?.data);
 };
 
 const fetchDeviceCount = async (deviceCode) => {
-  const response = await axios.get(`${HM_API_TARGET}/api/v0/apps/list/0`, {
-    params: {
-      search_key: 'main_device_codes',
-      search_value: deviceCode,
-      search_exact: false,
-      page_size: 1,
-      detail: false
-    },
-    timeout: 10000
-  });
+  const response = await withUpstreamSlot(() =>
+    axios.post(
+      `${HM_API_TARGET}/api/v0/apps/query?page=0&page_size=1&detail=false`,
+      {
+        and: [{ key: 'main_device_codes', value: String(deviceCode), op: 'array_contains' }]
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': UPSTREAM_USER_AGENT
+        },
+        timeout: 10000
+      }
+    )
+  );
 
   return extractApiTotal(response?.data);
 };
+
+// 真正打上游的逻辑：一次构建 = 全部分类别名查询 + 设备查询
+const buildAppsOverview = async (deviceCode, cacheKey) => {
+  const startMessage = `[apps-overview] 开始构建 ${cacheKey}：${APP_CATEGORY_ALIASES.length} 个分类查询 + ${APP_DEVICE_GROUPS.length} 个设备查询（并发 ${APP_OVERVIEW_CONCURRENCY}）`;
+  console.log(startMessage);
+  pushLiveLog('info', startMessage, { kind: 'cache' });
+
+  const categoryCounts = await runWithConcurrency(
+    APP_CATEGORY_ALIASES,
+    APP_OVERVIEW_CONCURRENCY,
+    async ({ label, alias }) => {
+      try {
+        return { label, count: await fetchCategoryCount(alias, deviceCode) };
+      } catch (error) {
+        console.warn(`[apps-overview] Failed to count category ${alias} for ${cacheKey}:`, error.message);
+        return { label, count: 0 };
+      }
+    }
+  );
+
+  const countByLabel = new Map();
+  categoryCounts.forEach(({ label, count }) => {
+    countByLabel.set(label, (countByLabel.get(label) || 0) + count);
+  });
+
+  const devices = await runWithConcurrency(APP_DEVICE_GROUPS, APP_OVERVIEW_CONCURRENCY, async (device) => {
+    try {
+      const count = await fetchDeviceCount(device.code);
+      return { key: device.key, label: device.label, code: device.code, count };
+    } catch (error) {
+      console.warn(`[apps-overview] Failed to count device ${device.key}:`, error.message);
+      return { key: device.key, label: device.label, code: device.code, count: 0 };
+    }
+  });
+
+  return {
+    categories: [...countByLabel.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .filter((item) => item.count > 0)
+      .sort((a, b) => b.count - a.count),
+    devices
+  };
+};
+
+// 磁盘兜底：进程重启后先用旧快照顶住，避免启动瞬间对上游打一轮全量查询
+const loadAppsOverviewCacheFromDisk = () => {
+  try {
+    if (!fs.existsSync(APP_OVERVIEW_CACHE_FILE)) return;
+    const raw = JSON.parse(fs.readFileSync(APP_OVERVIEW_CACHE_FILE, 'utf8'));
+    const now = Date.now();
+    Object.entries(raw || {}).forEach(([key, entry]) => {
+      const timestamp = Number(entry?.timestamp || 0);
+      if (entry?.data && now - timestamp < APP_OVERVIEW_STALE_TTL) {
+        appOverviewCache.set(key, { timestamp, data: entry.data });
+      }
+    });
+    console.log(`[apps-overview] 从磁盘恢复了 ${appOverviewCache.size} 份快照`);
+  } catch (error) {
+    console.warn('[apps-overview] 读取磁盘缓存失败（忽略）:', error.message);
+  }
+};
+
+const persistAppsOverviewCacheToDisk = () => {
+  try {
+    fs.mkdirSync(APP_OVERVIEW_CACHE_DIR, { recursive: true });
+    const payload = Object.fromEntries(
+      [...appOverviewCache.entries()].map(([key, entry]) => [
+        key,
+        { timestamp: entry.timestamp, data: entry.data }
+      ])
+    );
+    fs.writeFile(APP_OVERVIEW_CACHE_FILE, JSON.stringify(payload), () => {});
+  } catch (error) {
+    console.warn('[apps-overview] 写入磁盘缓存失败（忽略）:', error.message);
+  }
+};
+
+// 单飞：同一个 cacheKey 同时只会有一个刷新任务在跑
+const refreshAppsOverview = (cacheKey, deviceCode) => {
+  const running = appOverviewInflight.get(cacheKey);
+  if (running) return running;
+
+  const startedAt = Date.now();
+  const task = buildAppsOverview(deviceCode, cacheKey)
+    .then((data) => {
+      appOverviewCache.set(cacheKey, { timestamp: Date.now(), data });
+      persistAppsOverviewCacheToDisk();
+      const doneMessage = `[apps-overview] ${cacheKey} 构建完成：${data.categories.length} 个分类 / ${data.devices.length} 个设备，用时 ${Date.now() - startedAt}ms`;
+      console.log(doneMessage);
+      pushLiveLog('info', doneMessage, { kind: 'cache', ms: Date.now() - startedAt });
+      return data;
+    })
+    .finally(() => {
+      appOverviewInflight.delete(cacheKey);
+    });
+
+  appOverviewInflight.set(cacheKey, task);
+  return task;
+};
+
+const getAppsOverview = async (cacheKey, deviceCode) => {
+  const cached = appOverviewCache.get(cacheKey);
+  const age = cached ? Date.now() - cached.timestamp : Infinity;
+
+  if (cached && age < APP_OVERVIEW_CACHE_TTL) {
+    return { data: cached.data, cached: true, stale: false };
+  }
+
+  // 有旧数据就先返回旧数据，后台只刷新一次：请求方不用等，也不会形成并发风暴
+  if (cached && age < APP_OVERVIEW_STALE_TTL) {
+    refreshAppsOverview(cacheKey, deviceCode).catch((error) => {
+      console.warn(`[apps-overview] 后台刷新失败 ${cacheKey}:`, error.message);
+    });
+    return { data: cached.data, cached: true, stale: true };
+  }
+
+  // 冷启动：并发进来的请求共享同一个 Promise
+  const data = await refreshAppsOverview(cacheKey, deviceCode);
+  return { data, cached: false, stale: false };
+};
+
+loadAppsOverviewCacheFromDisk();
+
+// ---- 数据新鲜度：各数据源最近更新时间与新鲜度状态 ----
+const FRESHNESS_SOURCES = [
+  // 只统计「前台访客真的会读到」的数据；访客统计、后端进程这类纯后台信息不再出现在这里
+  { key: 'apps', label: '应用库', table: 'apps', column: 'updated_at', ttl: 86400 },
+  { key: 'blogs', label: '文章', table: 'blogs', column: 'updated_at', ttl: 604800 },
+  { key: 'announcements', label: '公告', table: 'announcements', column: 'updated_at', ttl: 604800 },
+  { key: 'comments', label: '评论', table: 'comments', column: 'created_at', ttl: 86400 },
+  { key: 'friend_links', label: '友情链接', table: 'friend_links', column: 'updated_at', ttl: 2592000 },
+  { key: 'group_chats', label: '群聊', table: 'group_chats', column: 'updated_at', ttl: 2592000 }
+];
+
+// 页面访问新鲜度：访客表里存的是前台页面路径，这里聚合成「哪个页面最近被访问、近 30 天被访问多少次」。
+// 详情页（/topics/xxx、/articles/xxx…）归并到对应的列表页，榜单保留到二级路径。
+const PAGE_LABELS = {
+  '/': '首页',
+  '/exploration': '探索（市场数据）',
+  '/apps': '应用列表',
+  '/app-cards': '应用卡片',
+  '/topics': '专题列表',
+  '/updates': '更新',
+  '/articles': '文章',
+  '/about': '关于',
+  '/submit': '投稿',
+  '/music': '音乐',
+  '/dashboard': '应用详情',
+  '/system-status': '系统状态',
+  '/rank/total': '总下载榜',
+  '/rank/growth': '下载增长榜',
+  '/rank/history': '历史榜单',
+  '/rank/non-huawei': '非华为榜单'
+};
+
+const normalizeVisitorPath = (rawPath) => {
+  const path = String(rawPath || '/').split('?')[0].split('#')[0] || '/';
+  if (path === '/') return '/';
+  const segments = path.split('/').filter(Boolean);
+  if (segments[0] === 'rank' && segments.length > 2) return `/${segments.slice(0, 2).join('/')}`;
+  if (segments.length > 1 && segments[0] !== 'rank') return `/${segments[0]}`;
+  return path;
+};
+
+app.get('/api/admin/freshness', requireAuth, async (req, res) => {
+  const rows = await Promise.all(
+    FRESHNESS_SOURCES.map(
+      (source) =>
+        new Promise((resolve) => {
+          db.get(
+            `SELECT MAX(${source.column}) AS last,
+                    (julianday('now') - julianday(MAX(${source.column}))) * 86400 AS age
+             FROM ${source.table}`,
+            [],
+            (err, row) => {
+              if (err) {
+                resolve({ ...source, last: null, ageSeconds: null, error: err.message });
+                return;
+              }
+              resolve({
+                key: source.key,
+                label: source.label,
+                ttl: source.ttl,
+                last: row?.last || null,
+                ageSeconds: Number.isFinite(row?.age) ? Math.max(0, Math.round(row.age)) : null
+              });
+            }
+          );
+        })
+    )
+  );
+
+  // 上游缓存快照（内存）与进程运行时长
+  const cacheEntries = [...appOverviewCache.values()];
+  const newestCache = cacheEntries.length ? Math.max(...cacheEntries.map((e) => e.timestamp)) : null;
+  const oldestCache = cacheEntries.length ? Math.min(...cacheEntries.map((e) => e.timestamp)) : null;
+  const now = Date.now();
+
+  const items = [
+    ...rows,
+    {
+      key: 'apps_overview',
+      label: '上游缓存快照',
+      ttl: APP_OVERVIEW_CACHE_TTL / 1000,
+      last: newestCache ? new Date(newestCache).toISOString() : null,
+      ageSeconds: newestCache ? Math.round((now - newestCache) / 1000) : null,
+      extra: {
+        entries: cacheEntries.length,
+        oldestAgeSeconds: oldestCache ? Math.round((now - oldestCache) / 1000) : null
+      }
+    }
+  ];
+
+  // 页面访问：按前台页面聚合最近一次访问（90 天内）与近 30 天访问量
+  const pageRows = await new Promise((resolve) => {
+    db.all(
+      `SELECT path,
+              MAX(timestamp) AS last,
+              SUM(CASE WHEN timestamp >= datetime('now', '-30 days') THEN 1 ELSE 0 END) AS visits,
+              (julianday('now') - julianday(MAX(timestamp))) * 86400 AS age
+       FROM visitors
+       WHERE timestamp >= datetime('now', '-90 days')
+       GROUP BY path
+       ORDER BY visits DESC, last DESC
+       LIMIT 120`,
+      [],
+      (err, list) => resolve(err ? [] : list || [])
+    );
+  });
+
+  const pageMap = new Map();
+  pageRows.forEach((row) => {
+    const key = normalizeVisitorPath(row.path);
+    const age = Number.isFinite(row.age) ? Math.max(0, Math.round(row.age)) : null;
+    const previous = pageMap.get(key);
+    if (!previous) {
+      pageMap.set(key, {
+        key: `page:${key}`,
+        path: key,
+        label: PAGE_LABELS[key] || key,
+        visits: Number(row.visits) || 0,
+        ageSeconds: key === '/' && !row.last ? 0 : age,
+        last: row.last || null
+      });
+      return;
+    }
+    previous.visits += Number(row.visits) || 0;
+    if (age !== null && (previous.ageSeconds === null || age < previous.ageSeconds)) {
+      previous.ageSeconds = age;
+      previous.last = row.last || previous.last;
+    }
+  });
+
+  const pages = [...pageMap.values()]
+    .sort((a, b) => b.visits - a.visits)
+    .slice(0, 8);
+
+  res.json({ success: true, now: new Date(now).toISOString(), items, pages });
+});
+
+// ---- 调用拓扑：从实时日志缓冲聚合出「前端 → 后端 API → 上游」的链路 ----
+const UPSTREAM_PROXY_PREFIXES = ['/api/v0', '/api/proxy-request', '/api/music-proxy', '/next-api'];
+
+app.get('/api/admin/topology', requireAuth, (req, res) => {
+  const windowSeconds = Number(req.query.window || 900);
+  const since = Date.now() - windowSeconds * 1000;
+  const recent = liveLogBuffer.filter((entry) => entry.t >= since);
+
+  const requests = recent.filter((entry) => entry.kind === 'request' && entry.path);
+  const cacheEvents = recent.filter((entry) => entry.kind === 'cache');
+  const upstreamCalls = recent.filter((entry) => entry.kind === 'upstream');
+  const upstreamErrors = upstreamCalls.filter((entry) => (entry.status || 0) >= 400);
+
+  const byPath = new Map();
+  requests.forEach((entry) => {
+    const key = entry.path;
+    const item = byPath.get(key) || { path: key, count: 0, totalMs: 0, maxMs: 0, errors: 0, slow: 0 };
+    item.count += 1;
+    item.totalMs += entry.ms || 0;
+    item.maxMs = Math.max(item.maxMs, entry.ms || 0);
+    if ((entry.status || 0) >= 500) item.errors += 1;
+    if ((entry.ms || 0) >= 500) item.slow += 1;
+    byPath.set(key, item);
+  });
+
+  // 上游代理类请求单独聚合，避免被 Top8 截断后"上游节点无数据"
+  const isUpstreamPath = (path) => UPSTREAM_PROXY_PREFIXES.some((prefix) => path.startsWith(prefix));
+  const upstreamProxyItems = [...byPath.values()].filter((item) => isUpstreamPath(item.path));
+  const upstreamProxy = upstreamProxyItems.length
+    ? {
+        count: upstreamProxyItems.reduce((sum, item) => sum + item.count, 0),
+        avgMs: Math.round(
+          upstreamProxyItems.reduce((sum, item) => sum + item.totalMs, 0) /
+            upstreamProxyItems.reduce((sum, item) => sum + item.count, 0)
+        ),
+        errors: upstreamProxyItems.reduce((sum, item) => sum + item.errors, 0),
+        slow: upstreamProxyItems.reduce((sum, item) => sum + item.slow, 0),
+        paths: upstreamProxyItems
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 4)
+          .map((item) => ({ path: item.path, count: item.count, avgMs: Math.round(item.totalMs / item.count) }))
+      }
+    // 即使这一窗口内没有上游调用，也返回一个 0 次的对象：
+    // 前端据此画出「上游接口 → 上游 API」这条（虚线）连线，不然上游节点会孤零零挂在右边
+    : { count: 0, avgMs: 0, errors: 0, slow: 0, paths: [] };
+
+  const apiNodes = [...byPath.values()]
+    .filter((item) => !isUpstreamPath(item.path))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8)
+    .map((item) => ({
+      id: `api:${item.path}`,
+      name: item.path,
+      count: item.count,
+      avgMs: Math.round(item.totalMs / item.count),
+      maxMs: item.maxMs,
+      errors: item.errors,
+      slow: item.slow
+    }));
+
+  res.json({
+    success: true,
+    windowSeconds,
+    totals: {
+      requests: requests.length,
+      errors: requests.filter((entry) => (entry.status || 0) >= 500).length,
+      slow: requests.filter((entry) => (entry.ms || 0) >= 500).length,
+      cacheBuilds: cacheEvents.length,
+      upstreamErrors: upstreamErrors.length,
+      upstreamRequests: upstreamCalls.length
+    },
+    frontend: { requests: requests.length },
+    apiNodes,
+    upstreamProxy,
+    upstream: {
+      calls: upstreamCalls.length,
+      avgMs: upstreamCalls.length
+        ? Math.round(upstreamCalls.reduce((sum, entry) => sum + (entry.ms || 0), 0) / upstreamCalls.length)
+        : 0,
+      cacheBuilds: cacheEvents.length,
+      errors: upstreamErrors.length
+    }
+  });
+});
+
+// ---- 访客分布与时段洞察：国家分布 + 7×24 热力图 ----
+const extractCountryCode = (location) => {
+  const value = String(location || '').trim();
+  if (!value) return 'UNKNOWN';
+  const parts = value.split(/[\s,]+/);
+  const last = parts[parts.length - 1].toUpperCase();
+  if (/^[A-Z]{2}$/.test(last)) return last;
+  const first = parts[0].toUpperCase();
+  return /^[A-Z]{2}$/.test(first) ? first : 'UNKNOWN';
+};
+
+/** 英文省份 → 中国省级行政区（用于国内地图；未收录的城市不计入省级分布） */
+const EN_PROVINCE_LABELS = {
+  Beijing: '北京', Tianjin: '天津', Shanghai: '上海', Chongqing: '重庆',
+  Hebei: '河北', Shanxi: '山西', Liaoning: '辽宁', Jilin: '吉林', Heilongjiang: '黑龙江',
+  Jiangsu: '江苏', Zhejiang: '浙江', Anhui: '安徽', Fujian: '福建', Jiangxi: '江西',
+  Shandong: '山东', Henan: '河南', Hubei: '湖北', Hunan: '湖南', Guangdong: '广东',
+  Hainan: '海南', Sichuan: '四川', Guizhou: '贵州', Yunnan: '云南', Shaanxi: '陕西',
+  Gansu: '甘肃', Qinghai: '青海', Taiwan: '台湾', 'Inner Mongolia': '内蒙古', Guangxi: '广西',
+  Tibet: '西藏', Ningxia: '宁夏', Xinjiang: '新疆', 'Hong Kong': '香港', Macao: '澳门'
+};
+
+/** 归属地串里已带省份名时直接匹配（例如「Haikou Hainan CN」） */
+const matchCnProvince = (location) => {
+  const value = String(location || '');
+  const hit = Object.keys(EN_PROVINCE_LABELS).find((name) => value.includes(name));
+  return hit ? EN_PROVINCE_LABELS[hit] : '';
+};
+
+const CITY_TO_PROVINCE = {
+  Guangzhou: '广东', Shenzhen: '广东', Dongguan: '广东', Zhongshan: '广东', Shantou: '广东',
+  Foshan: '广东', Jiangmen: '广东', Shiqiao: '广东', Zhuhai: '广东', Huizhou: '广东',
+  Wuxi: '江苏', Nanjing: '江苏', Suzhou: '江苏', Zhangjiagang: '江苏', Changzhou: '江苏',
+  Kunshan: '江苏', Xuzhou: '江苏', Lianyun: '江苏', Yangzhou: '江苏', Nantong: '江苏',
+  Beijing: '北京', Haidian: '北京',
+  Fuzhou: '福建', Xiamen: '福建', Quanzhou: '福建',
+  Qingdao: '山东', Jinan: '山东', Linyi: '山东', Yantai: '山东', Weifang: '山东',
+  Shanghai: '上海', Chongqing: '重庆', Tianjin: '天津',
+  Shenyang: '辽宁', Dalian: '辽宁',
+  Chengdu: '四川', Hangzhou: '浙江', Ningbo: '浙江', Jiaxing: '浙江', Taizhou: '浙江',
+  Jinhua: '浙江', Yiwu: '浙江', Wenzhou: '浙江', Shaoxing: '浙江',
+  Wuhan: '湖北', Hwang: '湖北', Huangzhou: '湖北',
+  Changsha: '湖南', Zhengzhou: '河南', Zhoukou: '河南', Luoyang: '河南', Anyang: '河南', Nanyang: '河南',
+  Hefei: '安徽', Wuhu: '安徽',
+  "Xi'an": '陕西', Xian: '陕西',
+  Nanning: '广西', Beihai: '广西', Guilin: '广西',
+  Nanchang: '江西', Kunming: '云南', Changchun: '吉林',
+  'Ürümqi': '新疆', Urumqi: '新疆',
+  Shijiazhuang: '河北', Baoding: '河北', Zhangjiakou: '河北',
+  Guiyang: '贵州', Taiyuan: '山西', Yongning: '宁夏', Hohhot: '内蒙古',
+  Harbin: '黑龙江', Lanzhou: '甘肃', Xining: '青海', Haikou: '海南', Sanya: '海南',
+  Lhasa: '西藏', Yinchuan: '宁夏'
+};
+
+app.get('/api/admin/visitor-insights', requireAuth, async (req, res) => {
+  const days = Math.min(Math.max(Number(req.query.days || 180), 1), 3650);
+  const since = `-${days} days`;
+
+  const query = (sql, params = []) =>
+    new Promise((resolve) => db.all(sql, params, (err, rows) => resolve(err ? [] : rows)));
+
+  const [locations, hours, weekdayHours] = await Promise.all([
+    query(
+      `SELECT location, COUNT(*) AS count FROM visitors
+       WHERE timestamp >= date('now', ?) GROUP BY location ORDER BY count DESC`,
+      [since]
+    ),
+    query(
+      `SELECT strftime('%H', datetime(timestamp, '+8 hours')) AS hour, COUNT(*) AS count
+       FROM visitors WHERE timestamp >= date('now', ?) GROUP BY hour ORDER BY hour`,
+      [since]
+    ),
+    query(
+      `SELECT strftime('%w', datetime(timestamp, '+8 hours')) AS weekday,
+              strftime('%H', datetime(timestamp, '+8 hours')) AS hour,
+              COUNT(*) AS count
+       FROM visitors WHERE timestamp >= date('now', ?)
+       GROUP BY weekday, hour`,
+      [since]
+    )
+  ]);
+
+  // 按国家聚合（location 形如 "Guangzhou CN" / "CN"）
+  const countryMap = new Map();
+  locations.forEach((row) => {
+    const code = extractCountryCode(row.location);
+    countryMap.set(code, (countryMap.get(code) || 0) + row.count);
+  });
+  const countries = [...countryMap.entries()]
+    .map(([code, count]) => ({ code, count }))
+    .sort((a, b) => b.count - a.count);
+
+  // 国内省级分布：location 形如 "Guangzhou CN" / "Haidian CN"
+  const provinceMap = new Map();
+  const cityList = [];
+  let unlocatedCn = 0;
+  locations.forEach((row) => {
+    const code = extractCountryCode(row.location);
+    if (code !== 'CN') return;
+    const city = String(row.location).trim().split(/[\s,]+/)[0];
+    if (!city || /^CN$/i.test(city)) {
+      unlocatedCn += row.count;
+      return;
+    }
+    cityList.push({ name: city, count: row.count });
+    const province = CITY_TO_PROVINCE[city] || matchCnProvince(row.location);
+    if (!province) {
+      unlocatedCn += row.count;
+      return;
+    }
+    provinceMap.set(province, (provinceMap.get(province) || 0) + row.count);
+  });
+
+  const provinces = [...provinceMap.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+
+  // 7×24 矩阵（0=周日）
+  const matrix = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
+  weekdayHours.forEach((row) => {
+    const w = Number(row.weekday);
+    const h = Number(row.hour);
+    if (w >= 0 && w < 7 && h >= 0 && h < 24) matrix[w][h] = row.count;
+  });
+
+  const hourly = Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    count: hours.find((row) => Number(row.hour) === hour)?.count || 0
+  }));
+
+  res.json({
+    success: true,
+    days,
+    total: countries.reduce((sum, item) => sum + item.count, 0),
+    countries: countries.slice(0, 40),
+    china: {
+      provinces,
+      cities: cityList.sort((a, b) => b.count - a.count).slice(0, 20),
+      unlocated: unlocatedCn
+    },
+    hourly,
+    matrix
+  });
+});
+
+// ---- 请求重放：把实时日志里的一条请求原样再发一次，便于复现问题 ----
+app.post('/api/admin/replay', requireAuth, async (req, res) => {
+  const method = String(req.body?.method || 'GET').toUpperCase();
+  const target = String(req.body?.path || '');
+  const confirmMutation = req.body?.confirm === true;
+
+  if (!['GET', 'HEAD', 'POST'].includes(method)) {
+    return res.status(400).json({ error: '仅支持重放 GET / HEAD / POST' });
+  }
+  if (!target.startsWith('/api/')) {
+    return res.status(400).json({ error: '只能重放站内 /api 开头的路径' });
+  }
+  // 认证与重放本身不允许重放；写操作需要显式确认，避免误触发删除等副作用
+  if (target.startsWith('/api/admin/auth') || target.startsWith('/api/admin/replay')) {
+    return res.status(400).json({ error: '出于安全考虑，不允许重放认证接口' });
+  }
+  if (method === 'POST' && !confirmMutation) {
+    return res.status(409).json({ error: '该请求可能产生副作用，需要显式确认', needConfirm: true });
+  }
+
+  const startedAt = Date.now();
+  try {
+    // 带上当前管理员的凭证，否则重放需要鉴权的接口只会拿到 401，无法复现原结果
+    // x-openstore-replay：让请求中间件把它记成 kind=replay（带「重放」标签）且不计访客
+    const replayHeaders = { 'User-Agent': 'OpenStore-Replay/1.0', 'x-openstore-replay': '1' };
+    if (req.headers.authorization) {
+      replayHeaders.Authorization = req.headers.authorization;
+    }
+
+    const response = await axios({
+      method,
+      url: `http://127.0.0.1:${PORT}${target}`,
+      headers: replayHeaders,
+      data: method === 'POST' ? {} : undefined,
+      validateStatus: () => true,
+      timeout: 30000,
+      responseType: 'text',
+      transformResponse: [(d) => d]
+    });
+    const ms = Date.now() - startedAt;
+    const preview = String(response.data ?? '').slice(0, 1200);
+    const level = response.status >= 500 ? 'error' : response.status >= 400 ? 'warn' : 'info';
+
+    // 重放只在这里记一条（正文不带「↻ 重放」，前端按 kind 渲染标签），
+    // preview 一起下发，日志行仍可展开看响应内容
+    pushLiveLog(level, `${method} ${target} → ${response.status} · ${ms}ms`, {
+      kind: 'replay',
+      method,
+      path: target,
+      status: response.status,
+      ms,
+      preview
+    });
+
+    res.json({ success: true, status: response.status, ms, preview });
+  } catch (error) {
+    const ms = Date.now() - startedAt;
+    pushLiveLog('error', `↻ 重放失败 ${method} ${target}：${error.message}`, {
+      kind: 'replay',
+      method,
+      path: target,
+      ms
+    });
+    res.status(500).json({ success: false, error: error.message, ms });
+  }
+});
 
 app.get('/api/public/apps/overview', async (req, res) => {
   const deviceParam = req.query.device;
@@ -441,69 +1230,12 @@ app.get('/api/public/apps/overview', async (req, res) => {
       ? undefined
       : Number(deviceParam);
   const cacheKey = deviceCode === undefined || Number.isNaN(deviceCode) ? 'all' : `device:${deviceCode}`;
-  const cachedOverview = appOverviewCache.get(cacheKey);
-
-  if (cachedOverview && Date.now() - cachedOverview.timestamp < APP_OVERVIEW_CACHE_TTL) {
-    return res.json({
-      success: true,
-      data: cachedOverview.data,
-      cached: true
-    });
-  }
 
   try {
-    const categories = await runWithConcurrency(APP_CATEGORY_GROUPS, 6, async (group) => {
-      const counts = await Promise.all(
-        group.aliases.map(async (alias) => {
-          try {
-            return await fetchCategoryCount(alias, deviceCode);
-          } catch (error) {
-            console.warn(`[apps-overview] Failed to count category ${alias} for ${cacheKey}:`, error.message);
-            return 0;
-          }
-        })
-      );
-
-      return {
-        name: group.label,
-        count: counts.reduce((sum, count) => sum + count, 0)
-      };
-    });
-    const devices = await runWithConcurrency(APP_DEVICE_GROUPS, 5, async (device) => {
-      try {
-        const count = await fetchDeviceCount(device.code);
-        return {
-          key: device.key,
-          label: device.label,
-          code: device.code,
-          count
-        };
-      } catch (error) {
-        console.warn(`[apps-overview] Failed to count device ${device.key}:`, error.message);
-        return {
-          key: device.key,
-          label: device.label,
-          code: device.code,
-          count: 0
-        };
-      }
-    });
-
-    const data = {
-      categories: categories.filter((item) => item.count > 0).sort((a, b) => b.count - a.count),
-      devices
-    };
-
-    appOverviewCache.set(cacheKey, {
-      timestamp: Date.now(),
-      data
-    });
-
-    res.json({
-      success: true,
-      data,
-      cached: false
-    });
+    const { data, cached, stale } = await getAppsOverview(cacheKey, deviceCode);
+    // 客户端/CDN 也缓存一会儿，减少同一批访客的重复请求
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+    res.json({ success: true, data, cached, stale });
   } catch (error) {
     console.error('Failed to build apps overview:', error.message);
     res.status(500).json({
@@ -513,19 +1245,42 @@ app.get('/api/public/apps/overview', async (req, res) => {
   }
 });
 
-// Proxy Middleware Helper
+// 上游按 User-Agent 做风控：缺少 UA 会直接返回 400 Missing User-Agent header
+const UPSTREAM_DEFAULT_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+// 这些头由 axios / Node 自己管理，不能原样转发给上游
+const PROXY_HOP_BY_HOP_HEADERS = new Set([
+  'host',
+  'connection',
+  'keep-alive',
+  'transfer-encoding',
+  'upgrade',
+  'proxy-authorization',
+  'proxy-connection',
+  'te',
+  'trailer',
+  'content-length', // Let axios handle it
+  'content-type',   // Let axios set it based on data
+]);
+
 const createProxy = (target, pathRewrite) => async (req, res) => {
   let url = req.originalUrl;
   if (pathRewrite) {
     url = pathRewrite(url);
   }
   const fullUrl = `${target}${url}`;
-  
+  const startedAt = Date.now();
+
   try {
-    const headers = { ...req.headers };
-    delete headers.host;
-    delete headers['content-length']; // Let axios handle it
-    delete headers['content-type']; // Let axios set it based on data
+    // 透传客户端的真实请求头（含 User-Agent），避免上游按 UA 拦截
+    const headers = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (PROXY_HOP_BY_HOP_HEADERS.has(key.toLowerCase())) continue;
+      headers[key] = value;
+    }
+    // 客户端未携带 UA 时兜底一个浏览器 UA，保证上游不会因缺少 UA 返回 400
+    headers['user-agent'] = req.headers['user-agent'] || UPSTREAM_DEFAULT_UA;
     
     const config = {
       method: req.method,
@@ -542,25 +1297,153 @@ const createProxy = (target, pathRewrite) => async (req, res) => {
     Object.keys(response.headers).forEach(key => {
       res.setHeader(key, response.headers[key]);
     });
-    
+
+    // 记录一次真实的上游调用（开发/生产都走 Node 代理时才可见）
+    const upstreamMs = Date.now() - startedAt;
+    pushLiveLog(response.status >= 500 ? 'error' : response.status >= 400 ? 'warn' : 'info',
+      // 「上游」不再写进文本里，前端按 kind === 'upstream' 渲染成同款小标签，和「慢」保持一致
+      `${req.method} ${url} → ${response.status} · ${upstreamMs}ms`,
+      { kind: 'upstream', method: req.method, path: url, status: response.status, ms: upstreamMs }
+    );
+
     response.data.pipe(res);
   } catch (error) {
     console.error(`Proxy error [${req.method} ${fullUrl}]:`, error.message);
+    pushLiveLog('error', `上游代理失败 ${req.method} ${url}：${error.message}`, { kind: 'upstream' });
     if (!res.headersSent) {
       res.status(500).json({ error: 'Proxy Error: ' + error.message });
     }
   }
 };
 
-// Setup Proxies
-// /api/v0 -> http://shenjack.top:10003/api/v0
-app.use('/api/v0', createProxy(process.env.VITE_API_TARGET || 'http://shenjack.top:10003'));
+// ---- 异常应用：屏蔽上游脏数据 ----
+const blockedAppsCache = { at: 0, set: new Set() };
+const BLOCKED_APPS_TTL_MS = 10 * 1000;
+
+const loadBlockedAppPackages = (cb) => {
+  const now = Date.now();
+  if (now - blockedAppsCache.at < BLOCKED_APPS_TTL_MS) return cb(blockedAppsCache.set);
+
+  db.all(`SELECT package FROM blocked_apps`, [], (err, rows) => {
+    if (!err) {
+      blockedAppsCache.at = now;
+      blockedAppsCache.set = new Set(
+        rows.map((row) => String(row.package || '').toLowerCase()).filter(Boolean)
+      );
+    }
+    cb(blockedAppsCache.set);
+  });
+};
+
+const invalidateBlockedAppsCache = () => {
+  blockedAppsCache.at = 0;
+};
+
+app.get('/api/admin/blocked-apps', requireAuth, (req, res) => {
+  db.all(`SELECT * FROM blocked_apps ORDER BY created_at DESC`, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ items: rows });
+  });
+});
+
+app.post('/api/admin/blocked-apps', requireAuth, (req, res) => {
+  const pkg = String(req.body?.package || '').trim().toLowerCase();
+  if (!pkg) return res.status(400).json({ error: '缺少 package' });
+
+  const name = String(req.body?.name || '').trim() || null;
+  const iconUrl = String(req.body?.icon_url || '').trim() || null;
+  const note = String(req.body?.note || '').trim() || null;
+
+  db.run(
+    `INSERT INTO blocked_apps (package, name, icon_url, note) VALUES (?, ?, ?, ?)
+     ON CONFLICT(package) DO UPDATE SET name = excluded.name, icon_url = excluded.icon_url, note = excluded.note`,
+    [pkg, name, iconUrl, note],
+    (err) => {
+      if (err) return res.status(500).json({ error: err.message });
+      invalidateBlockedAppsCache();
+      logAction(req.user?.username, 'create', 'blocked_apps', pkg, { package: pkg, name });
+      res.json({ success: true, package: pkg });
+    }
+  );
+});
+
+app.delete('/api/admin/blocked-apps/:package', requireAuth, (req, res) => {
+  const pkg = String(req.params.package || '').trim().toLowerCase();
+  if (!pkg) return res.status(400).json({ error: '缺少 package' });
+
+  db.run(`DELETE FROM blocked_apps WHERE package = ?`, [pkg], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    invalidateBlockedAppsCache();
+    logAction(req.user?.username, 'delete', 'blocked_apps', pkg, { package: pkg });
+    res.json({ success: true });
+  });
+});
+
+/**
+ * 列表查询（没有搜索条件）时才剔除被屏蔽的应用；
+ * 带搜索关键词的请求原样放行，保证屏蔽掉的应用仍然能被搜到。
+ */
+const isPlainAppListQuery = (body) => {
+  const conditions = Array.isArray(body?.and) ? body.and : [];
+  if (!conditions.length) return true;
+
+  return conditions.every((condition) => {
+    if (!condition) return true;
+    if (condition.key === 'listed_at') return true; // 日期筛选不算搜索
+    return String(condition.value ?? '') === '%';
+  });
+};
+
+app.use('/api/v0', (req, res, next) => {
+  if (req.method !== 'POST' || req.path !== '/apps/query' || !isPlainAppListQuery(req.body)) {
+    return next();
+  }
+
+  loadBlockedAppPackages(async (blocked) => {
+    if (!blocked.size) return next();
+
+    const target = process.env.VITE_API_TARGET || 'https://shenjack.top:10003';
+    const headers = {
+      'Content-Type': 'application/json',
+      'User-Agent': req.headers['user-agent'] || UPSTREAM_DEFAULT_UA
+    };
+    const startedAt = Date.now();
+
+    try {
+      const response = await axios.post(`${target}${req.originalUrl}`, req.body ?? {}, {
+        headers,
+        timeout: 20000,
+        validateStatus: () => true
+      });
+      const payload = response.data;
+      const list = payload?.data?.data;
+
+      if (Array.isArray(list)) {
+        payload.data.data = list.filter(
+          (app) => !blocked.has(String(app?.pkg_name || '').toLowerCase())
+        );
+      }
+
+      const ms = Date.now() - startedAt;
+      pushLiveLog(response.status >= 500 ? 'error' : response.status >= 400 ? 'warn' : 'info',
+        `POST ${req.originalUrl} → ${response.status} · ${ms}ms`,
+        { kind: 'upstream', method: 'POST', path: req.originalUrl, status: response.status, ms }
+      );
+      res.status(response.status).json(payload);
+    } catch (error) {
+      console.error('屏蔽列表过滤失败，回退到普通代理：', error.message);
+      next();
+    }
+  });
+});
+
+// /api/v0 -> https://shenjack.top:10003/api/v0
+app.use('/api/v0', createProxy(process.env.VITE_API_TARGET || 'https://shenjack.top:10003'));
 
 // /next-api -> https://next.vcck.cn/api
 app.use('/next-api', createProxy(process.env.VITE_NEXT_API_TARGET || 'https://next.vcck.cn', (path) => path.replace(/^\/next-api/, '/api')));
 
 
-// API Proxy for debugging
 app.post('/api/proxy-request', async (req, res) => {
   const { url, method = 'GET', headers = {}, data = null, body = null } = req.body;
 
@@ -574,7 +1457,7 @@ app.post('/api/proxy-request', async (req, res) => {
       url,
       headers: {
         ...headers,
-        // Remove host header to avoid conflicts, axios/node handles it
+        // host 交给 axios / Node 自己管
         host: undefined
       },
       data: data || body,
@@ -603,7 +1486,6 @@ app.post('/api/proxy-request', async (req, res) => {
   }
 });
 
-// Music Proxy Endpoint for streaming audio (HTTP -> HTTPS)
 app.get('/api/music-proxy', async (req, res) => {
   const { url, filename } = req.query;
   if (!url) {
@@ -642,21 +1524,156 @@ app.get('/api/music-proxy', async (req, res) => {
   }
 });
 
-// Upload endpoint
+// ---------------------------------------------------------------------------
+// 应用截图同源代理
+//
+// 华为 CDN 的截图（appimg-*.dbankcdn.com/application/screenshutN/...）本身可以直连，
+// 但直连意味着每个访客都要自己去连华为 CDN：海外/公司网络/广告拦截插件都可能失败，
+// 而且我们完全感知不到。这里改成由服务端取图，浏览器只访问本站同源地址。
+//
+// 安全边界：
+//   * 只允许 https + *.dbankcdn.com + /application/screenshut... 的地址，其它一律 403
+//   * 不跟随重定向，8s 超时，单张上限 6 MiB
+//   * 校验图片 magic bytes，上游返回非图片时按 502 处理
+// 可用 SCREENSHOT_PROXY=off 一键关闭（关闭后前端会自动隐藏截图区块）。
+// ---------------------------------------------------------------------------
+const SCREENSHOT_PROXY_DISABLED = () => String(process.env.SCREENSHOT_PROXY || '').toLowerCase() === 'off';
+const SCREENSHOT_MAX_BYTES = 6 * 1024 * 1024; // 单张上限
+const SCREENSHOT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 缓存 7 天
+const SCREENSHOT_CACHE_MAX_ENTRIES = Number(process.env.SCREENSHOT_CACHE_ENTRIES || 128);
+const SCREENSHOT_CACHE_MAX_BYTES = Number(process.env.SCREENSHOT_CACHE_BYTES || 64 * 1024 * 1024);
+const SCREENSHOT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const SCREENSHOT_URL_RE = /^https:\/\/([a-z0-9-]+\.)*dbankcdn\.com\/application\/screenshut[A-Za-z0-9]*\/[A-Za-z0-9._/-]*\.(jpe?g|png|webp)$/i;
+
+const screenshotCache = new Map(); // url -> { buffer, contentType, ts }
+const screenshotInFlight = new Map(); // url -> Promise<Buffer>
+let screenshotCacheBytes = 0;
+
+const isAllowedScreenshotUrl = (raw) => {
+  if (!SCREENSHOT_URL_RE.test(raw)) return false;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' && parsed.hostname.endsWith('.dbankcdn.com');
+  } catch {
+    return false;
+  }
+};
+
+const sniffImageType = (buffer) => {
+  if (buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer.length > 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'image/png';
+  if (buffer.length > 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (buffer.length > 6 && buffer.toString('ascii', 0, 3) === 'GIF') return 'image/gif';
+  return null;
+};
+
+const fetchScreenshot = async (raw) => {
+  const response = await axios({
+    method: 'get',
+    url: raw,
+    responseType: 'stream',
+    timeout: 8000,
+    maxRedirects: 0,
+    validateStatus: (status) => status === 200,
+    headers: {
+      'User-Agent': SCREENSHOT_UA,
+      Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+    },
+  });
+
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of response.data) {
+    size += chunk.length;
+    if (size > SCREENSHOT_MAX_BYTES) {
+      response.data.destroy();
+      throw new Error('screenshot exceeds size limit');
+    }
+    chunks.push(chunk);
+  }
+
+  return Buffer.concat(chunks);
+};
+
+// 命中后重新插入，保持 Map 的插入顺序即 LRU 顺序
+const rememberScreenshot = (raw, buffer, contentType) => {
+  const previous = screenshotCache.get(raw);
+  if (previous) screenshotCacheBytes -= previous.buffer.length;
+  screenshotCache.delete(raw);
+  screenshotCache.set(raw, { buffer, contentType, ts: Date.now() });
+  screenshotCacheBytes += buffer.length;
+
+  while (
+    screenshotCache.size > SCREENSHOT_CACHE_MAX_ENTRIES ||
+    screenshotCacheBytes > SCREENSHOT_CACHE_MAX_BYTES
+  ) {
+    const oldestKey = screenshotCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldest = screenshotCache.get(oldestKey);
+    screenshotCache.delete(oldestKey);
+    screenshotCacheBytes -= oldest.buffer.length;
+  }
+};
+
+app.get('/api/screenshot', async (req, res) => {
+  if (SCREENSHOT_PROXY_DISABLED()) {
+    return res.status(403).type('text/plain').send('screenshot proxy disabled');
+  }
+
+  const raw = typeof req.query.url === 'string' ? req.query.url : '';
+  if (!raw) return res.status(400).type('text/plain').send('url is required');
+  if (!isAllowedScreenshotUrl(raw)) return res.status(403).type('text/plain').send('url not allowed');
+
+  const cached = screenshotCache.get(raw);
+  if (cached && Date.now() - cached.ts < SCREENSHOT_TTL_MS) {
+    rememberScreenshot(raw, cached.buffer, cached.contentType);
+    res.setHeader('X-Cache', 'HIT');
+    res.setHeader('Content-Type', cached.contentType);
+    res.setHeader('Content-Length', String(cached.buffer.length));
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.end(cached.buffer);
+  }
+  if (cached) {
+    screenshotCache.delete(raw);
+    screenshotCacheBytes -= cached.buffer.length;
+  }
+
+  try {
+    let pending = screenshotInFlight.get(raw);
+    if (!pending) {
+      pending = fetchScreenshot(raw);
+      screenshotInFlight.set(raw, pending);
+      pending
+        .finally(() => screenshotInFlight.delete(raw))
+        .catch(() => {});
+    }
+
+    const buffer = await pending;
+    const contentType = sniffImageType(buffer);
+    if (!contentType) {
+      return res.status(502).type('text/plain').send('upstream response is not an image');
+    }
+
+    rememberScreenshot(raw, buffer, contentType);
+    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', String(buffer.length));
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.end(buffer);
+  } catch (error) {
+    console.warn('[screenshot proxy]', error.message, raw);
+    return res.status(502).type('text/plain').send('screenshot fetch failed');
+  }
+});
+
 app.post('/api/upload', requireAuth, upload.single('file'), (req, res) => {
-  // Use absolute URL or relative URL depending on deployment
-  // Since frontend and backend are on same domain/port in production usually, relative is fine.
-  // But if proxying, ensure /uploads is accessible.
-  // Construct the full URL based on the request host to be safe or keep relative
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
   const host = req.headers['host'];
-  // const url = `${protocol}://${host}/uploads/${req.file.filename}`;
-  // Ensure the path starts with /uploads/
+  // 前后端同域，返回相对路径即可
   const url = `/uploads/${req.file.filename}`;
   res.json({ url });
 });
 
-// List uploaded files endpoint
 app.get('/api/uploads', requireAuth, (req, res) => {
   fs.readdir(uploadsDir, (err, files) => {
     if (err) {
@@ -664,7 +1681,6 @@ app.get('/api/uploads', requireAuth, (req, res) => {
       return res.status(500).json({ error: 'Failed to list uploads' });
     }
 
-    // Filter for image files and sort by modification time (newest first)
     const fileStats = files
       .map(file => {
         try {
@@ -688,9 +1704,13 @@ app.get('/api/uploads', requireAuth, (req, res) => {
 });
 
 // Proxy to UptimeRobot
-app.get('/api/monitors', async (req, res) => {
-  try {
-    let API_KEY = '';
+// UptimeRobot 单次调用要 0.7~2.7s，而且每个访客都会打一次 —— 这里加短时缓存 + 并发合并 + 失败兜旧值
+const MONITORS_CACHE_TTL_MS = Math.max(0, Number(process.env.MONITORS_CACHE_TTL_SECONDS ?? 60)) * 1000;
+let monitorsCache = { at: 0, data: null };
+let monitorsInFlight = null;
+
+const fetchMonitorsFromUpstream = async () => {
+  let API_KEY = '';
     try {
       await new Promise((resolve) => {
         db.get(`SELECT value_encrypted FROM env_vars WHERE key=?`, ['VUE_APP_API_KEY'], (e1, row) => {
@@ -704,7 +1724,7 @@ app.get('/api/monitors', async (req, res) => {
     } catch {}
     if (!API_KEY) API_KEY = process.env.VUE_APP_API_KEY || '';
     if (!API_KEY) {
-      return res.json({ stat: 'ok', monitors: [] });
+      return { stat: 'ok', monitors: [] };
     }
 
     // UptimeRobot requires x-www-form-urlencoded
@@ -731,14 +1751,79 @@ app.get('/api/monitors', async (req, res) => {
         'Content-Type': 'application/x-www-form-urlencoded'
       }
     });
-    res.json(response.data);
+    return response.data;
+};
+
+app.get('/api/monitors', async (req, res) => {
+  const fresh = monitorsCache.data && Date.now() - monitorsCache.at < MONITORS_CACHE_TTL_MS;
+  if (fresh) {
+    res.setHeader('X-Cache', 'HIT');
+    res.setHeader('Cache-Control', `public, max-age=${Math.floor(MONITORS_CACHE_TTL_MS / 1000)}`);
+    return res.json(monitorsCache.data);
+  }
+
+  try {
+    // 同一时刻只有一次上游请求，其他并发请求等它的结果
+    if (!monitorsInFlight) {
+      monitorsInFlight = fetchMonitorsFromUpstream().finally(() => {
+        monitorsInFlight = null;
+      });
+    }
+    const data = await monitorsInFlight;
+    monitorsCache = { at: Date.now(), data };
+    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Cache-Control', `public, max-age=${Math.floor(MONITORS_CACHE_TTL_MS / 1000)}`);
+    res.json(data);
   } catch (error) {
     console.error('UptimeRobot API Error:', error.message);
+    // 上游挂了就先用旧数据顶着，别让首页跟着报错
+    if (monitorsCache.data) {
+      res.setHeader('X-Cache', 'STALE');
+      return res.json(monitorsCache.data);
+    }
     res.status(500).json({ error: 'Failed to fetch monitors' });
   }
 });
 
-// Get Visitor Stats
+// 单个 IP 的最近访问记录（访客日志里点卡片 / 行时展开）
+app.get('/api/visitors/ip-history', requireAuth, (req, res) => {
+  const ip = String(req.query.ip || '').trim();
+  if (!ip) return res.status(400).json({ error: 'Missing ip' });
+  const limit = Math.min(Math.max(Number(req.query.limit) || 30, 1), 200);
+
+  db.get(
+    `SELECT COUNT(*) AS total,
+            COUNT(DISTINCT path) AS path_kinds,
+            COUNT(DISTINCT device) AS device_kinds,
+            MIN(timestamp) AS first_seen,
+            MAX(timestamp) AS last_seen
+       FROM visitors WHERE ip = ?`,
+    [ip],
+    (err, agg) => {
+      if (err) return res.status(500).json({ error: err.message });
+      db.all(
+        `SELECT id, ip, location, device, path, timestamp
+           FROM visitors WHERE ip = ?
+          ORDER BY timestamp DESC LIMIT ?`,
+        [ip, limit],
+        (err2, rows) => {
+          if (err2) return res.status(500).json({ error: err2.message });
+          res.json({
+            ip,
+            total: agg?.total || 0,
+            path_kinds: agg?.path_kinds || 0,
+            device_kinds: agg?.device_kinds || 0,
+            first_seen: agg?.first_seen || '',
+            last_seen: agg?.last_seen || '',
+            location: rows?.[0]?.location || '',
+            visitors: rows || []
+          });
+        }
+      );
+    }
+  );
+});
+
 app.get('/api/visitors', (req, res) => {
   const limit = Number(req.query.limit || req.query.pageSize || 50);
   const page = req.query.page ? Number(req.query.page) : null;
@@ -762,7 +1847,8 @@ app.get('/api/visitors', (req, res) => {
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-  db.get(
+  cachedVisitorsGet(
+    `agg:${whereSql}:${JSON.stringify(whereParams)}`,
     `SELECT 
       COUNT(*) AS total,
       COUNT(DISTINCT ip) AS unique_ip,
@@ -787,18 +1873,14 @@ app.get('/api/visitors', (req, res) => {
         res.status(500).json({ error: e2.message });
         return;
       }
-      // Stats queries (global stats, ignoring filters for overview charts usually, but here we can keep them global or filtered. 
-      // The user just asked for filtering records. Let's keep stats global for now as they are "Overview" stats usually.)
-      // Actually, if I filter, I might expect stats to change? 
-      // The aggregated stats above (total, unique_ip) ARE using the filter now.
-      // But location_stats and device_stats below are global. Let's keep them global for the "Distribution" view.
+      // total / unique_ip 跟着筛选条件走，地区与设备分布保持全局，给「分布」视图用
       
-      db.all(`SELECT location AS name, COUNT(*) AS count FROM visitors GROUP BY location ORDER BY count DESC`, [], (e3, locRows) => {
+      cachedVisitorsAll('loc:global', `SELECT location AS name, COUNT(*) AS count FROM visitors GROUP BY location ORDER BY count DESC`, [], (e3, locRows) => {
         if (e3) {
           res.status(500).json({ error: e3.message });
           return;
         }
-        db.all(`SELECT device AS name, COUNT(*) AS count FROM visitors GROUP BY device ORDER BY count DESC`, [], (e4, devRows) => {
+        cachedVisitorsAll('dev:global', `SELECT device AS name, COUNT(*) AS count FROM visitors GROUP BY device ORDER BY count DESC`, [], (e4, devRows) => {
           if (e4) {
             res.status(500).json({ error: e4.message });
             return;
@@ -830,7 +1912,6 @@ app.post('/api/admin/feedbacks/batch-delete', requireAuth, (req, res) => {
     res.json({ deleted: this.changes });
   });
 });
-// Batch Delete Visitors
 app.post('/api/visitors/batch-delete', requireAuth, (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) {
@@ -846,24 +1927,76 @@ app.post('/api/visitors/batch-delete', requireAuth, (req, res) => {
   });
 });
 
-// Get Visitor Trend
 app.get('/api/visitors/trend', requireAuth, (req, res) => {
   const days = Number(req.query.days || 30);
-  
-  // SQLite date function to get date part only
-  // timestamp is like '2023-10-27 10:00:00'
+  // offset：把窗口整体往回推 N 天，用来跟「上一个周期」做不重叠的对比
+  const offset = Math.max(0, Number(req.query.offset || 0));
+  const granularity = String(req.query.granularity || 'day');
+
+  // 小时粒度：给「最近24小时 / 今天」这类短窗口用，按小时分桶
+  // （时间戳按 UTC 存，这里换算成北京时间再分桶，标签对管理员更直观）
+  if (granularity === 'hour') {
+    const todayOnly = String(req.query.scope || '') === 'today';
+    const hours = Math.min(168, Math.max(1, Number(req.query.hours) || 24));
+    // 用递归 CTE 先铺满整条时间轴（今天 = 00:00~23:00 共 24 格；滚动窗口 = 最近 N 格），
+    // 再左连接实际数据、缺失的桶补 0 —— 否则没数据的时段直接不画点，图表只有一两个点
+    const windowStart = todayOnly
+      ? "datetime('now', '+8 hours', 'start of day')"
+      : "datetime('now', '+8 hours', '-' || ? || ' hours')";
+    // 注意：SQLite 的 'start of' 修饰符只支持 month/year/day，没有 'start of hour'，
+    // 这里直接用 strftime('%H:00') 截断到整点
+    const bucketsFrom = todayOnly
+      ? "strftime('%Y-%m-%d %H:00', datetime('now', '+8 hours', 'start of day'))"
+      : "strftime('%Y-%m-%d %H:00', 'now', '+8 hours', '-' || ? || ' hours')";
+    const bucketsUntil = todayOnly
+      ? "strftime('%Y-%m-%d %H:00', datetime('now', '+8 hours', 'start of day', '+23 hours'))"
+      : "strftime('%Y-%m-%d %H:00', 'now', '+8 hours')";
+
+    const sql = `
+      WITH RECURSIVE buckets(h) AS (
+        SELECT ${bucketsFrom}
+        UNION ALL
+        SELECT strftime('%Y-%m-%d %H:00', datetime(h, '+1 hour'))
+        FROM buckets
+        WHERE h < ${bucketsUntil}
+      ),
+      agg AS (
+        SELECT
+          strftime('%Y-%m-%d %H:00', datetime(timestamp, '+8 hours')) as bucket,
+          COUNT(*) as count,
+          COUNT(DISTINCT ip) as unique_ip
+        FROM visitors
+        WHERE datetime(timestamp, '+8 hours') >= ${windowStart}
+        GROUP BY bucket
+      )
+      SELECT b.h as date, COALESCE(a.count, 0) as count, COALESCE(a.unique_ip, 0) as unique_ip
+      FROM buckets b
+      LEFT JOIN agg a ON a.bucket = b.h
+      ORDER BY b.h ASC
+    `;
+    const params = todayOnly ? [] : [hours, hours];
+    db.all(sql, params, (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    });
+    return;
+  }
+
+  const whereClause = offset
+    ? "timestamp >= date('now', '-' || ? || ' days') AND timestamp < date('now', '-' || ? || ' days')"
+    : "timestamp >= date('now', '-' || ? || ' days')";
   const sql = `
-    SELECT 
+    SELECT
       strftime('%Y-%m-%d', timestamp) as date,
       COUNT(*) as count,
       COUNT(DISTINCT ip) as unique_ip
     FROM visitors
-    WHERE timestamp >= date('now', '-' || ? || ' days')
+    WHERE ${whereClause}
     GROUP BY date
     ORDER BY date ASC
   `;
-  
-  db.all(sql, [days], (err, rows) => {
+
+  db.all(sql, offset ? [days + offset, offset] : [days], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -2416,8 +3549,6 @@ app.put('/api/site-cards/:id', requireAuth, (req, res) => {
       if (err) return res.status(500).json({ error: err.message });
       logAction(req.user?.username, 'update', 'site_cards', id, { title, enabled, sort_order });
       res.json({ changed: this.changes });
-      // Broadcast update if we were using sockets for this, but HomeView just fetches on mount. 
-      // If we want real-time we should broadcast.
       db.all(`SELECT * FROM site_cards ORDER BY sort_order ASC`, [], (e2, rows) => {
         if (!e2) broadcast('site_cards:update', rows);
       });
@@ -2865,7 +3996,9 @@ app.get('/api/admin/overview', requireAuth, (req, res) => {
     feedbackCount: 0,
     commentCount: 0,
     articleCount: 0,
-    systemUptime: process.uptime()
+    systemUptime: process.uptime(),
+    // 浏览器端拿不到 process.versions，Node 版本只能由后端提供
+    nodeVersion: process.version
   };
 
   const queries = [

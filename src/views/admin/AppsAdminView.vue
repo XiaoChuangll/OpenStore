@@ -5,8 +5,10 @@
         <span class="text-large font-600 mr-3"> 应用管理 </span>
       </template>
     </el-page-header>
-    <div class="toolbar">
-      <el-button type="primary" :icon="Plus" @click="openCreate">新增应用</el-button>
+    <!-- toolbar--tabs：窄屏时这排按钮会被摆到下面页签行的右侧（见 AdminDashboardView） -->
+    <div class="toolbar toolbar--tabs">
+      <!-- size=small：放进页签行后按行高收一号，跟表头/页签的尺寸匹配 -->
+      <el-button type="primary" size="small" :icon="Plus" @click="openCreate">新增应用</el-button>
     </div>
 
     <el-tabs v-model="activeTab" type="border-card">
@@ -85,7 +87,7 @@
     </el-tabs>
 
     <el-dialog v-model="showDialog" :title="dialogTitle" :width="isMobile ? '90%' : '600px'">
-      <el-form :model="form" :label-width="isMobile ? 'auto' : '120px'" :label-position="isMobile ? 'top' : 'right'">
+      <el-form label-position="top" :model="form">
         <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
         <el-form-item label="提供者"><el-input v-model="form.provider" /></el-form-item>
         <el-form-item label="背景URL">

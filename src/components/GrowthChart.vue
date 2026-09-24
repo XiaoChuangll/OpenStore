@@ -258,7 +258,7 @@ const fetchData = async () => {
 
     // Fallback if no data
     if (apps.length === 0) {
-      const listResponse = await hmApi.get<any>('/apps/list/0', {
+      const listResponse = await hmApi.get<any>('/apps/list/1', {
         page_size: 30,
         sort: 'download_count',
         desc: true
@@ -284,7 +284,7 @@ const fetchData = async () => {
     const appsWithIcons = await Promise.all(topApps.map(async (item: any) => {
       try {
         if (item.pkg_name) {
-           const detailRes = await hmApi.get<any>('/apps/list/0', {
+           const detailRes = await hmApi.get<any>('/apps/list/1', {
              search_key: 'pkg_name',
              search_value: item.pkg_name,
              search_exact: true,

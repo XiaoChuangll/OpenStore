@@ -218,6 +218,67 @@ curl https://你的域名/api/health
 # 检查 PM2 服务状态
 pm2 list
 ```
+
+#### 3.4 静态资源缓存与压缩（性能）
+
+构建产物是带内容 hash 的文件名（`/assets/index-xxxx.js`），**可以放心长缓存**；而 Nginx 默认（以及宝塔默认站点配置）会返回 `Cache-Control: max-age=0`，导致每次进入页面都要重新校验一遍 400KB+ 的 JS/CSS。建议在该站点的 Nginx 配置里加上：
+
+```nginx
+# 带 hash 的构建产物：一年强缓存，浏览器不再重复校验
+location /assets/ {
+    expires 1y;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    # 构建时 vite-plugin-compression2 已经生成了 .br/.gz 旁文件，优先直接发它们
+    gzip_static on;
+    brotli_static on;   # 需 Nginx 编译了 ngx_brotli；没有该模块时删掉这一行
+    access_log off;
+}
+
+# index.html 不能长缓存，否则发版后用户拿不到新资源列表
+location = /index.html {
+    add_header Cache-Control "no-cache";
+}
+
+# 其余静态资源（图片、图标）也给个中等缓存
+location ~* \.(?:ico|png|jpg|jpeg|gif|webp|svg|woff2?)$ {
+    expires 30d;
+    add_header Cache-Control "public, max-age=2592000";
+}
+```
+
+实测（`https://next.betahub.tech`）：
+
+| 项目 | 现状 | 加上上面配置后 |
+|---|---|---|
+| `/assets/*.js` 响应头 | `Cache-Control: max-age=0`（每次都要回源校验） | `immutable`，一年内不再请求 |
+| 主包（gzip） | 445 KB | 直接发 `.br` 旁文件 → **327 KB** |
+| 主包 CSS（gzip → br） | 73 KB | **44 KB** |
+
+#### 3.5 应用截图代理
+
+应用详情页的截图不走访客直连华为 CDN，而是走本站同源接口 `GET /api/screenshot?url=...`（`server/index.cjs`）：
+
+- 只允许 `https://*.dbankcdn.com/application/screenshut...` 的地址，其它一律 `403`；
+- 服务端取图后按 magic bytes 返回真实类型（实测上游是 PNG 但路径写成 `.jpg`），并做内存 LRU 缓存；
+- 上游取图失败返回 `502`，前端会自动隐藏整个截图区块，不会留下裂图。
+
+可用环境变量（写进 `.env` 或 PM2 的环境变量）：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `SCREENSHOT_PROXY` | 未设置（开启） | 设为 `off` 关闭代理，详情页截图区块整体消失 |
+| `SCREENSHOT_CACHE_ENTRIES` | `128` | 内存缓存最多缓存多少张截图 |
+| `SCREENSHOT_CACHE_BYTES` | `67108864`（64 MB） | 内存缓存总字节上限，超出按 LRU 淘汰 |
+
+部署后可在服务器上自检：
+
+```bash
+curl -I "https://你的域名/api/screenshot?url=https://appimg-drcn.dbankcdn.com/application/screenshut1/phone/27ed737a00e54041998d54a502b73406.jpg"
+# 期望：HTTP/2 200、Content-Type: image/png、X-Cache: MISS（再跑一次变 HIT）
+```
+
+注意：一个应用详情页会产生 3~10 次截图请求，如果按 4.3 的示例给 `/api/` 配了「每分钟 60 次」的频率限制，建议把 `/api/screenshot` 单独放一个放宽限流（或加 `proxy_cache`）的 location，否则连续浏览多个应用详情页可能触发限流。
+
 ### 4.1 安全配置：宝塔 WAF 防火墙
 
 宝塔 WAF 可有效防护 SQL 注入、XSS 攻击、恶意爬虫、CC 攻击等安全风险。

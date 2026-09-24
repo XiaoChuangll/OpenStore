@@ -73,10 +73,8 @@
       :fullscreen="isMobile"
       class="announcement-dialog"
     >
-      <el-form
+      <el-form label-position="top"
         :model="form"
-        :label-position="isMobile ? 'top' : 'right'"
-        :label-width="isMobile ? 'auto' : '100px'"
         class="announcement-form"
       >
         <el-row :gutter="20">
@@ -178,7 +176,7 @@
 
     <!-- 分类编辑对话框 -->
     <el-dialog v-model="showCatDialog" :title="catDialogTitle" :width="isMobile ? '90%' : '500px'">
-      <el-form :model="catForm" :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
+      <el-form label-position="top" :model="catForm">
         <el-form-item label="名称"><el-input v-model="catForm.name" /></el-form-item>
         <el-form-item label="父分类">
           <el-select v-model="catForm.parent_id" clearable>
@@ -331,7 +329,6 @@ const handleModeChange = (value: boolean) => {
     // 切换到Markdown模式，如果有HTML内容，转换为Markdown
     if (form.value.content_html && !contentMarkdown.value) {
       // 这里可以添加HTML到Markdown的转换逻辑
-      // 暂时简单处理
       contentMarkdown.value = form.value.content_html.replace(/<[^>]*>/g, '');
     }
   }

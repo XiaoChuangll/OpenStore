@@ -93,7 +93,7 @@
     </el-row>
 
     <el-dialog v-model="showDialog" :title="dialogTitle" :width="isMobile ? '100%' : '980px'" :fullscreen="isMobile || fullScreen" :class="['article-dialog', { 'is-editor-fullscreen': fullScreen || isMobile }]">
-      <el-form :model="form" :label-position="isMobile ? 'top' : 'right'" :label-width="isMobile ? 'auto' : '110px'" class="article-form">
+      <el-form label-position="top" :model="form" class="article-form">
         <el-row :gutter="20">
           <el-col :span="24">
             <el-form-item label="标题">
@@ -339,7 +339,7 @@
     </el-dialog>
 
     <el-dialog v-model="showCatDialog" :title="catDialogTitle" :width="isMobile ? '90%' : '500px'">
-      <el-form :model="catForm" :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
+      <el-form label-position="top" :model="catForm">
         <el-form-item label="名称"><el-input v-model="catForm.name" /></el-form-item>
         <el-form-item label="父分类">
           <el-select v-model="catForm.parent_id" clearable>
@@ -354,7 +354,7 @@
     </el-dialog>
 
     <el-dialog v-model="showTagDialog" :title="tagDialogTitle" :width="isMobile ? '90%' : '500px'">
-      <el-form :model="tagForm" :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
+      <el-form label-position="top" :model="tagForm">
         <el-form-item label="名称"><el-input v-model="tagForm.name" /></el-form-item>
         <el-form-item label="颜色">
           <el-color-picker v-model="tagForm.color" />
@@ -564,7 +564,6 @@ const quillOptions = ref({
 
 const fetchCategories = async () => { categories.value = await getBlogCategories(); };
 const fetchTags = async () => { tags.value = await getBlogTags(); };
-// const appLabel = (app: AppItem) => app.provider ? `${app.name} · ${app.provider}` : app.name;
 const mergeAppOptions = (list: AppItem[]) => {
   const map = new Map<number, AppItem>();
   appOptions.value.forEach(item => map.set(item.id, item));

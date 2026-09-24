@@ -8,7 +8,7 @@
 
     <el-card class="mb-2">
       <div class="card-header"><h3>限频配置</h3></div>
-      <el-form :inline="isMobile" label-width="140px">
+      <el-form label-position="top" :inline="isMobile">
         <el-form-item label="每IP每分钟次数">
           <el-input-number v-model="rateLimit" :min="0" :max="999" />
           <el-button type="primary" :loading="savingLimit" @click="saveLimit" style="margin-left: 8px;">保存</el-button>
@@ -83,7 +83,7 @@
           <div class="dialog-row"><span class="label">类型</span><span class="value">{{ typeLabel(detailItem?.type) }}</span></div>
           <div class="dialog-row"><span class="label">时间</span><span class="value">{{ formatTime(detailItem?.created_at) }}</span></div>
         </div>
-        <el-form label-width="80px" label-position="left" class="mt-2">
+        <el-form label-position="top" class="mt-2">
           <el-form-item label="标题">
             <el-input v-model="detailTitle" />
           </el-form-item>

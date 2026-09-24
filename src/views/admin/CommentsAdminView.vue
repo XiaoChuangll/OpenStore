@@ -81,7 +81,7 @@
       </el-table>
 
       <el-dialog v-model="dialogVisible" :title="dialogTitle" :width="isMobile ? '95%' : '600px'">
-        <el-form :model="form" label-width="80px">
+        <el-form label-position="top" :model="form">
           <el-form-item label="昵称">
             <el-input v-model="form.nickname" />
           </el-form-item>

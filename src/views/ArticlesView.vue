@@ -94,7 +94,7 @@
         </div>
 
         <!-- Categories Widget -->
-        <div class="sidebar-widget">
+        <div class="sidebar-widget" v-if="categories.length > 0">
           <h4 class="widget-title">分类</h4>
           <ul class="category-list">
             <li 
@@ -117,7 +117,7 @@
         </div>
 
         <!-- Tags Widget -->
-        <div class="sidebar-widget">
+        <div class="sidebar-widget" v-if="tags.length > 0">
           <h4 class="widget-title">标签</h4>
           <div class="tag-cloud">
             <span
@@ -238,32 +238,34 @@ watch([categoryFilter, tagFilter], fetchList);
 .articles-view {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 40px 20px;
+  padding: 32px 20px 48px;
 }
 
 .page-header {
-  margin-bottom: 40px;
-  text-align: center;
+  /* 与下方双栏内容的左边缘对齐，并加一条分隔线固定住标题区 */
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  text-align: left;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .header-content h2 {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 700;
   margin: 0 0 12px;
-  background: linear-gradient(120deg, var(--el-color-primary), #a78bfa);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.01em;
+  color: var(--el-text-color-primary);
 }
 
 .header-sub {
   color: var(--el-text-color-secondary);
-  font-size: 16px;
+  font-size: 14px;
   margin: 0;
 }
 
 .blog-layout {
   display: flex;
-  gap: 40px;
+  gap: 32px;
   align-items: flex-start;
 }
 
@@ -271,6 +273,14 @@ watch([categoryFilter, tagFilter], fetchList);
 .blog-main {
   flex: 1;
   min-width: 0; /* Prevent flex item overflow */
+}
+
+/* 空状态不再是一张孤零零的插画：给它一个居中的框 */
+.blog-main :deep(.el-empty) {
+  min-height: 320px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 16px;
+  background: var(--el-fill-color-blank);
 }
 
 .article-list {
@@ -509,16 +519,48 @@ watch([categoryFilter, tagFilter], fetchList);
   padding: 24px;
 }
 
-@media (max-width: 900px) {
+/* 中等尺寸收窄侧栏，给正文留出足够宽度 */
+@media (max-width: 1024px) {
+  .blog-sidebar {
+    width: 260px;
+  }
+}
+
+/* 768px 以上保留「正文 + 侧栏」双栏，避免中等尺寸提前塌成一列 */
+@media (max-width: 768px) {
   .blog-layout {
     flex-direction: column;
+    gap: 24px;
+    /* 列方向下 flex-start 会让子项缩成内容宽度，必须改回拉伸 */
+    align-items: stretch;
   }
-  
+
   .blog-sidebar {
     width: 100%;
     position: static;
+    /* 堆叠时把搜索/分类/标签放到列表上方，而不是沉到页面底部 */
+    order: -1;
   }
-  
+
+  .sidebar-widget {
+    padding: 16px;
+  }
+
+  /* 竖排列表在窄屏会变成一条横贯整屏的大长条，改成换行的胶囊标签 */
+  .category-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .category-item {
+    flex: 0 0 auto;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--el-border-color-lighter);
+  }
+
   .post-cover-wrapper {
     height: 200px;
   }

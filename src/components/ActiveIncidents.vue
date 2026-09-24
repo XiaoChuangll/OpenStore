@@ -1,39 +1,37 @@
 <template>
   <div v-if="incidents.length > 0" class="active-incidents">
-    <div v-for="item in incidents" :key="item.id" class="link-card incident-card" :class="getTypeClass(item)">
-      <div class="card-header">
-        <div class="header-left">
-          <div class="accent-bar" :class="getAccentColor(item)"></div>
-          <el-icon class="icon mr-2" v-if="item.type === 'maintenance'"><Tools /></el-icon>
-          <el-icon class="icon mr-2" v-else><WarningFilled /></el-icon>
-          <span class="card-title">{{ item.title }}</span>
+    <article
+      v-for="item in incidents"
+      :key="item.id"
+      class="incident-card"
+      :class="`tone-${getTone(item)}`"
+    >
+      <header class="incident-head">
+        <span class="type-icon">
+          <el-icon v-if="item.type === 'maintenance'"><Tools /></el-icon>
+          <el-icon v-else><WarningFilled /></el-icon>
+        </span>
+
+        <div class="head-main">
+          <h3 class="incident-title">{{ item.title }}</h3>
+          <span class="status-pill">
+            <i class="status-dot"></i>{{ getStatusText(item.status) }}
+          </span>
         </div>
-        <el-tag :type="getStatusType(item.status)" size="small" effect="dark" class="status-tag">
-          {{ getStatusText(item.status) }}
-        </el-tag>
-      </div>
-      
-      <div class="card-content-block" v-if="item.content">
-        <div class="markdown-body" v-html="renderMarkdown(item.content)"></div>
-      </div>
-      
-      <div class="card-footer mt-3">
-        <div class="time-group">
-          <div v-if="item.start_time" class="time-row">
-            <span class="time-label">开始:</span>
-            <span class="time-value">{{ new Date(item.start_time * 1000).toLocaleString() }}</span>
-          </div>
-          <div v-if="item.end_time" class="time-row">
-            <span class="time-label">预计结束:</span>
-            <span class="time-value">{{ new Date(item.end_time * 1000).toLocaleString() }}</span>
-          </div>
-        </div>
-        <div class="update-info ml-auto">
-          <span class="time-label">更新于:</span>
-          <span class="time-value">{{ new Date(item.updated_at * 1000).toLocaleString() }}</span>
-        </div>
-      </div>
-    </div>
+      </header>
+
+      <div
+        v-if="item.content"
+        class="incident-body markdown-body"
+        v-html="renderMarkdown(item.content)"
+      ></div>
+
+      <footer class="incident-foot">
+        <span v-if="item.start_time" class="meta-item">开始 {{ formatTime(item.start_time) }}</span>
+        <span v-if="item.end_time" class="meta-item">预计结束 {{ formatTime(item.end_time) }}</span>
+        <span class="meta-item">更新于 {{ formatTime(item.updated_at) }}</span>
+      </footer>
+    </article>
   </div>
 </template>
 
@@ -49,17 +47,6 @@ const fetchIncidents = async () => {
   incidents.value = await getActiveIncidents();
 };
 
-const getStatusType = (status: string) => {
-  switch (status) {
-    case 'resolved': return 'success';
-    case 'monitoring': return 'primary';
-    case 'identified': return 'warning';
-    case 'investigating': return 'danger';
-    case 'scheduled': return 'info';
-    default: return 'info';
-  }
-};
-
 const getStatusText = (status: string) => {
   const map: Record<string, string> = {
     investigating: '正在调查',
@@ -71,17 +58,19 @@ const getStatusText = (status: string) => {
   return map[status] || status;
 };
 
-const getTypeClass = (item: Incident) => {
-  if (item.type === 'maintenance') return 'maintenance-card';
-  if (item.status === 'resolved') return 'resolved-card';
-  return 'incident-card-active';
+// 卡片配色基调：先看状态，再回退到公告类型
+const getTone = (item: Incident) => {
+  switch (item.status) {
+    case 'resolved': return 'success';
+    case 'identified': return 'warning';
+    case 'monitoring': return 'primary';
+    case 'scheduled': return 'info';
+    case 'investigating': return 'danger';
+    default: return item.type === 'maintenance' ? 'primary' : 'danger';
+  }
 };
 
-const getAccentColor = (item: Incident) => {
-  if (item.status === 'resolved') return 'bg-green';
-  if (item.type === 'maintenance') return 'bg-blue';
-  return 'bg-red';
-};
+const formatTime = (seconds: number) => new Date(seconds * 1000).toLocaleString();
 
 const renderMarkdown = (text: string) => {
   return marked(text || '');
@@ -94,151 +83,290 @@ onMounted(() => {
 
 <style scoped>
 .active-incidents {
-  margin-bottom: 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+  margin-bottom: 24px;
 }
 
-/* Inherit link-card styles from global or mimic them here */
-.link-card {
-  background: var(--el-bg-color);
-  border-radius: 16px;
-  padding: 20px;
-  box-shadow: var(--el-box-shadow-light);
+/* ---------- 卡片外观 ---------- */
+
+.incident-card {
+  --tone-color: var(--el-color-danger);
+  --tone-bg: var(--el-color-danger-light-9);
+
+  position: relative;
+  padding: 16px 20px 14px;
+  overflow: hidden;
   border: 1px solid var(--el-border-color-lighter);
-  transition: transform 0.3s, box-shadow 0.3s;
+  /* 与探索页其它卡片统一为 16px 圆角 */
+  border-radius: 16px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--tone-color) 7%, var(--el-bg-color)) 0%,
+      var(--el-bg-color) 58%
+    );
+  box-shadow: var(--el-box-shadow-light);
 }
 
-.card-header {
+.tone-danger { --tone-color: var(--el-color-danger); --tone-bg: var(--el-color-danger-light-9); }
+.tone-warning { --tone-color: var(--el-color-warning); --tone-bg: var(--el-color-warning-light-9); }
+.tone-primary { --tone-color: var(--el-color-primary); --tone-bg: var(--el-color-primary-light-9); }
+.tone-success { --tone-color: var(--el-color-success); --tone-bg: var(--el-color-success-light-9); }
+.tone-info { --tone-color: var(--el-color-info); --tone-bg: var(--el-color-info-light-9); }
+
+/* ---------- 头部：类型图标 + 标题 + 状态 ---------- */
+
+.incident-head {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-}
-
-.accent-bar {
-  width: 4px;
-  height: 16px;
-  border-radius: 2px;
-  margin-right: 12px;
-}
-
-.bg-yellow { background-color: #f59e0b; }
-.bg-green { background-color: #10b981; }
-.bg-blue { background-color: #3b82f6; }
-.bg-red { background-color: #ef4444; }
-
-.card-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.card-content-block {
-  font-size: 14px;
-  color: var(--el-text-color-regular);
-  line-height: 1.6;
-}
-
-.card-footer {
-  display: flex;
-  align-items: flex-end;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  border-top: 1px solid var(--el-border-color-lighter);
-  padding-top: 12px;
-  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 12px;
 }
 
-.time-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.type-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid color-mix(in srgb, var(--tone-color) 26%, transparent);
+  border-radius: 9px;
+  background: var(--tone-bg);
+  color: var(--tone-color);
+  font-size: 16px;
 }
 
-.time-row, .update-info {
+.head-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 30px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.incident-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--el-text-color-primary);
 }
 
-.time-label {
-  margin-right: 8px;
-  opacity: 0.8;
+/* ---------- 状态胶囊 ---------- */
+
+.status-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border: 1px solid color-mix(in srgb, var(--tone-color) 30%, transparent);
+  border-radius: 999px;
+  background: var(--tone-bg);
+  color: var(--tone-color);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.7;
+  white-space: nowrap;
 }
 
-/* Align Start and End labels */
-.time-group .time-label {
-  min-width: 5em; /* Enough for "预计结束:" */
-  text-align: right;
-  display: inline-block;
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.time-value {
-  font-family: inherit; /* Use default font, not monospace */
+/* 进行中的异常用呼吸点提示，已解决 / 计划类保持静止 */
+.tone-danger .status-dot,
+.tone-warning .status-dot {
+  animation: status-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
+}
+
+/* ---------- 正文 ---------- */
+
+.incident-body {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--el-border-color-lighter);
+}
+
+/* ---------- 底部时间 ---------- */
+
+.incident-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 0;
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: center;
   font-variant-numeric: tabular-nums;
 }
 
-.ml-auto { margin-left: auto; }
-.mr-2 { margin-right: 8px; }
-.mt-3 { margin-top: 12px; }
+.meta-item + .meta-item {
+  margin-left: 10px;
+}
+
+.meta-item + .meta-item::before {
+  content: '';
+  width: 3px;
+  height: 3px;
+  margin-right: 10px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
 
 @media (max-width: 640px) {
-  .card-footer {
+  .incident-card {
+    padding: 14px 16px 12px;
+  }
+
+  .head-main {
+    align-items: flex-start;
+  }
+
+  .incident-foot {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 2px;
   }
-  
-  .ml-auto {
+
+  .meta-item + .meta-item {
     margin-left: 0;
-    align-self: flex-end;
-    margin-top: 4px;
-    opacity: 0.7;
-    font-size: 11px;
   }
-  
-  /* On mobile, maybe left align labels for cleaner look? 
-     User asked for vertical alignment of times. 
-     Keeping fixed width label ensures times start at same vertical line. */
-  .time-group .time-label {
-    text-align: left;
-    min-width: 4.5em; /* Slightly tighter on mobile */
+
+  .meta-item + .meta-item::before {
+    display: none;
   }
 }
 
-/* Markdown Dark Mode Adaptation */
-:deep(.markdown-body) {
+/* ---------- Markdown 正文排版 ---------- */
+
+:deep(.incident-body) {
   background-color: transparent !important;
-  color: var(--el-text-color-primary) !important;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 1.6;
-}
-
-:deep(.markdown-body p) {
   color: var(--el-text-color-regular);
-  margin-bottom: 0.5em;
 }
 
-:deep(.markdown-body a) {
+:deep(.incident-body > *:first-child) { margin-top: 0; }
+:deep(.incident-body > *:last-child) { margin-bottom: 0; }
+
+/* 正文标题压到卡片标题以下，避免抢走视觉重心 */
+:deep(.incident-body h1),
+:deep(.incident-body h2),
+:deep(.incident-body h3),
+:deep(.incident-body h4) {
+  margin: 0 0 6px;
+  padding: 0;
+  border: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--el-text-color-primary);
+}
+
+:deep(.incident-body p) {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--el-text-color-regular);
+}
+
+:deep(.incident-body ul),
+:deep(.incident-body ol) {
+  margin: 0 0 8px;
+  padding-left: 1.25em;
+}
+
+:deep(.incident-body li) {
+  margin: 0;
+}
+
+:deep(.incident-body li + li) {
+  margin-top: 4px;
+}
+
+:deep(.incident-body a) {
   color: var(--el-color-primary);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--el-color-primary) 45%, transparent);
+  transition: border-color 0.16s ease, background-color 0.16s ease;
 }
 
-:deep(.markdown-body code) {
+:deep(.incident-body a:hover) {
+  border-bottom-color: var(--el-color-primary);
+}
+
+/* 单独成段的链接做成按钮，避免一行裸链接的观感 */
+:deep(.incident-body p > a:only-child) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 4px;
+  padding: 4px 12px;
+  border: 1px solid color-mix(in srgb, var(--el-color-primary) 35%, transparent);
+  border-radius: 999px;
+  background: var(--el-color-primary-light-9);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+:deep(.incident-body p > a:only-child::after) {
+  content: '\2197';
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+:deep(.incident-body p > a:only-child:hover) {
+  background: color-mix(in srgb, var(--el-color-primary) 16%, transparent);
+}
+
+:deep(.incident-body blockquote) {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--el-border-color);
+  color: var(--el-text-color-secondary);
+}
+
+:deep(.incident-body code) {
+  padding: 1px 5px;
+  border-radius: 5px;
   background-color: var(--el-fill-color-light) !important;
   color: var(--el-text-color-primary) !important;
+  font-size: 12.5px;
 }
 
-:deep(.markdown-body pre) {
-  background-color: var(--el-fill-color-dark) !important;
+:deep(.incident-body pre) {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background-color: var(--el-fill-color-light) !important;
+  overflow-x: auto;
+}
+
+:deep(.incident-body img) {
+  max-width: 100%;
+  border-radius: 10px;
 }
 </style>

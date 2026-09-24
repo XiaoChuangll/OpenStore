@@ -143,7 +143,7 @@
         <div v-show="feedbackExpanded" class="feedback-form">
           <el-tabs v-model="feedbackTab" class="feedback-tabs" :stretch="true">
             <el-tab-pane label="提交反馈" name="submit">
-              <el-form :model="feedbackForm" label-width="120px">
+              <el-form label-position="top" :model="feedbackForm">
                 <el-form-item label="反馈类型">
                   <el-select v-model="feedbackForm.type" placeholder="请选择">
                     <el-option v-for="opt in feedbackTypes" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -198,7 +198,7 @@
             </el-tab-pane>
             <el-tab-pane label="查询进度" name="query">
               <div class="hash-query">
-                <el-form :model="queryForm" label-width="120px">
+                <el-form label-position="top" :model="queryForm">
                   <el-form-item label="反馈编号">
                     <el-input
                       v-model="hashQueryInput"

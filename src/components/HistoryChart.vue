@@ -376,7 +376,7 @@ const initChart = (data: any[]) => {
 
 const fetchData = async () => {
   try {
-    const topAppRes = await hmApi.get<any>('/apps/list/0', {
+    const topAppRes = await hmApi.get<any>('/apps/list/1', {
       page_size: 1,
       sort: 'download_count',
       desc: true

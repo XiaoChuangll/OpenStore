@@ -92,7 +92,6 @@ const handleDoubleClick = () => {
   align-items: center;
   justify-content: center;
   overflow: visible; /* Allow SVG to be visible if needed, though it is same size */
-  /* border: 2px solid rgba(255, 255, 255, 0.1); Replaced by progress ring */
   flex-shrink: 0; /* Prevent shrinking */
 }
 

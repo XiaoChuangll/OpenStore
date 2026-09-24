@@ -56,7 +56,7 @@
       :close-on-click-modal="false"
       destroy-on-close
     >
-      <el-form ref="formRef" :model="form" :rules="rules" :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
+      <el-form label-position="top" ref="formRef" :model="form" :rules="rules">
         <el-form-item label="类型" prop="type">
           <el-radio-group v-model="form.type" :size="isMobile ? 'small' : 'default'">
             <el-radio-button label="incident">故障报告</el-radio-button>

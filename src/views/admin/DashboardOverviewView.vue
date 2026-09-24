@@ -1,73 +1,35 @@
 <template>
   <div class="dashboard-overview">
-    <el-row :gutter="20">
-      <el-col :xs="12" :sm="12" :md="8" :lg="4" class="stat-col">
-        <el-card shadow="hover" class="stat-card visitor-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon"><User /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.visitorCount.toLocaleString() }}</div>
-              <div class="stat-label">总访客数</div>
-            </div>
+    <!-- 三个指标不做等分：每张卡先按内容定基准宽度，再把剩余空间均摊填满整行 -->
+    <div class="stat-row">
+      <el-card shadow="hover" class="stat-card visitor-card">
+        <div class="stat-content">
+          <el-icon class="stat-icon"><User /></el-icon>
+          <div class="stat-info">
+            <div class="stat-value">{{ stats.visitorCount.toLocaleString() }}</div>
+            <div class="stat-label">总访客数</div>
           </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="12" :md="8" :lg="4" class="stat-col">
-        <el-card shadow="hover" class="stat-card app-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon"><Grid /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.appCount.toLocaleString() }}</div>
-              <div class="stat-label">应用总数</div>
-            </div>
+        </div>
+      </el-card>
+      <el-card shadow="hover" class="stat-card app-card">
+        <div class="stat-content">
+          <el-icon class="stat-icon"><Grid /></el-icon>
+          <div class="stat-info">
+            <div class="stat-value">{{ stats.appCount.toLocaleString() }}</div>
+            <div class="stat-label">应用总数</div>
           </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="12" :md="8" :lg="4" class="stat-col">
-        <el-card shadow="hover" class="stat-card article-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon"><Document /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.articleCount.toLocaleString() }}</div>
-              <div class="stat-label">文章总数</div>
-            </div>
+        </div>
+      </el-card>
+      <el-card shadow="hover" class="stat-card article-card">
+        <div class="stat-content">
+          <el-icon class="stat-icon"><Document /></el-icon>
+          <div class="stat-info">
+            <div class="stat-value">{{ stats.articleCount.toLocaleString() }}</div>
+            <div class="stat-label">文章总数</div>
           </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="12" :md="8" :lg="4" class="stat-col">
-        <el-card shadow="hover" class="stat-card feedback-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon"><Message /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.feedbackCount.toLocaleString() }}</div>
-              <div class="stat-label">待处理反馈</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="12" :md="8" :lg="4" class="stat-col">
-        <el-card shadow="hover" class="stat-card comment-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon"><ChatDotRound /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ stats.commentCount.toLocaleString() }}</div>
-              <div class="stat-label">待审评论</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="12" :md="8" :lg="4" class="stat-col">
-        <el-card shadow="hover" class="stat-card uptime-card">
-          <div class="stat-content">
-            <el-icon class="stat-icon"><Timer /></el-icon>
-            <div class="stat-info">
-              <div class="stat-value">{{ formatUptime(stats.systemUptime) }}</div>
-              <div class="stat-label">系统运行时间</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </div>
+      </el-card>
+    </div>
 
     <el-row :gutter="20" class="mt-4">
       <el-col :xs="24" :lg="12">
@@ -78,7 +40,7 @@
               <el-button link type="primary" @click="$emit('switch-tab', 'visitors')">详细数据</el-button>
             </div>
           </template>
-          <div ref="visitorChartRef" style="height: 300px;"></div>
+          <div ref="visitorChartRef" class="chart-body"></div>
         </el-card>
       </el-col>
       <el-col :xs="24" :lg="12">
@@ -104,6 +66,9 @@
             <el-button type="danger" plain @click="$emit('switch-tab', 'incidents')">
               <el-icon><Warning /></el-icon> 故障维护
             </el-button>
+            <el-button type="danger" plain @click="showBlockedApps = true">
+              <el-icon><CircleClose /></el-icon> 异常应用
+            </el-button>
           </div>
           
           <el-divider />
@@ -114,6 +79,10 @@
               <span class="info-value">{{ nodeVersion }}</span>
             </div>
             <div class="info-item">
+              <span class="info-label">后端运行时长</span>
+              <span class="info-value">{{ formatUptime(backendUptimeSeconds) }}</span>
+            </div>
+            <div class="info-item">
               <span class="info-label">系统时间</span>
               <span class="info-value">{{ currentTime }}</span>
             </div>
@@ -121,25 +90,45 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 后端实时内容 -->
+    <LiveLogPanel />
+    <!-- 数据新鲜度 -->
+    <DataFreshnessCard />
+    <!-- 调用拓扑 -->
+    <TopologyCard />
+    <!-- 访客分布与时段热力图 -->
+    <VisitorInsightsCard />
+
+    <!-- 异常应用：屏蔽上游脏数据，首页列表不再展示 -->
+    <BlockedAppsDialog v-model="showBlockedApps" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import { User, Grid, Document, Message, ChatDotRound, Timer, Edit, Bell, Setting, Warning } from '@element-plus/icons-vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { User, Grid, Document, Edit, Bell, Setting, Warning, CircleClose } from '@element-plus/icons-vue';
 import * as echarts from 'echarts';
-import { getAdminOverviewStats, getVisitorTrend } from '../../services/admin';
+import { getAdminOverviewStats, getVisitorTrend, type AdminOverviewStats } from '../../services/admin';
+import LiveLogPanel from '../../components/LiveLogPanel.vue';
+import BlockedAppsDialog from '../../components/BlockedAppsDialog.vue';
+import DataFreshnessCard from '../../components/DataFreshnessCard.vue';
+import TopologyCard from '../../components/TopologyCard.vue';
+import VisitorInsightsCard from '../../components/VisitorInsightsCard.vue';
 
 defineProps<{ embedded?: boolean }>();
 defineEmits(['switch-tab']);
 
-const stats = ref({
+const showBlockedApps = ref(false);
+
+const stats = ref<AdminOverviewStats>({
   visitorCount: 0,
   appCount: 0,
   feedbackCount: 0,
   commentCount: 0,
   articleCount: 0,
-  systemUptime: 0
+  systemUptime: 0,
+  nodeVersion: ''
 });
 
 const visitorChartRef = ref<HTMLElement | null>(null);
@@ -148,32 +137,41 @@ let resizeObserver: ResizeObserver | null = null;
 let timeInterval: number | null = null;
 const currentTime = ref('');
 
-// Helper to safely get node version if available in browser
-const getNodeVersion = () => {
-  try {
-    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
-      return 'v' + process.versions.node;
-    }
-  } catch (e) {
-    // ignore
-  }
-  return '未知 (Browser)';
-};
+// Node 版本由后端 /api/admin/overview 返回，浏览器里没有 process.versions
+const nodeVersion = computed(() => stats.value.nodeVersion || '未知');
 
-const nodeVersion = ref(getNodeVersion());
-
+/**
+ * 运行时长：后端返回的是 Node 进程的 process.uptime()。
+ * 这里按「天/小时/分钟/秒」逐级显示，避免只显示整小时（后端刚重启时会变成 0 小时）。
+ */
 const formatUptime = (seconds: number) => {
-  if (!seconds) return '0天';
-  const d = Math.floor(seconds / (3600 * 24));
-  const h = Math.floor((seconds % (3600 * 24)) / 3600);
-  if (d > 0) return `${d}天${h}小时`;
-  return `${h}小时`;
+  const total = Math.max(0, Math.floor(seconds || 0));
+  if (total < 60) return `${total} 秒`;
+
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
+  const m = Math.floor((total % 3600) / 60);
+
+  if (d > 0) return h > 0 ? `${d} 天 ${h} 小时` : `${d} 天`;
+  if (h > 0) return m > 0 ? `${h} 小时 ${m} 分` : `${h} 小时`;
+  return `${m} 分钟`;
 };
+
+/** 后端运行时长：拿接口值 + 本地每秒累加，卡片上能实时走字 */
+const statsFetchedAt = ref(0);
+const nowTick = ref(Date.now());
+const backendUptimeSeconds = computed(() => {
+  const base = stats.value.systemUptime || 0;
+  if (!statsFetchedAt.value) return base;
+  const drift = Math.max(0, Math.floor((nowTick.value - statsFetchedAt.value) / 1000));
+  return base + drift;
+});
 
 const fetchStats = async () => {
   try {
     const data = await getAdminOverviewStats();
     stats.value = data;
+    statsFetchedAt.value = Date.now();
   } catch (error) {
     console.error('Failed to fetch overview stats', error);
   }
@@ -225,6 +223,7 @@ onMounted(() => {
   
   const updateTime = () => {
     currentTime.value = new Date().toLocaleString('zh-CN', { hour12: false });
+    nowTick.value = Date.now();
   };
   updateTime();
   timeInterval = window.setInterval(updateTime, 1000);
@@ -247,57 +246,110 @@ onUnmounted(() => {
 .mt-4 {
   margin-top: 20px;
 }
-.stat-col {
-  margin-bottom: 20px;
+
+/* Element Plus 的 gutter 只产生水平间距：卡片换行竖向堆叠时补上垂直间距，
+   否则下方卡片会紧贴上方卡片（例如窄屏下的「快捷操作」） */
+.dashboard-overview .el-row.mt-4 {
+  row-gap: 20px;
 }
+
+/* 「近30天访客趋势」与「快捷操作」并排时保持等高：
+   列先拉伸到一样高，卡片再撑满列，图表跟着填满多出来的空间 */
+.dashboard-overview .el-row.mt-4 > .el-col {
+  display: flex;
+}
+
+.chart-card,
+.quick-actions-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-card :deep(.el-card__body) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-body {
+  flex: 1;
+  min-height: 300px;
+}
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .stat-card {
-  border-radius: 8px;
-  border: none;
+  /* 基准宽度由内容决定，再一起拉伸填满整行：数字长的卡片自然更宽 */
+  flex: 1 1 auto;
+  min-width: 200px;
+  height: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.stat-card:hover {
+  border-color: var(--el-color-primary-light-5);
+  transform: translateY(-2px);
+}
+
+/* Element Plus 卡片自带 20px 内边距，这里收一档，避免和 .stat-content 重复留白 */
+.stat-card :deep(.el-card__body) {
+  padding: 14px 16px;
 }
 .stat-content {
   display: flex;
   align-items: center;
-  padding: 10px 5px;
+  gap: 12px;
+  padding: 0;
 }
 .stat-icon {
-  font-size: 48px;
-  margin-right: 15px;
-  padding: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  font-size: 22px;
+  padding: 0;
+  flex-shrink: 0;
   border-radius: 12px;
-  color: #fff;
 }
 .stat-info {
   flex: 1;
+  min-width: 0;
 }
 .stat-value {
-  font-size: 24px;
-  font-weight: bold;
+  font-size: 22px;
+  font-weight: 700;
   line-height: 1.2;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  font-variant-numeric: tabular-nums;
 }
 .stat-label {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--el-text-color-secondary);
+  white-space: nowrap;
 }
 
 /* Colors for stat cards */
-.visitor-card .stat-icon { background: linear-gradient(135deg, #409EFF, #53a8ff); }
-.visitor-card .stat-value { color: #409EFF; }
+/* 用"浅色底 + 同色系图标"替代高饱和渐变方块 */
+.stat-icon {
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
+}
 
-.app-card .stat-icon { background: linear-gradient(135deg, #67C23A, #85ce61); }
-.app-card .stat-value { color: #67C23A; }
+.visitor-card .stat-icon { color: var(--el-color-primary); }
+.visitor-card .stat-value { color: var(--el-color-primary); }
 
-.article-card .stat-icon { background: linear-gradient(135deg, #E6A23C, #ebb563); }
-.article-card .stat-value { color: #E6A23C; }
+.app-card .stat-icon { color: var(--el-color-success); }
+.app-card .stat-value { color: var(--el-color-success); }
 
-.feedback-card .stat-icon { background: linear-gradient(135deg, #F56C6C, #f78989); }
-.feedback-card .stat-value { color: #F56C6C; }
-
-.comment-card .stat-icon { background: linear-gradient(135deg, #909399, #a6a9ad); }
-.comment-card .stat-value { color: #909399; }
-
-.uptime-card .stat-icon { background: linear-gradient(135deg, #8e44ad, #b370cf); }
-.uptime-card .stat-value { color: #8e44ad; font-size: 20px; }
+.article-card .stat-icon { color: var(--el-color-warning); }
+.article-card .stat-value { color: var(--el-color-warning); }
 
 .card-header {
   display: flex;
@@ -319,6 +371,11 @@ onUnmounted(() => {
   justify-content: flex-start;
   padding-left: 20px;
   font-size: 15px;
+}
+
+/* Element Plus 默认给相邻按钮加 margin-left，在 grid 里会把列撑偏、导致换行后不对齐 */
+.actions-grid .el-button + .el-button {
+  margin-left: 0;
 }
 .actions-grid .el-icon {
   margin-right: 8px;
@@ -353,12 +410,28 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
-  .stat-icon {
-    font-size: 36px;
-    padding: 10px;
+  /* 窄屏下图标与文字改为上下排列，避免文字被挤成一字一行 */
+  .stat-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 0;
   }
+
+  .stat-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+    border-radius: 10px;
+  }
+
   .stat-value {
     font-size: 20px;
+  }
+
+  .stat-label {
+    font-size: 12.5px;
+    line-height: 1.4;
   }
 }
 </style>

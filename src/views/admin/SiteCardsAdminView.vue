@@ -45,7 +45,7 @@
     </el-card>
 
     <el-dialog v-model="showDialog" title="编辑卡片" :width="isMobile ? '90%' : '500px'">
-      <el-form :model="form" :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
+      <el-form label-position="top" :model="form">
         <el-form-item label="标题">
           <el-input v-model="form.title" />
         </el-form-item>
@@ -209,14 +209,14 @@ const goBack = () => router.push('/');
 }
 
 .tag-purple {
-  background-color: #ede9fe;
-  border-color: #ddd6fe;
-  color: #7c3aed;
+  background-color: var(--el-color-info-light-9);
+  border-color: var(--el-color-info-light-7);
+  color: var(--el-color-info);
 }
 
 html.dark .tag-purple {
-  background-color: #2e1065;
-  border-color: #5b21b6;
-  color: #a78bfa;
+  background-color: var(--el-color-info-light-9);
+  border-color: var(--el-border-color);
+  color: var(--el-color-info);
 }
 </style>

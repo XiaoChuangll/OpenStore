@@ -1,7 +1,6 @@
 <template>
   <div class="app-dashboard-view" v-loading="loading">
     <div class="app-detail-container" v-if="appDetail">
-      <!-- Header -->
       <div class="app-header">
         <div class="app-header-left">
           <el-image :src="appDetail.icon_url" class="app-icon" fit="cover">
@@ -19,12 +18,25 @@
           </div>
         </div>
         <div class="app-header-right">
-          <el-button @click="copyLink">分享 App</el-button>
-          <el-button @click="openAppGallery">打开 App</el-button>
+          <el-tooltip content="分享" placement="left" :show-after="200">
+            <el-button
+              circle
+              :icon="HarmonyShareIcon"
+              aria-label="分享"
+              @click="copyLink"
+            />
+          </el-tooltip>
+          <el-tooltip content="打开应用商店" placement="left" :show-after="200">
+            <el-button
+              circle
+              :icon="HarmonyDownloadIcon"
+              aria-label="打开应用商店"
+              @click="openAppGallery"
+            />
+          </el-tooltip>
         </div>
       </div>
 
-      <!-- Meta Grid -->
       <div class="meta-grid">
         <div class="meta-row meta-row-1">
           <div class="meta-pill">
@@ -65,6 +77,54 @@
           </div>
         </div>
 
+      </div>
+
+      <div class="section-container" v-if="screenshotList.length">
+        <h3>
+          应用截图
+          <span class="section-count">{{ screenshotList.length }}</span>
+        </h3>
+        <div class="shot-strip">
+          <button
+            v-for="(shot, index) in screenshotList"
+            :key="shot.url"
+            type="button"
+            class="shot-thumb"
+            :style="thumbStyle(shot)"
+            :aria-label="`查看第 ${index + 1} 张截图`"
+            @click="openViewer(index)"
+          >
+            <img
+              :src="shotSrc(shot.url)"
+              :alt="`${appDetail.name} 截图 ${index + 1}`"
+              loading="lazy"
+              decoding="async"
+              referrerpolicy="no-referrer"
+              @error="dropShot(shot.url)"
+            />
+          </button>
+        </div>
+      </div>
+
+      <div class="section-container" v-if="appDetail.description">
+        <h3>应用介绍</h3>
+        <p
+          ref="descriptionRef"
+          :class="['app-description', { 'is-collapsed': isDescriptionLong && !showFullDescription }]"
+        >
+          {{ appDetail.description }}
+        </p>
+        <div
+          v-if="isDescriptionLong"
+          class="section-toggle"
+          @click="toggleDescription"
+        >
+          <el-icon :class="{ 'is-expanded': showFullDescription }"><ArrowDown /></el-icon>
+        </div>
+      </div>
+
+      <!-- 时间 / 标识 / 发布（放在截图与介绍之后） -->
+      <div class="meta-grid spec-section">
         <div class="meta-row meta-row-3">
           <div class="meta-group">
             <div class="meta-group-title">时间</div>
@@ -116,25 +176,6 @@
         </div>
       </div>
 
-      <!-- Description -->
-      <div class="section-container" v-if="appDetail.description">
-        <h3>应用介绍</h3>
-        <p
-          ref="descriptionRef"
-          :class="['app-description', { 'is-collapsed': isDescriptionLong && !showFullDescription }]"
-        >
-          {{ appDetail.description }}
-        </p>
-        <div
-          v-if="isDescriptionLong"
-          class="section-toggle"
-          @click="toggleDescription"
-        >
-          <el-icon :class="{ 'is-expanded': showFullDescription }"><ArrowDown /></el-icon>
-        </div>
-      </div>
-
-      <!-- Devices & Countries -->
       <div class="section-container">
         <h3>支持设备</h3>
         <div class="chip-container">
@@ -172,6 +213,41 @@
     <div v-else-if="!loading && !appDetail" class="not-found">
       <el-empty description="未找到应用信息" />
     </div>
+
+    <Teleport to="body">
+      <div v-if="viewerOpen && viewerUrl" class="shot-viewer" @click.self="closeViewer">
+        <img
+          class="shot-viewer-img"
+          :src="shotSrc(viewerUrl)"
+          :alt="`${appDetail?.name || ''} 截图`"
+          referrerpolicy="no-referrer"
+        />
+
+        <button
+          v-if="screenshotList.length > 1"
+          type="button"
+          class="shot-nav shot-nav-prev"
+          aria-label="上一张"
+          @click.stop="stepViewer(-1)"
+        >
+          <el-icon><ArrowLeft /></el-icon>
+        </button>
+        <button
+          v-if="screenshotList.length > 1"
+          type="button"
+          class="shot-nav shot-nav-next"
+          aria-label="下一张"
+          @click.stop="stepViewer(1)"
+        >
+          <el-icon><ArrowRight /></el-icon>
+        </button>
+        <button type="button" class="shot-close" aria-label="关闭" @click.stop="closeViewer">
+          <el-icon><Close /></el-icon>
+        </button>
+
+        <div class="shot-counter">{{ viewerIndex + 1 }} / {{ screenshotList.length }}</div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -180,7 +256,9 @@ import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { hmApi } from '../services/hm-api';
 import AppMetricsChart from '../components/AppMetricsChart.vue';
-import { Picture, ArrowDown } from '@element-plus/icons-vue';
+import HarmonyShareIcon from '../components/HarmonyShareIcon.vue';
+import HarmonyDownloadIcon from '../components/HarmonyDownloadIcon.vue';
+import { Picture, ArrowDown, ArrowLeft, ArrowRight, Close } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useLayoutStore } from '../stores/layout';
 
@@ -200,6 +278,103 @@ const isDescriptionLong = ref(false);
 const countryContainerRef = ref<HTMLElement | null>(null);
 const showFullCountries = ref(false);
 const isCountryListLong = ref(false);
+
+/**
+ * 应用截图。
+ *
+ * 只用上游的 `new_screen_shots`（{ url, resolution, rotated }）：
+ * 旧的 `screen_shots` 数组里是不带设备段的 `screenshutN/xxx.jpg`，
+ * 实测这些地址现在全部 403，直连只会得到一堆裂图。
+ * 另外 CDN 没有 Referer 校验，但这里仍然统一加 `referrerpolicy="no-referrer"`，
+ * 并且任何一张加载失败就从列表里摘掉 —— 全部失败时整个区块自动消失，不显示裂图。
+ */
+type Screenshot = { url: string; resolution?: string; rotated?: number };
+
+const screenshotList = ref<Screenshot[]>([]);
+const viewerOpen = ref(false);
+const viewerIndex = ref(0);
+const viewerUrl = computed(() => screenshotList.value[viewerIndex.value]?.url ?? '');
+
+/**
+ * 统一走本站同源代理（server/index.cjs 的 /api/screenshot）。
+ * 直连华为 CDN 时，访客在海外、公司网络或装了广告拦截插件都可能拿不到图，
+ * 而且我们无从感知；走代理后请求方固定是本站服务器，行为可预测、也能缓存。
+ * 服务端可用 SCREENSHOT_PROXY=off 关闭代理，届时图片全部失败 → 区块自动隐藏。
+ */
+const shotSrc = (url: string) => (url ? `/api/screenshot?url=${encodeURIComponent(url)}` : '');
+
+const collectScreenshots = (info: any): Screenshot[] => {
+  const raw = Array.isArray(info?.new_screen_shots) ? info.new_screen_shots : [];
+  const seen = new Set<string>();
+  const list: Screenshot[] = [];
+
+  for (const item of raw) {
+    const url = typeof item === 'string' ? item : item?.url;
+    if (typeof url !== 'string') continue;
+    // 只接受已知来源的 HTTPS 截图地址，避免上游字段被换成任意 URL
+    if (!/^https:\/\/[a-z0-9.-]*dbankcdn\.com\/application\/screenshut/i.test(url)) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    list.push({
+      url,
+      resolution: typeof item === 'object' && item ? item.resolution : undefined,
+      rotated: typeof item === 'object' && item ? item.rotated : undefined,
+    });
+  }
+
+  return list;
+};
+
+const dropShot = (url: string) => {
+  const next = screenshotList.value.filter((shot) => shot.url !== url);
+  screenshotList.value = next;
+  if (viewerIndex.value >= next.length) viewerIndex.value = 0;
+  if (!next.length) viewerOpen.value = false;
+};
+
+/** 用上游给的 resolution 提前占位，图片加载完之前也不会跳动 */
+const thumbStyle = (shot: Screenshot) => {
+  const match = /^(\d+)\s*[*x×]\s*(\d+)$/.exec(shot.resolution || '');
+  let ratio = 9 / 16;
+  if (match) {
+    let width = Number(match[1]);
+    let height = Number(match[2]);
+    if (shot.rotated === 90 || shot.rotated === 270) [width, height] = [height, width];
+    if (width > 0 && height > 0) ratio = width / height;
+  }
+  return { aspectRatio: String(ratio) };
+};
+
+const openViewer = (index: number) => {
+  viewerIndex.value = index;
+  viewerOpen.value = true;
+};
+
+const closeViewer = () => {
+  viewerOpen.value = false;
+};
+
+const stepViewer = (delta: number) => {
+  const total = screenshotList.value.length;
+  if (total < 2) return;
+  viewerIndex.value = (viewerIndex.value + delta + total) % total;
+};
+
+const onViewerKey = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') closeViewer();
+  else if (event.key === 'ArrowRight') stepViewer(1);
+  else if (event.key === 'ArrowLeft') stepViewer(-1);
+};
+
+watch(viewerOpen, (open) => {
+  if (open) {
+    window.addEventListener('keydown', onViewerKey);
+    document.documentElement.style.overflow = 'hidden';
+  } else {
+    window.removeEventListener('keydown', onViewerKey);
+    document.documentElement.style.overflow = '';
+  }
+});
 
 const DEVICE_CODE_MAP: Record<string, string> = {
   '0': '手机',
@@ -392,6 +567,8 @@ watch(structuredData, (newValue) => {
 }, { immediate: true });
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', onViewerKey);
+  document.documentElement.style.overflow = '';
   if (scriptTag.value) {
     document.head.removeChild(scriptTag.value);
     scriptTag.value = null;
@@ -432,6 +609,8 @@ const fetchData = async () => {
     };
     
     appDetail.value = info;
+    screenshotList.value = collectScreenshots(info);
+    viewerIndex.value = 0;
 
     const title = info.name || '应用详情';
     layoutStore.setPageInfo(title, true, () => router.back());
@@ -488,7 +667,7 @@ onMounted(() => {
 <style scoped>
 .app-dashboard-view {
   padding: 20px;
-  max-width: 1000px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
@@ -498,6 +677,14 @@ onMounted(() => {
   border-radius: 12px;
   box-shadow: var(--el-box-shadow-light);
   padding: 24px;
+}
+
+/* 分享 / 打开应用商店：图标按钮竖排靠右，和左侧应用图标同处一行 */
+.app-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
 }
 
 .app-header {
@@ -561,13 +748,13 @@ onMounted(() => {
   color: var(--el-text-color-secondary);
   font-size: 12px;
   min-height: 28px;
+  /* 宽度完全由内容决定：短的就窄、长的就宽，不再凑成等宽 */
   min-width: 0;
   position: relative;
   overflow: hidden;
 }
 
 .meta-pill.with-watermark {
-  /* Ensure positioning context */
 }
 
 .meta-pill-watermark {
@@ -603,7 +790,8 @@ onMounted(() => {
 }
 
 .meta-row-1 .meta-pill {
-  flex: 1 1 220px;
+  /* 每颗的基准宽度由内容决定，再一起拉伸把整行填满 */
+  flex: 1 1 auto;
 }
 
 .meta-row-2 {
@@ -647,6 +835,52 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+/* 只有手机才把指标卡降到两列，平板/窄窗口保持四列，避免大片留白 */
+@media (max-width: 600px) {
+  .meta-row-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 平板与窄窗口：信息组两列，「时间」占整行（时间戳本身就长） */
+@media (max-width: 1023px) {
+  .meta-row-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .meta-row-3 .meta-group:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 平板区间：「时间」既占整行，内部也排成两列，避免键值被拉满一整行 */
+@media (min-width: 769px) and (max-width: 1023px) {
+  .meta-row-3 .meta-group:first-child {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    align-content: start;
+  }
+
+  .meta-row-3 .meta-group:first-child .meta-group-title {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 大屏手机 / 小竖屏：信息组占满整行时，内部排两列，缩短键值之间的距离 */
+@media (min-width: 601px) and (max-width: 768px) {
+  .meta-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 20px;
+    align-content: start;
+  }
+
+  .meta-group-title {
+    grid-column: 1 / -1;
+  }
 }
 
 .meta-group {
@@ -701,6 +935,144 @@ onMounted(() => {
   margin-top: 24px;
 }
 
+/* 移到「应用介绍」之后的时间/标识/发布分组 */
+.spec-section {
+  margin-top: 24px;
+}
+
+.section-count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--el-fill-color);
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  vertical-align: 2px;
+}
+
+/* 应用截图：横向滚动缩略图 */
+.shot-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.shot-thumb {
+  flex: 0 0 auto;
+  height: 240px;
+  padding: 0;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
+  overflow: hidden;
+  cursor: zoom-in;
+  scroll-snap-align: start;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.shot-thumb:hover {
+  border-color: var(--el-color-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+}
+
+.shot-thumb:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+
+.shot-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 点击放大 */
+.shot-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 72px;
+  background: rgba(0, 0, 0, 0.88);
+  animation: shot-fade 0.18s ease-out;
+}
+
+.shot-viewer-img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 12px;
+  background: #000;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.shot-nav,
+.shot-close {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.shot-nav:hover,
+.shot-close:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.shot-nav-prev {
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.shot-nav-next {
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.shot-close {
+  top: 16px;
+  right: 16px;
+}
+
+.shot-counter {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes shot-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 @media (max-width: 768px) {
   .meta-row-1 {
     flex-wrap: nowrap;
@@ -728,10 +1100,6 @@ onMounted(() => {
     right: 4px;
   }
 
-  .meta-row-2 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .meta-row-3 {
     grid-template-columns: 1fr;
   }
@@ -755,6 +1123,37 @@ onMounted(() => {
   }
   .meta-group-title {
     margin-bottom: 8px;
+  }
+
+  .shot-strip {
+    gap: 10px;
+  }
+
+  .shot-thumb {
+    height: 180px;
+  }
+
+  .shot-viewer {
+    padding: 16px 56px;
+  }
+}
+
+/* 小屏手机：包名、应用 ID 这类长标识允许折行，不要被省略号截掉 */
+@media (max-width: 480px) {
+  .meta-kv {
+    align-items: flex-start;
+  }
+
+  .meta-kv-value {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+
+  /* 包名是等宽字体，小屏上缩一档就能整行放下，不必折行 */
+  .pkg-name {
+    font-size: 12px;
   }
 }
 
@@ -809,19 +1208,20 @@ onMounted(() => {
 
 .chip {
   margin-right: 0;
+  /* 与新的中性标签语言保持一致，不用默认的浅蓝底 */
+  background-color: var(--el-fill-color-light);
+  border-color: var(--el-border-color-lighter);
+  color: var(--el-text-color-regular);
 }
 
-@media (max-width: 768px) {
+/* 窄屏时图标/名称和右侧两个圆形按钮仍保持同一行，名称块自行折行 */
+@media (max-width: 600px) {
   .app-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
+    gap: 12px;
   }
-  
-  .app-header-right {
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
+
+  .app-name {
+    font-size: 20px;
   }
 }
 
@@ -854,5 +1254,59 @@ onMounted(() => {
 .section-toggle .el-icon.is-expanded,
 .section-toggle-btn .el-icon.is-expanded {
   transform: rotate(180deg);
+}
+
+/*
+ * 移动端：详情信息不再被套在卡片里，直接铺在主内容区上。
+ * 去掉卡片/图表容器的背景、边框、圆角和内边距，只保留 12px 页面边距，
+ * 这样在手机上能多出约 20% 的可用宽度来展示信息。
+ */
+@media (max-width: 768px) {
+  .app-dashboard-view {
+    padding: 12px;
+  }
+
+  .app-detail-container,
+  .metrics-section {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  /* pill 按内容宽度排，一行放不下就整颗换行，不裁切、不省略 */
+  .meta-row-1 {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+
+  .meta-pill {
+    min-width: 56px;
+  }
+}
+
+/* 小屏手机：再收一档边距，长标识折行而不是被省略号截断 */
+@media (max-width: 480px) {
+  .app-dashboard-view {
+    padding: 10px;
+  }
+
+  .meta-kv {
+    align-items: flex-start;
+  }
+
+  .meta-kv-value {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+
+  /* 包名是等宽字体，小屏上缩一档就能整行放下 */
+  .pkg-name {
+    font-size: 12px;
+  }
 }
 </style>

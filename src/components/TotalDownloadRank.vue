@@ -326,7 +326,7 @@ const fetchData = async () => {
   try {
     // 1. Fetch Top 30 apps by Total Download (Primary Source)
     let apps = [];
-    const listResponse = await hmApi.get<any>('/apps/list/0', {
+    const listResponse = await hmApi.get<any>('/apps/list/1', {
       page_size: pageSize.value,
       sort: 'download_count',
       desc: true
@@ -389,7 +389,7 @@ const fetchData = async () => {
     const appsWithIcons = await Promise.all(apps.map(async (item: any) => {
       if (!item.icon_url && item.pkg_name) {
          try {
-           const detailRes = await hmApi.get<any>('/apps/list/0', {
+           const detailRes = await hmApi.get<any>('/apps/list/1', {
              search_key: 'pkg_name',
              search_value: item.pkg_name,
              search_exact: true,

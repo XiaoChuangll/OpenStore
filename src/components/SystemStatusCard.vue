@@ -13,8 +13,8 @@
         </div>
       </div>
     </template>
-    <el-row :gutter="20">
-      <el-col :span="8" :xs="24">
+    <el-row :gutter="20" class="status-row">
+      <el-col :span="8" :xs="8">
         <div class="status-item">
           <span class="label">后端接口</span>
           <div class="value">
@@ -25,7 +25,7 @@
           </div>
         </div>
       </el-col>
-      <el-col :span="8" :xs="24">
+      <el-col :span="8" :xs="8">
         <div class="status-item">
           <span class="label">图表状态</span>
           <div class="value">
@@ -35,7 +35,7 @@
           </div>
         </div>
       </el-col>
-      <el-col :span="8" :xs="24">
+      <el-col :span="8" :xs="8">
         <div class="status-item">
           <span class="label">数据状态</span>
           <div class="value">
@@ -48,9 +48,9 @@
       </el-col>
     </el-row>
 
-    <div v-if="syncStatus" class="sync-details">
+    <div class="sync-details">
       <el-divider class="sync-divider" />
-      <el-row :gutter="20">
+      <el-row :gutter="20" v-if="syncStatus">
         <el-col :span="12" :xs="12">
           <div class="stat-item item-primary">
             <div class="stat-label">距下次同步时间</div>
@@ -112,7 +112,24 @@
           </div>
         </el-col>
       </el-row>
-      <div class="sync-progress" v-if="syncStatus.isSyncing">
+      <!--
+        推送流还没回来的骨架：行/列结构、内边距和真实内容完全一致，
+        所以数据到达时卡片高度不变，不会把下面的卡片顶下去（CLS）。
+      -->
+      <el-row :gutter="20" v-else>
+        <el-col :span="12" :xs="12" v-for="i in 6" :key="i">
+          <div class="stat-item">
+              <div class="stat-label">
+                <el-skeleton-item variant="text" style="width: 88px; height: 14px" />
+              </div>
+              <div class="stat-value">
+                <el-skeleton-item variant="text" style="width: 56px; height: 19px" />
+              </div>
+          </div>
+        </el-col>
+      </el-row>
+
+      <div class="sync-progress" v-if="syncStatus?.isSyncing">
         <div v-if="syncStatus.totalExpected > 0">
            <el-progress 
              :percentage="syncStatus.percentage" 
@@ -135,7 +152,7 @@
       </div>
     </div>
 
-    <div v-else-if="lastStreamMessage" class="stream-log">
+    <div v-if="!syncStatus && lastStreamMessage" class="stream-log">
        <span class="log-label">同步日志:</span> {{ lastStreamMessage }}
     </div>
   </el-card>
@@ -580,14 +597,48 @@ onUnmounted(() => {
     display: none !important;
   }
 
+  /* 三个状态块并排一行：收掉 el-row 的负边距和 el-col 的内边距，给文字腾地方 */
+  .status-row {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .status-row :deep(.el-col) {
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+
   .status-item {
     flex-direction: row;
-    justify-content: space-between;
-    padding: 12px 16px;
+    justify-content: center;
+    gap: 4px;
+    padding: 10px 4px;
   }
 
   .status-item .label {
-    margin-bottom: 0;
+    display: none;
+  }
+
+  .status-item .value {
+    font-size: 12px;
+    gap: 4px;
+  }
+}
+
+/* 320px 这类极窄屏再收一档，保证「图标 + 状态」仍然是一行 */
+@media (max-width: 380px) {
+  .status-row :deep(.el-col) {
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+  }
+
+  .status-item {
+    padding: 10px 2px;
+  }
+
+  .status-item .value {
+    font-size: 11px;
+    gap: 3px;
   }
 }
 </style>

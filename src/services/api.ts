@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { translateAppsListCall } from './upstream-compat';
 
 // Use same-origin relative base URL; Nginx/BT 反向代理到后端
 const API_URL = '/api';
@@ -10,6 +11,17 @@ const apiClient = axios.create({
   },
 });
 
+/**
+ * 应用列表请求：上游 /v0/apps/list 被风控后会返回 404，
+ * 这里统一翻译成等价的 /v0/apps/query（POST），参数与返回结构保持不变。
+ */
+const fetchAppList = (page: number, params: Record<string, any>) => {
+  const translated = translateAppsListCall(`/apps/list/${page}`, params);
+  return translated
+    ? apiClient.post(`/v0${translated.path}`, translated.body)
+    : apiClient.get(`/v0/apps/list/${page}`, { params });
+};
+
 // Intercept requests to add token
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
@@ -19,13 +31,11 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Intercept 401
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      // window.location.href = '/login'; // Do not redirect aggressively, let the page handle it
     }
     return Promise.reject(error);
   }
@@ -96,7 +106,6 @@ export const getActiveIncidents = async (): Promise<Incident[]> => {
 
 export const getMonitors = async (): Promise<Monitor[]> => {
   try {
-    // Call local backend which proxies to UptimeRobot
     const response = await apiClient.get('/monitors');
     if (response.data.stat === 'ok') {
       return response.data.monitors;
@@ -119,7 +128,6 @@ export const trackVisit = async (path: string) => {
   try {
     await apiClient.get('/public/track', { params: { path } });
   } catch (e) {
-    // Ignore tracking errors
   }
 };
 
@@ -140,12 +148,11 @@ export const getNewApps = async (page = 1, pageSize = 20) => {
       desc: true,
       page_size: pageSize
     };
-    const response = await apiClient.get(`/v0/apps/list/${page}`, { params });
+    const response = await fetchAppList(page, params);
     
     let list: any[] = [];
     const responseData = response.data || response;
 
-    // Normalize data structure
     if (Array.isArray(responseData)) {
       list = responseData;
     } else if (responseData && Array.isArray(responseData.data)) {
@@ -156,7 +163,6 @@ export const getNewApps = async (page = 1, pageSize = 20) => {
       list = responseData.apps;
     }
 
-    // Unwrap info
     list = list.map((item: any) => item.info || item);
     
     return {
@@ -179,7 +185,7 @@ export const getNewAppsByDateRange = async (dateFrom: string | undefined, dateTo
     if (dateFrom) params.date_from = dateFrom;
     if (dateTo) params.date_to = dateTo;
 
-    const response = await apiClient.get(`/v0/apps/list/${page}`, { params });
+    const response = await fetchAppList(page, params);
 
     let list: any[] = [];
     const responseData = response.data || response;
@@ -215,7 +221,7 @@ export const getNewAppsByDate = async (dateStr: string, page = 1, pageSize = 20)
       desc: true,
       page_size: pageSize
     };
-    const response = await apiClient.get(`/v0/apps/list/${page}`, { params });
+    const response = await fetchAppList(page, params);
     return response.data;
   } catch (error) {
     console.error('Failed to fetch new apps by date', error);
@@ -236,12 +242,11 @@ export const getAppUpdates = async (page = 1, pageSize = 50) => {
       desc: true,
       page_size: pageSize,
     };
-    const response = await apiClient.get(`/v0/apps/list/${page}`, { params });
+    const response = await fetchAppList(page, params);
     
     let list: any[] = [];
     const responseData = response.data || response;
 
-    // Normalize data structure
     if (Array.isArray(responseData)) {
       list = responseData;
     } else if (responseData && Array.isArray(responseData.data)) {
@@ -252,7 +257,6 @@ export const getAppUpdates = async (page = 1, pageSize = 50) => {
       list = responseData.apps;
     }
 
-    // Unwrap info
     list = list.map((item: any) => item.info || item);
     
     return {
@@ -753,11 +757,13 @@ export interface ShortAppInfo {
 
 export interface FullSubstanceInfo extends ShortSubstanceInfo {
   name?: string | null;
-  comment?: string;
+  /** 上游返回的可能是纯文本，也可能是 { platform, user } 这样的投稿元数据对象 */
+  comment?: string | Record<string, unknown> | null;
   apps: ShortAppInfo[];
 }
 
-export const getTopics = async (page: number = 0, pageSize: number = 20): Promise<{ data: ShortSubstanceInfo[]; total: number }> => {
+// 上游 0.12.0 起专题列表分页为 1-based（第 1 页传 page=1）
+export const getTopics = async (page: number = 1, pageSize: number = 20): Promise<{ data: ShortSubstanceInfo[]; total: number }> => {
   try {
     const params = {
       page_size: pageSize,
@@ -770,7 +776,6 @@ export const getTopics = async (page: number = 0, pageSize: number = 20): Promis
     const responseData = response.data || response;
     let total = 0;
 
-    // Normalize data structure
     if (Array.isArray(responseData)) {
       list = responseData;
       total = list.length;
@@ -801,17 +806,14 @@ export const getTopicDetail = async (substanceId: string): Promise<FullSubstance
     
     let data = response.data;
 
-    // Check if data is wrapped in another data property
     if (data && data.data) {
       data = data.data;
     }
     
-    // Unwrap apps if necessary (some APIs return wrapped app info)
     if (data && Array.isArray(data.apps)) {
       data.apps = data.apps.map((app: any) => app.info || app);
     }
     
-    // If data is still undefined or null, throw error
     if (!data) {
       throw new Error('No data received');
     }

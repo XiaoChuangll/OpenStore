@@ -174,10 +174,12 @@
       <template v-if="homeTab === 'home'">
         <SystemStatusCard />
         <OverviewCard />
-        
+
+        <TopicSpotlight />
+
         <RankOverview />
 
-        <el-row :gutter="20" class="mt-4">
+        <el-row :gutter="20" class="mt-4 charts-row">
           <el-col :span="8" :xs="24">
             <RatingPieChart />
           </el-col>
@@ -210,6 +212,7 @@ defineOptions({
 import ActiveIncidents from '../components/ActiveIncidents.vue';
 import SystemStatusCard from '../components/SystemStatusCard.vue';
 import OverviewCard from '../components/OverviewCard.vue';
+import TopicSpotlight from '../components/TopicSpotlight.vue';
 import RankOverview from '../components/RankOverview.vue';
 import RatingPieChart from '../components/RatingPieChart.vue';
 import TargetSdkPieChart from '../components/TargetSdkPieChart.vue';
@@ -562,11 +565,12 @@ onUnmounted(() => {
   flex: 0 0 auto;
 }
 
-.bg-yellow { background-color: #f59e0b; }
-.bg-green { background-color: #10b981; }
-.bg-blue { background-color: #3b82f6; }
-.bg-red { background-color: #ef4444; }
-.bg-purple { background-color: #7c3aed; }
+/* 卡片标题左侧的 4px 标记条：只保留克制的语义色点缀 */
+.bg-yellow { background-color: var(--el-color-warning); }
+.bg-green { background-color: var(--el-color-success); }
+.bg-blue { background-color: var(--el-color-primary); }
+.bg-red { background-color: var(--el-color-danger); }
+.bg-purple { background-color: var(--el-color-info); }
 
 .card-title {
   font-weight: 700;
@@ -582,8 +586,9 @@ onUnmounted(() => {
 }
 
 .friend-links-grid {
-  display: flex;
-  flex-wrap: wrap;
+  /* 用自适应网格：列宽随卡片宽度伸缩，能放几列就放几列，避免固定宽度导致右侧留空 */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px 12px;
 }
 
@@ -593,8 +598,7 @@ onUnmounted(() => {
   gap: 8px;
   padding: 8px 12px;
   min-height: 44px;
-  width: 220px;
-  flex: 0 0 220px;
+  min-width: 0;
   box-sizing: border-box;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 12px;
@@ -627,8 +631,9 @@ onUnmounted(() => {
 }
 
 .group-chats-grid {
-  display: flex;
-  flex-wrap: wrap;
+  /* 与「友接」保持一致：列宽自适应卡片宽度，能放几列放几列 */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
 
@@ -638,8 +643,7 @@ onUnmounted(() => {
   gap: 10px;
   padding: 8px 10px;
   min-height: 44px;
-  width: 220px;
-  flex: 0 0 220px;
+  min-width: 0;
   box-sizing: border-box;
   border-radius: 12px;
   border: 1px solid var(--el-border-color-lighter);

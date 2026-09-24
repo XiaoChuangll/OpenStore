@@ -35,7 +35,7 @@
     </el-table>
 
     <el-dialog v-model="showDialog" :title="dialogTitle" :width="isMobile ? '90%' : '500px'">
-      <el-form :model="form" :label-width="isMobile ? 'auto' : '100px'" :label-position="isMobile ? 'top' : 'right'">
+      <el-form label-position="top" :model="form">
         <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
         <el-form-item label="群聊链接"><el-input v-model="form.link" /></el-form-item>
         <el-form-item label="群聊头像">

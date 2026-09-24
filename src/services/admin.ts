@@ -515,8 +515,44 @@ export const batchDeleteVisitors = async (ids: number[]) => {
   await api.post('/visitors/batch-delete', { ids });
 };
 
-export const getVisitorTrend = async (days: number = 30) => {
-  const { data } = await api.get('/visitors/trend', { params: { days } });
+export interface VisitorIpHistory {
+  ip: string;
+  total: number;
+  path_kinds: number;
+  device_kinds: number;
+  first_seen: string;
+  last_seen: string;
+  location: string;
+  visitors: Visitor[];
+}
+
+/** 某个 IP 的最近访问记录（访客日志点卡片 / 行时用） */
+export const getVisitorIpHistory = async (ip: string, limit = 30) => {
+  const { data } = await api.get('/visitors/ip-history', { params: { ip, limit } });
+  return data as VisitorIpHistory;
+};
+
+export interface VisitorTrendOptions {
+  /** day（默认）按天分桶，hour 按小时分桶 */
+  granularity?: 'day' | 'hour';
+  /** 小时粒度时的回看小时数，默认 24 */
+  hours?: number;
+  /** scope=today 表示只取当天（北京时间 0 点起） */
+  scope?: 'today';
+  /** 把窗口整体往回推 N 天（用于对比「上一个周期」） */
+  offset?: number;
+}
+
+export const getVisitorTrend = async (days: number = 30, options: VisitorTrendOptions = {}) => {
+  const { data } = await api.get('/visitors/trend', {
+    params: {
+      days,
+      granularity: options.granularity,
+      hours: options.hours,
+      scope: options.scope,
+      offset: options.offset
+    }
+  });
   return data as Array<{ date: string; count: number; unique_ip: number }>;
 };
 
@@ -695,9 +731,139 @@ export interface AdminOverviewStats {
   commentCount: number;
   articleCount: number;
   systemUptime: number;
+  nodeVersion?: string;
 }
 
 export const getAdminOverviewStats = async () => {
   const { data } = await api.get('/overview');
   return data as AdminOverviewStats;
+};
+
+export interface FreshnessItem {
+  key: string;
+  label: string;
+  ttl: number | null;
+  last: string | null;
+  ageSeconds: number | null;
+  extra?: Record<string, number | null>;
+}
+
+/** 页面访问条目：哪个页面最近被访问、近 30 天访问了多少次 */
+export interface PageVisitItem {
+  key: string;
+  path: string;
+  label: string;
+  visits: number;
+  ageSeconds: number | null;
+  last: string | null;
+}
+
+export const getDataFreshness = async () => {
+  const { data } = await api.get('/freshness');
+  return (data?.items || []) as FreshnessItem[];
+};
+
+export const getPageVisits = async () => {
+  const { data } = await api.get('/freshness');
+  return (data?.pages || []) as PageVisitItem[];
+};
+
+/** 一次请求同时拿到「数据表新鲜度」和「页面访问」两组数据 */
+export const getFreshnessOverview = async () => {
+  const { data } = await api.get('/freshness');
+  return {
+    items: (data?.items || []) as FreshnessItem[],
+    pages: (data?.pages || []) as PageVisitItem[]
+  };
+};
+
+export interface ReplayResult {
+  success: boolean;
+  status?: number;
+  ms?: number;
+  preview?: string;
+  error?: string;
+  needConfirm?: boolean;
+}
+
+export const replayRequest = async (payload: { method: string; path: string; confirm?: boolean }) => {
+  const { data } = await api.post('/replay', payload);
+  return data as ReplayResult;
+};
+
+export interface TopologyNode {
+  id: string;
+  name: string;
+  count: number;
+  avgMs: number;
+  maxMs: number;
+  errors: number;
+  slow: number;
+}
+
+export interface TopologyData {
+  windowSeconds: number;
+  totals: {
+    requests: number;
+    errors: number;
+    slow: number;
+    cacheBuilds: number;
+    upstreamErrors: number;
+    upstreamRequests: number;
+  };
+  apiNodes: TopologyNode[];
+  upstreamProxy: {
+    count: number;
+    avgMs: number;
+    errors: number;
+    slow: number;
+    paths: Array<{ path: string; count: number; avgMs: number }>;
+  } | null;
+  upstream: { calls: number; avgMs: number; cacheBuilds: number; errors: number };
+}
+
+export const getTopology = async (windowSeconds = 300) => {
+  const { data } = await api.get('/topology', { params: { window: windowSeconds } });
+  return data as TopologyData;
+};
+
+export interface VisitorInsights {
+  days: number;
+  total: number;
+  countries: Array<{ code: string; count: number }>;
+  china: {
+    provinces: Array<{ name: string; count: number }>;
+    cities: Array<{ name: string; count: number }>;
+    unlocated: number;
+  };
+  hourly: Array<{ hour: number; count: number }>;
+  matrix: number[][];
+}
+
+export const getVisitorInsights = async (days = 180) => {
+  const { data } = await api.get('/visitor-insights', { params: { days } });
+  return data as VisitorInsights;
+};
+
+// 异常应用：屏蔽上游脏数据，首页/应用列表不再展示（搜索仍可搜到）
+export interface BlockedApp {
+  package: string;
+  name?: string | null;
+  icon_url?: string | null;
+  note?: string | null;
+  created_at?: string;
+}
+
+export const getBlockedApps = async () => {
+  const { data } = await api.get('/blocked-apps');
+  return (data.items || []) as BlockedApp[];
+};
+
+export const blockApp = async (payload: { package: string; name?: string; icon_url?: string; note?: string }) => {
+  const { data } = await api.post('/blocked-apps', payload);
+  return data as { success: boolean; package: string };
+};
+
+export const unblockApp = async (pkg: string) => {
+  await api.delete(`/blocked-apps/${encodeURIComponent(pkg)}`);
 };

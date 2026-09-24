@@ -13,7 +13,8 @@
         <div class="stat-item">
           <div class="stat-label">应用总数量</div>
           <div class="stat-value">
-            <el-tag effect="dark" round size="large" class="stat-tag">
+            <el-skeleton-item v-if="loading" variant="text" style="width: 84px; height: 36px" />
+            <el-tag v-else effect="dark" round size="large" class="stat-tag">
               {{ marketInfo.app_count?.total || 0 }}
             </el-tag>
           </div>
@@ -23,7 +24,8 @@
         <div class="stat-item">
           <div class="stat-label">元服务总数</div>
           <div class="stat-value">
-            <el-tag effect="dark" round type="success" size="large" class="stat-tag">
+            <el-skeleton-item v-if="loading" variant="text" style="width: 84px; height: 36px" />
+            <el-tag v-else effect="dark" round type="success" size="large" class="stat-tag">
               {{ marketInfo.app_count?.atomic_services || 0 }}
             </el-tag>
           </div>
@@ -33,7 +35,8 @@
         <div class="stat-item">
           <div class="stat-label">开发者总数</div>
           <div class="stat-value">
-            <el-tag effect="dark" round type="warning" size="large" class="stat-tag">
+            <el-skeleton-item v-if="loading" variant="text" style="width: 84px; height: 36px" />
+            <el-tag v-else effect="dark" round type="warning" size="large" class="stat-tag">
               {{ marketInfo.developer_count || 0 }}
             </el-tag>
           </div>
@@ -43,7 +46,8 @@
         <div class="stat-item">
           <div class="stat-label">专题总数量</div>
           <div class="stat-value">
-            <el-tag effect="dark" round type="danger" size="large" class="stat-tag">
+            <el-skeleton-item v-if="loading" variant="text" style="width: 84px; height: 36px" />
+            <el-tag v-else effect="dark" round type="danger" size="large" class="stat-tag">
               {{ marketInfo.substance_count || 0 }}
             </el-tag>
           </div>
@@ -126,6 +130,32 @@ onMounted(() => {
   padding: 0 20px;
 }
 
+/* 四色实心胶囊 → 中性底 + 语义色数字：降低饱和度，更贴近国际化产品观感 */
+.stat-item :deep(.el-tag) {
+  background-color: var(--el-fill-color-light) !important;
+  border: 1px solid var(--el-border-color-lighter) !important;
+  border-radius: 10px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  box-shadow: none;
+}
+
+.stat-item :deep(.el-tag.el-tag--primary) {
+  color: var(--el-color-primary) !important;
+}
+
+.stat-item :deep(.el-tag.el-tag--success) {
+  color: var(--el-color-success) !important;
+}
+
+.stat-item :deep(.el-tag.el-tag--warning) {
+  color: var(--el-color-warning) !important;
+}
+
+.stat-item :deep(.el-tag.el-tag--danger) {
+  color: var(--el-color-danger) !important;
+}
+
 @media (max-width: 768px) {
   .stat-item {
     background: var(--el-bg-color);
@@ -144,6 +174,9 @@ onMounted(() => {
     padding-left: 12px;
     width: 100%;
     text-align: left;
+    /* 与上方「系统状态监控」里的卡片保持一致：标签 12px + 下方留 8px */
+    font-size: 12px;
+    margin-bottom: 8px;
   }
 
   .stat-value {
@@ -158,11 +191,26 @@ onMounted(() => {
     padding: 0 0 0 12px !important;
     height: auto !important;
     line-height: 1.2 !important;
-    font-size: 24px !important;
-    font-weight: bold !important;
+    /* 数值字号/字重也照「距下次同步时间」那套：16px + 600 */
+    font-size: 16px !important;
+    font-weight: 600 !important;
     color: var(--el-text-color-primary) !important;
     display: block !important;
     position: relative;
+  }
+
+  /* 数值统一用主题文字色，语义色只留给左边那条竖线 */
+  .stat-item :deep(.el-tag.el-tag--primary),
+  .stat-item :deep(.el-tag.el-tag--success),
+  .stat-item :deep(.el-tag.el-tag--warning),
+  .stat-item :deep(.el-tag.el-tag--danger) {
+    color: var(--el-text-color-primary) !important;
+  }
+
+  /* 移动端数值是纯文字（约 19px 高），骨架跟着收，避免数据到达时高度跳动 */
+  .overview-card :deep(.el-skeleton-item) {
+    width: 60px !important;
+    height: 19px !important;
   }
 
   .stat-item :deep(.el-tag)::before {

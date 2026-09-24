@@ -85,10 +85,12 @@
               :style="{ backgroundColor: category.color }"
               @click="handleCategoryClick(category)"
             >
-              <div class="category-name">{{ category.name }}</div>
-              <div class="category-count-badge">
-                <span class="category-count-badge-number">{{ formatCategoryCount(category.count) }}</span>
-                <span class="category-count-badge-unit">应用</span>
+              <div class="category-text">
+                <div class="category-name">{{ category.name }}</div>
+                <div class="category-count">
+                  <span class="category-count-number">{{ formatCategoryCount(category.count) }}</span>
+                  <span class="category-count-unit">应用</span>
+                </div>
               </div>
               <div class="category-icon-bg">
                 <el-icon><component :is="category.icon || Connection" /></el-icon>
@@ -673,7 +675,7 @@ onBeforeUnmount(() => {
 }
 
 .categories-grid-skeleton .category-card {
-  min-height: 100px;
+  min-height: 72px;
 }
 
 .skeleton-category-card {
@@ -700,7 +702,7 @@ onBeforeUnmount(() => {
 .category-skeleton-content {
   display: flex;
   flex-direction: column;
-  min-height: 100px;
+  min-height: 72px;
 }
 
 .category-skeleton-title {
@@ -824,24 +826,24 @@ onBeforeUnmount(() => {
 
 .categories-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
 }
 
 .category-card {
-  height: 100px;
+  min-height: 72px;
   border-radius: 12px;
-  padding: 16px;
+  padding: 12px 14px;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: white;
   cursor: pointer;
   position: relative;
   overflow: hidden;
   transition: transform 0.2s, box-shadow 0.2s;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14);
 }
 
 .view-header {
@@ -920,9 +922,11 @@ onBeforeUnmount(() => {
 
 .apps-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  column-gap: 24px;
-  row-gap: 36px;
+  /* 列数完全由容器宽度决定：卡片最小 280px，放不下就自动减列，够宽就自动加列。
+     min(100%, 280px) 避免容器比 280px 还窄时溢出。 */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  column-gap: 16px;
+  row-gap: 16px;
   padding-bottom: 24px;
 }
 
@@ -932,52 +936,51 @@ onBeforeUnmount(() => {
 
 .category-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.22);
+}
+
+.category-text {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
 }
 
 .category-name {
-  font-size: 16px;
-  font-weight: bold;
-  z-index: 1;
-  text-align: center;
-}
-
-.category-count-badge {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 2;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background-color: rgba(255,255,255,0.22);
-  border: 1px solid rgba(255,255,255,0.28);
-  color: rgba(255,255,255,0.95);
-  line-height: 1;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
   white-space: nowrap;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.category-count-badge-number {
+.category-count {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  margin-top: 3px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+}
+
+.category-count-number {
   font-size: 13px;
-  font-weight: 700;
-}
-
-.category-count-badge-unit {
-  font-size: 11px;
-  opacity: 0.9;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  font-variant-numeric: tabular-nums;
 }
 
 .category-icon-bg {
+  /* 水印图标绝对定位在右侧，不占文字宽度，窄卡片上名称才不会被截断 */
   position: absolute;
-  right: -10px;
-  bottom: -10px;
-  font-size: 80px;
-  opacity: 0.2;
-  transform: rotate(-15deg);
+  right: 8px;
+  top: 50%;
+  font-size: 46px;
+  opacity: 0.22;
+  transform: translateY(-50%) rotate(-10deg);
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* Dark mode adjustments */
@@ -1003,27 +1006,27 @@ onBeforeUnmount(() => {
   }
 
   .category-card {
-    padding: 10px;
-    height: 90px;
+    padding: 10px 12px;
+    min-height: 64px;
+    gap: 4px;
   }
 
   .category-name {
     font-size: 14px;
   }
 
-  .category-count-badge {
-    top: 8px;
-    right: 8px;
-    padding: 2px 8px;
-    gap: 3px;
+  .category-count {
+    margin-top: 2px;
+    font-size: 11px;
   }
 
-  .category-count-badge-number {
+  .category-count-number {
     font-size: 12px;
   }
 
-  .category-count-badge-unit {
-    font-size: 10px;
+  .category-icon-bg {
+    font-size: 36px;
+    right: 4px;
   }
 
   .view-header {
@@ -1094,22 +1097,16 @@ onBeforeUnmount(() => {
 
 @media (min-width: 1280px) {
   .categories-grid {
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   }
 
   .category-card,
   .categories-grid-skeleton .category-card {
-    min-height: 112px;
+    min-height: 80px;
   }
 
   .category-skeleton-content {
-    min-height: 112px;
-  }
-
-  .apps-grid {
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    column-gap: 28px;
-    row-gap: 40px;
+    min-height: 80px;
   }
 
   .skeleton-card {
@@ -1123,12 +1120,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 1024px) {
-  .apps-grid {
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    column-gap: 20px;
-    row-gap: 28px;
-  }
-
   .apps-grid-container {
     min-height: 680px;
   }
@@ -1136,11 +1127,11 @@ onBeforeUnmount(() => {
 
 @media (max-width: 768px) {
   .categories-grid-skeleton .category-card {
-    min-height: 90px;
+    min-height: 64px;
   }
 
   .category-skeleton-content {
-    min-height: 90px;
+    min-height: 64px;
   }
 
   .category-skeleton-title {
@@ -1163,11 +1154,6 @@ onBeforeUnmount(() => {
     width: 34px;
     height: 34px;
     margin-top: 12px;
-  }
-
-  .apps-grid {
-    grid-template-columns: 1fr;
-    row-gap: 32px;
   }
 
   .apps-grid-container {
@@ -1212,11 +1198,11 @@ onBeforeUnmount(() => {
   }
 
   .categories-grid-skeleton .category-card {
-    min-height: 82px;
+    min-height: 60px;
   }
 
   .category-skeleton-content {
-    min-height: 82px;
+    min-height: 60px;
   }
 
   .category-skeleton-title {
@@ -1239,10 +1225,6 @@ onBeforeUnmount(() => {
     width: 28px;
     height: 28px;
     margin-top: 10px;
-  }
-
-  .apps-grid {
-    row-gap: 26px;
   }
 
   .skeleton-card {

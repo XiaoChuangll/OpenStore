@@ -20,6 +20,12 @@ db.serialize(() => {
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // 访客表数据量大（十万级以上）时，趋势与列表查询都要按时间过滤/排序，
+  // 没有索引会退化成全表扫描
+  db.run('CREATE INDEX IF NOT EXISTS idx_visitors_timestamp ON visitors(timestamp)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_visitors_location ON visitors(location)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_visitors_device ON visitors(device)');
+
   // Migration: Add path column if not exists
   db.all("PRAGMA table_info(visitors)", [], (err, rows) => {
     if (err) {
@@ -255,6 +261,15 @@ db.serialize(() => {
     original_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // 异常应用：屏蔽掉上游拉回来的脏数据，首页列表里不再展示（搜索仍然能搜到）
+  db.run(`CREATE TABLE IF NOT EXISTS blocked_apps (
+    package TEXT PRIMARY KEY,
+    name TEXT,
+    icon_url TEXT,
+    note TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
   db.run(`CREATE TABLE IF NOT EXISTS changelogs (

@@ -223,7 +223,6 @@ watch(() => props.blogId, fetchComments, { immediate: true });
   display: flex;
   flex-direction: column;
   gap: 40px;
-  /* max-width: 800px; */
   width: 100%;
   margin: 0 auto;
 }

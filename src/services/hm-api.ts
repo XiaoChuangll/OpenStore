@@ -1,13 +1,12 @@
 import axios, { type AxiosRequestConfig } from 'axios';
 import { ref } from 'vue';
+import { translateAppsListCall } from './upstream-compat';
 
-// 缓存项接口
 interface CacheItem<T> {
   data: T;
   timestamp: number;
 }
 
-// API 客户端配置接口
 interface HmApiClientConfig {
   baseUrl: string;
   fallbackUrl: string;
@@ -16,26 +15,77 @@ interface HmApiClientConfig {
 /**
  * HarmonyOS 应用市场 API 客户端
  * 复刻了原项目的核心特性：
- * 1. 自动降级 (Failover): 优先使用代理，失败时回退到直连
+ * 1. 自动降级 (Failover): 优先使用本站代理，失败时回退到直连上游
  * 2. 智能缓存 (Caching): 根据路径自动决定缓存时间
  * 3. 请求防抖 (Request Deduping): 避免并发重复请求
  */
 class HmApiClient {
-  private activeBaseUrl: string;
+  private primaryBaseUrl: string;
   private fallbackUrl: string;
   private cache: Map<string, CacheItem<any>> = new Map();
   private inFlight: Map<string, Promise<any>> = new Map();
-  
-  // Loading status
+
+  /**
+   * 主线路（本站代理）最近一次失败的时间戳。
+   * 冷却期内先走备用线路，冷却结束后重新尝试主线路 ——
+   * 不再像以前那样"第一次失败就永久切到直连"，避免一次抖动之后所有请求都绑死在不稳的直连上。
+   */
+  private primaryFailedAt = 0;
+  private static readonly PRIMARY_COOLDOWN_MS = 60 * 1000;
+
   public isLoading = ref(false);
   private activeRequestCount = 0;
 
   constructor(config: HmApiClientConfig) {
-    this.activeBaseUrl = config.baseUrl;
+    this.primaryBaseUrl = config.baseUrl;
     this.fallbackUrl = config.fallbackUrl;
   }
 
-  // 生成缓存 Key
+  /** 按优先级返回本次请求要尝试的线路 */
+  private getBaseCandidates(): string[] {
+    if (this.primaryBaseUrl === this.fallbackUrl) return [this.primaryBaseUrl];
+
+    const primaryCoolingDown = Date.now() - this.primaryFailedAt < HmApiClient.PRIMARY_COOLDOWN_MS;
+    return primaryCoolingDown
+      ? [this.fallbackUrl, this.primaryBaseUrl]
+      : [this.primaryBaseUrl, this.fallbackUrl];
+  }
+
+  /** 记录主线路健康状态：成功即解除冷却，失败则开始冷却 */
+  private recordPrimaryResult(baseUrl: string, ok: boolean) {
+    if (baseUrl !== this.primaryBaseUrl) return;
+    this.primaryFailedAt = ok ? 0 : Date.now();
+  }
+
+  /** 依次尝试候选线路，全部失败时抛出最后一个错误 */
+  private async sendWithFailover<T>(
+    label: string,
+    send: (baseUrl: string) => Promise<{ data: T }>
+  ): Promise<T> {
+    const candidates = this.getBaseCandidates();
+    let lastError: unknown;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const baseUrl = candidates[i];
+      try {
+        const response = await send(baseUrl);
+        this.recordPrimaryResult(baseUrl, true);
+        return response.data;
+      } catch (error) {
+        lastError = error;
+        this.recordPrimaryResult(baseUrl, false);
+
+        const nextBaseUrl = candidates[i + 1];
+        if (nextBaseUrl) {
+          console.warn(`[HmApi] Request to ${baseUrl}${label} failed, trying fallback ${nextBaseUrl}...`);
+        }
+      }
+    }
+
+    console.error(`[HmApi] All endpoints failed for ${label}`, lastError);
+    throw lastError;
+  }
+
   private getCacheKey(path: string, params?: any): string {
     const queryString = params
       ? Object.entries(params)
@@ -60,92 +110,76 @@ class HmApiClient {
     }
   }
 
-  // 猜测缓存时间 (毫秒) - 复刻原项目逻辑
+  // 缓存时长按路径猜（毫秒），沿用原项目规则
   private guessTtlMs(path: string): number {
     if (path.includes('market_info')) return 120000; // 2 mins
     if (path.includes('charts/')) return 300000; // 5 mins
-    if (path.includes('rankings/top-downloads')) return 300000; // 5 mins
+    // 注：/rankings/top-downloads 已在上游 0.9.0 移除，不再需要缓存规则
     if (path.includes('apps/list')) return 30000; // 30 secs
     return 0; // 默认不缓存
   }
 
-  // 发起 GET 请求
   public async get<T>(path: string, params?: any, config?: AxiosRequestConfig): Promise<T> {
-    // 确保 path 以 / 开头
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     const cacheKey = this.getCacheKey(normalizedPath, params);
     const ttl = this.guessTtlMs(normalizedPath);
 
-    // 1. 检查缓存
     if (ttl > 0) {
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < ttl) {
-        // console.debug(`[HmApi] Cache hit for ${cacheKey}`);
         return cached.data;
       }
     }
 
-    // 2. 检查是否有正在进行的相同请求 (Request Deduping)
+    // 同一个请求正在飞：直接复用，避免并发打上游
     if (this.inFlight.has(cacheKey)) {
-      // console.debug(`[HmApi] Deduping request for ${cacheKey}`);
       return this.inFlight.get(cacheKey) as Promise<T>;
     }
 
-    // 3. 发起新请求
     const requestPromise = (async () => {
       this.startRequest();
+      // /apps/list/<n> 统一翻译成 /apps/query（POST），避开被上游风控的接口
+      const translated = translateAppsListCall(normalizedPath, params);
+      const requestPath = translated ? translated.path : normalizedPath;
+
+      const send = (baseUrl: string) => {
+        const url = `${baseUrl}${requestPath}`;
+        return translated
+          ? axios.post<T>(url, translated.body, {
+              ...config,
+              headers: { 'Content-Type': 'application/json', ...(config?.headers || {}) }
+            })
+          : axios.get<T>(url, { ...config, params });
+      };
+
       try {
-        const url = `${this.activeBaseUrl}${normalizedPath}`;
-        // console.debug(`[HmApi] Fetching ${url}`);
-        const response = await axios.get<T>(url, { ...config, params });
-        return response.data;
-      } catch (error) {
-        console.warn(`[HmApi] Request to ${this.activeBaseUrl} failed, trying fallback...`);
-        
-        // 尝试降级
-        if (this.activeBaseUrl !== this.fallbackUrl) {
-            try {
-                // 切换 active url 以便后续请求直接用备用
-                // 注意：这里我们临时使用 fallbackUrl 发起请求，如果成功，是否要永久切换 activeBaseUrl？
-                // 原项目逻辑是：hmApiActiveBase = hmApiRemoteBase; (永久切换)
-                this.activeBaseUrl = this.fallbackUrl; 
-                
-                const url = `${this.activeBaseUrl}${normalizedPath}`;
-                console.log(`[HmApi] Fallback to ${url}`);
-                const response = await axios.get<T>(url, { ...config, params });
-                return response.data;
-            } catch (fallbackError) {
-                console.error(`[HmApi] Fallback request also failed`, fallbackError);
-                throw fallbackError;
-            }
-        }
-        throw error;
+        return await this.sendWithFailover(requestPath, send);
       } finally {
         this.endRequest();
       }
     })();
 
-    // 记录 in-flight
     this.inFlight.set(cacheKey, requestPromise);
 
     try {
       const data = await requestPromise;
-      // 写入缓存
       if (ttl > 0) {
         this.cache.set(cacheKey, { data, timestamp: Date.now() });
       }
       return data;
     } finally {
-      // 清理 in-flight
       this.inFlight.delete(cacheKey);
     }
   }
-  
-  // POST 请求
+
   public async post<T>(path: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    
-    // Ensure Content-Type is application/json for POST, as some endpoints require it
+
+    // axios 在 Content-Type=application/json 时会把 null 序列化成字面量 "null"，
+    // 严格模式的 JSON 解析（包括本项目服务端的 express.json 默认 strict）会直接 400，
+    // 所以这里统一把空 body 归一成 {}。
+    const payload = data ?? {};
+
     const finalConfig = {
       ...config,
       headers: {
@@ -156,37 +190,18 @@ class HmApiClient {
 
     this.startRequest();
     try {
-      const url = `${this.activeBaseUrl}${normalizedPath}`;
-      const response = await axios.post<T>(url, data, finalConfig);
-      return response.data;
-    } catch (error) {
-      console.warn(`[HmApi] POST Request to ${this.activeBaseUrl} failed, trying fallback...`);
-
-      // 尝试降级
-      if (this.activeBaseUrl !== this.fallbackUrl) {
-        try {
-          // 临时切换到 fallbackUrl
-          this.activeBaseUrl = this.fallbackUrl;
-          const url = `${this.activeBaseUrl}${normalizedPath}`;
-          console.log(`[HmApi] Fallback (POST) to ${url}`);
-          const response = await axios.post<T>(url, data, finalConfig);
-          return response.data;
-        } catch (fallbackError) {
-          console.error(`[HmApi] Fallback POST request also failed`, fallbackError);
-          throw fallbackError;
-        }
-      }
-      throw error;
+      return await this.sendWithFailover(normalizedPath, (baseUrl) =>
+        axios.post<T>(`${baseUrl}${normalizedPath}`, payload, finalConfig)
+      );
     } finally {
       this.endRequest();
     }
   }
 }
 
-// 导出单例
 export const hmApi = new HmApiClient({
-  baseUrl: '/api/v0', // 优先走 Vite 代理
-  fallbackUrl: 'http://shenjack.top:10003/api/v0' // 备用直连
+  baseUrl: '/api/v0', // 优先走本站代理
+  fallbackUrl: 'https://shenjack.top:10003/api/v0' // 备用直连
 });
 
 export interface SubmissionComment {

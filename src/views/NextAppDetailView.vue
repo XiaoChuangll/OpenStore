@@ -1,7 +1,6 @@
 <template>
   <div class="app-dashboard-view" v-loading="loading">
     <div class="app-detail-container" v-if="appDetail">
-      <!-- Header -->
       <div class="app-header">
         <div class="app-header-left">
           <el-image :src="appDetail.icon_url" class="app-icon" fit="cover">
@@ -21,7 +20,7 @@
                 获取
               </el-button>
               <el-button round @click="copyLink">
-                <el-icon><Share /></el-icon>
+                <el-icon><HarmonyShareIcon /></el-icon>
               </el-button>
             </div>
           </div>
@@ -35,7 +34,6 @@
 
 
 
-      <!-- Description -->
       <div class="description-section">
         <h3 class="section-title">应用介绍</h3>
         <p class="description-text">{{ appDetail.description || appDetail.intro || '暂无介绍' }}</p>
@@ -47,7 +45,6 @@
         <p class="description-text">{{ appDetail.new_features || appDetail.upgrade_msg }}</p>
       </div>
 
-      <!-- Meta Grid -->
       <div class="meta-grid">
         <div class="meta-item">
           <div class="meta-label">分类</div>
@@ -107,7 +104,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Picture, Share, Close } from '@element-plus/icons-vue';
+import { Picture, Close } from '@element-plus/icons-vue';
+import HarmonyShareIcon from '../components/HarmonyShareIcon.vue';
 import { ElMessage } from 'element-plus';
 import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';

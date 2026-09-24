@@ -1,7 +1,12 @@
 <template>
   <div class="updates-view" @touchstart="handleTouchStart" @touchend="handleTouchEnd">
-    <div class="page-header">
-      <div class="tabs-container">
+    <header class="page-header">
+      <div class="header-main">
+        <h1 class="page-title">应用更新</h1>
+        <p class="page-subtitle">追踪每日上架与更新的鸿蒙应用</p>
+      </div>
+
+        <div class="tabs-container">
         <div class="device-tabs">
           <div 
             class="tab-glider" 
@@ -27,9 +32,9 @@
             <span class="tab-label">今日更新</span>
           </div>
         </div>
-      </div>
-      <div class="update-filters">
-        <div class="device-tabs">
+        </div>
+        <div class="update-filters">
+          <div class="device-tabs">
           <div 
             class="tab-glider" 
             :style="{ 
@@ -89,19 +94,22 @@
               前日
             </div>
           </template>
+          </div>
         </div>
-      </div>
-    </div>
+    </header>
 
     <div class="apps-container" v-if="activeTab === 'new'">
       <div class="update-group">
         <h3 class="group-title">
-          <Transition :name="transitionName" mode="out-in">
-            <span :key="`${titlePrefix}__${titleSuffix}`" class="title-combo">
-              <span class="title-prefix">{{ titlePrefix }}</span>
-              <span class="title-suffix" v-if="titlePrefix">{{ titleSuffix }}</span>
-            </span>
-          </Transition>
+          <div class="group-title-left">
+            <Transition :name="transitionName" mode="out-in">
+              <span :key="`${titlePrefix}__${titleSuffix}`" class="title-combo">
+                <span class="title-prefix">{{ titlePrefix }}</span>
+                <span class="title-suffix" v-if="titlePrefix">{{ titleSuffix }}</span>
+              </span>
+            </Transition>
+            <span v-if="totalCount" class="group-count">{{ totalCount }} 个</span>
+          </div>
         </h3>
         <div class="apps-grid-container">
           <div v-if="loading" class="apps-grid">
@@ -167,6 +175,7 @@
                 <span class="title-suffix" v-if="titlePrefix">{{ titleSuffix }}</span>
               </span>
             </Transition>
+            <span v-if="totalCount" class="group-count">{{ totalCount }} 个</span>
           </div>
           <div class="group-title-right">
             <div
@@ -183,29 +192,31 @@
               </div>
 
               <div class="search-expanded-panel" :class="{ 'is-visible': updateSearchOpen }">
-                <el-button
-                  class="search-reset-btn"
-                  text
-                  circle
-                  :icon="Close"
-                  @click="closeSearch"
-                />
+                <button
+                  type="button"
+                  class="search-panel-icon"
+                  aria-label="搜索"
+                  @click="runUpdateSearch"
+                >
+                  <el-icon><Search /></el-icon>
+                </button>
 
                 <el-input
                   ref="updateSearchInputRef"
                   v-model="updateSearchQuery"
-                  placeholder="搜索应用..."
+                  placeholder="搜索应用"
                   class="search-input-field"
                   @keyup.enter="runUpdateSearch"
                 />
 
-                <el-button
-                  type="primary"
-                  circle
-                  class="search-submit-btn"
-                  :icon="Search"
-                  @click="runUpdateSearch"
-                />
+                <button
+                  type="button"
+                  class="search-close-btn"
+                  aria-label="关闭搜索"
+                  @click="closeSearch"
+                >
+                  <el-icon><Close /></el-icon>
+                </button>
               </div>
             </div>
 
@@ -937,33 +948,48 @@ const switchPrevFilter = () => {
 }
 
 .page-header {
-  margin-bottom: 32px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px 24px;
+  margin-bottom: 22px;
+}
+
+.header-main {
+  grid-column: 1;
+  min-width: 0;
 }
 
 .page-title {
-  font-size: 32px;
+  font-size: 26px;
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--el-text-color-primary);
-  margin-bottom: 8px;
+  margin: 0 0 6px;
 }
 
 .tabs-container {
   display: flex;
   justify-content: center;
-  margin-bottom: 16px;
+  grid-column: 2;
+  margin: 0;
 }
 
 .device-tabs {
   display: flex;
   position: relative;
   background-color: var(--el-fill-color);
-  border-radius: 50px;
-  border: 4px solid var(--el-fill-color);
+  border-radius: 999px;
+  border: 3px solid var(--el-fill-color);
   padding: 0;
-  width: 300px; /* Fixed width for the switch */
-  height: 40px; /* Explicit height */
+  width: 240px;
+  height: 38px;
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
   box-sizing: border-box;
+}
+
+.update-filters .device-tabs {
+  width: 280px;
 }
 
 .tab-glider {
@@ -972,7 +998,7 @@ const switchPrevFilter = () => {
   bottom: 0;
   left: 0;
   background-color: var(--el-bg-color);
-  border-radius: 50px;
+  border-radius: 999px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 2px 8px rgba(0,0,0,0.12);
   z-index: 1;
@@ -984,11 +1010,11 @@ const switchPrevFilter = () => {
   justify-content: center;
   gap: 6px;
   padding: 8px 4px;
-  border-radius: 50px;
+  border-radius: 999px;
   cursor: pointer;
   transition: color 0.3s;
   color: var(--el-text-color-regular);
-  font-size: 14px;
+  font-size: 13.5px;
   position: relative;
   z-index: 2;
   white-space: nowrap;
@@ -1008,15 +1034,16 @@ const switchPrevFilter = () => {
 }
 
 .page-subtitle {
-  font-size: 16px;
+  margin: 0;
+  font-size: 13.5px;
   color: var(--el-text-color-secondary);
 }
 
 .apps-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  column-gap: 24px;
-  row-gap: 36px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  column-gap: 16px;
+  row-gap: 16px;
   padding-bottom: 24px;
 }
 
@@ -1028,14 +1055,20 @@ const switchPrevFilter = () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 16px;
-  margin-top: 20px;
+  gap: 12px;
+  margin-top: 24px;
   padding-bottom: 40px;
 }
 
 .page-info {
-  font-size: 14px;
+  min-width: 84px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--el-fill-color-light);
+  text-align: center;
+  font-size: 13px;
   color: var(--el-text-color-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .loading-wrapper {
@@ -1043,13 +1076,61 @@ const switchPrevFilter = () => {
   width: 100%;
 }
 
+@media (max-width: 939px) {
+  .page-header {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .page-header > .header-main,
+  .page-header > .tabs-container,
+  .page-header > .update-filters {
+    grid-column: 1;
+  }
+
+  /* 手机上两组筛选都拉满宽度：点按区域更大，也不再有"飘在中间的小胶囊"感 */
+  .tabs-container {
+    justify-content: stretch;
+  }
+
+  .device-tabs {
+    width: 100%;
+    height: 42px;
+    border-width: 2px;
+  }
+
+  .device-tabs .device-tab {
+    font-size: 14px;
+  }
+
+  /* 第二行是时间筛选，弱化处理：浅底、无内阴影、更矮 */
+  .update-filters .device-tabs {
+    width: 100%;
+    height: 36px;
+    background-color: var(--el-fill-color-light);
+    border-color: var(--el-fill-color-light);
+    box-shadow: none;
+  }
+
+  .update-filters .device-tab {
+    font-size: 13px;
+  }
+}
+
 @media (max-width: 768px) {
   .updates-view {
-    padding: 16px;
+    padding: 14px 14px 24px;
   }
   
   .page-title {
-    font-size: 24px;
+    font-size: 21px;
+    margin-bottom: 4px;
+  }
+
+  .page-subtitle {
+    font-size: 12.5px;
   }
 }
 
@@ -1058,14 +1139,14 @@ const switchPrevFilter = () => {
 }
 
 .group-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--el-text-color-primary);
   margin-bottom: 16px;
   padding-left: 12px;
   position: relative;
   line-height: 1.2;
-  height: 40px;
+  min-height: 40px;
   display: flex;
   align-items: center;
 }
@@ -1084,16 +1165,26 @@ const switchPrevFilter = () => {
   gap: 8px;
   margin-left: auto;
   flex: 1 1 auto;
-  max-width: 340px;
+  max-width: 360px;
   min-width: 40px;
 }
 
 .group-title-left {
   display: flex;
-  align-items: baseline;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
   flex: 0 0 auto;
   min-width: 0;
+}
+
+.group-count {
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--el-fill-color);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--el-text-color-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .group-title::before {
@@ -1109,10 +1200,11 @@ const switchPrevFilter = () => {
 
 .update-filters {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   align-items: center;
-  gap: 12px;
-  margin-top: 12px;
+  grid-column: 3;
+  gap: 10px;
+  margin: 0;
   position: relative;
 }
 
@@ -1133,11 +1225,16 @@ const switchPrevFilter = () => {
 }
 
 .title-search.expanded {
-  width: 100%;
-  max-width: 340px;
+  width: 320px;
+  max-width: 100%;
   background-color: var(--el-bg-color);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   border-color: var(--el-border-color-lighter);
+}
+
+.title-search.expanded:focus-within {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 3px var(--el-color-primary-light-9), 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .search-trigger-wrapper {
@@ -1171,12 +1268,12 @@ const switchPrevFilter = () => {
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 0 4px;
-  gap: 8px;
+  padding: 0 6px 0 10px;
+  gap: 4px;
   height: 100%;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.3s;
+  transition: opacity 0.25s;
   min-width: 0;
 }
 
@@ -1185,25 +1282,35 @@ const switchPrevFilter = () => {
   pointer-events: auto;
 }
 
-.search-reset-btn {
+.search-panel-icon,
+.search-close-btn {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
   color: var(--el-text-color-secondary);
-  margin-right: -6px; /* 拉近与输入框的距离 */
-  margin-left: 2px;
-  z-index: 1;
+  cursor: pointer;
+  transition: color 0.2s, background-color 0.2s;
 }
 
-.search-reset-btn:hover {
+.search-panel-icon:hover {
+  color: var(--el-color-primary);
+  background-color: var(--el-fill-color-light);
+}
+
+.search-close-btn:hover {
   color: var(--el-text-color-primary);
-  background-color: transparent;
-}
-
-.search-submit-btn {
-  flex: 0 0 auto;
+  background-color: var(--el-fill-color);
 }
 
 .search-input-field {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -1214,9 +1321,19 @@ const switchPrevFilter = () => {
 }
 
 .search-input-field :deep(.el-input__wrapper) {
+  padding: 0;
   box-shadow: none !important;
-  background-color: transparent;
-  padding-left: 0;
+  background-color: transparent !important;
+}
+
+.search-input-field :deep(.el-input__inner) {
+  height: 36px;
+  font-size: 13.5px;
+  color: var(--el-text-color-primary);
+}
+
+.search-input-field :deep(.el-input__inner::placeholder) {
+  color: var(--el-text-color-placeholder);
 }
 
 .search-input-field :deep(.el-select .el-input__wrapper) {

@@ -3,7 +3,7 @@
     <div v-if="appDetail" class="detail-container">
       <div class="detail-header">
         <el-button round @click="copyLink">
-          <el-icon><Share /></el-icon>
+          <el-icon><HarmonyShareIcon /></el-icon>
         </el-button>
         <el-button type="primary" round @click="openAppGallery">前往应用商店</el-button>
       </div>
@@ -86,7 +86,8 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { ArrowDown, Clock, Picture, Share } from '@element-plus/icons-vue';
+import { ArrowDown, Clock, Picture } from '@element-plus/icons-vue';
+import HarmonyShareIcon from '../components/HarmonyShareIcon.vue';
 import { hmApi } from '../services/hm-api';
 import { useLayoutStore } from '../stores/layout';
 

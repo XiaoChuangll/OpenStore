@@ -1,15 +1,30 @@
 <template>
   <div class="submission-view">
-    <el-card class="submission-card" :body-style="{ padding: '0px' }">
-      <el-collapse v-model="activeNames">
-        <el-collapse-item name="collection">
-          <template #title>
-            <div class="card-header">
-              <h2>提交收录</h2>
-            </div>
-          </template>
-      
-          <el-form :model="form" label-position="top">
+    <header class="page-hero">
+      <h1 class="page-hero-title">投稿</h1>
+      <p class="page-hero-desc">提交应用收录，或投稿你的侧载应用</p>
+    </header>
+
+    <section class="panel">
+      <div
+        class="panel-head is-clickable"
+        role="button"
+        tabindex="0"
+        :aria-expanded="openPanels.collection"
+        @click="togglePanel('collection')"
+        @keydown.enter.prevent="togglePanel('collection')"
+        @keydown.space.prevent="togglePanel('collection')"
+      >
+        <span class="panel-index">1</span>
+        <div class="panel-text">
+          <h2 class="panel-title">提交收录</h2>
+        </div>
+        <el-icon class="panel-caret" :class="{ 'is-open': openPanels.collection }"><ArrowDown /></el-icon>
+      </div>
+
+      <el-collapse-transition>
+        <div v-show="openPanels.collection" class="panel-body">
+        <el-form :model="form" label-position="top">
         <el-form-item label="提交类型">
           <el-radio-group v-model="form.type">
             <el-radio-button label="app">应用</el-radio-button>
@@ -33,55 +48,69 @@
             </el-input>
           </el-form-item>
 
-          <el-form-item label="提取结果">
-            <div v-if="appForm.app_id || appForm.pkg_name" class="extract-row">
-              <div class="extract-left">
-                <el-tag v-if="appForm.app_id" type="success" size="large">{{ appForm.app_id }}</el-tag>
-                <el-tag v-if="appForm.pkg_name" type="success" size="large">{{ appForm.pkg_name }}</el-tag>
+          <el-form-item label="解析结果">
+            <div v-if="appForm.app_id || appForm.pkg_name" class="parse-result" v-loading="parsing">
+              <!-- 还没解析出应用信息时，只显示识别到的标识 -->
+              <div v-if="!submittedAppInfo" class="parse-status">
+                <div class="parse-tags">
+                  <el-tag v-if="appForm.app_id" type="success" size="small" effect="plain">{{ appForm.app_id }}</el-tag>
+                  <el-tag v-if="appForm.pkg_name" type="success" size="small" effect="plain">{{ appForm.pkg_name }}</el-tag>
+                </div>
+                <el-tag :type="getStatusTagType(parsing ? '解析中' : '待解析')" size="small">
+                  {{ parsing ? '解析中' : '待解析' }}
+                </el-tag>
               </div>
-              <el-tag :type="getStatusTagType(submittedAppInfo?.status || (parsing ? '解析中' : '待解析'))" size="large">
-                {{ submittedAppInfo?.status || (parsing ? '解析中' : '待解析') }}
-              </el-tag>
-            </div>
-            <el-tag v-else type="info" size="large">等待输入...</el-tag>
-          </el-form-item>
 
-          <!-- Result Table -->
-          <div v-if="submittedAppInfo" class="result-section" v-loading="parsing">
-            <el-table :data="[submittedAppInfo]" style="width: 100%" border>
-              <el-table-column label="图标" width="80" align="center">
-                <template #default="{ row }">
-                  <el-image 
-                    :src="row.icon_url || row.icon" 
-                    style="width: 48px; height: 48px; border-radius: 8px"
-                    fit="cover"
-                  >
-                    <template #error>
-                      <el-icon><Picture /></el-icon>
-                    </template>
-                  </el-image>
-                </template>
-              </el-table-column>
-              <el-table-column prop="pkg_name" label="包名" min-width="120" show-overflow-tooltip />
-              <el-table-column prop="app_id" label="应用 ID" width="100" show-overflow-tooltip />
-              <el-table-column prop="name" label="应用名称" min-width="120" show-overflow-tooltip />
-              <el-table-column label="下载量" width="100">
-                <template #default="{ row }">
-                  {{ formatDownloads(row.download_count || row.downloads) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="大小" width="100">
-                <template #default="{ row }">
-                  {{ formatSize(row.size_bytes || row.size) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="列出时间" width="160">
-                <template #default="{ row }">
-                  {{ formatDate(row.listed_at || row.listed_time || row.release_date || row.release_time || row.create_time || row.created_at) }}
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
+              <!-- 命中应用：图标 + 名称 + 状态一行，下面是指标区 -->
+              <div v-if="submittedAppInfo" class="app-result">
+                <!-- 保留图标骨架方块；加载失败时不显示小图标，只留空底 -->
+                <el-image
+                  :src="submittedAppInfo.icon_url || submittedAppInfo.icon"
+                  class="app-result-icon"
+                  fit="cover"
+                >
+                  <!-- 失败时只留空底，不放任何图标/文字 -->
+                  <template #error><span /></template>
+                </el-image>
+                <div class="app-result-main">
+                  <div class="app-result-head">
+                    <h3 class="app-result-name">{{ submittedAppInfo.name || submittedAppInfo.pkg_name || '—' }}</h3>
+                    <el-tag :type="getStatusTagType(submittedAppInfo.status || '已解析')" size="small" effect="plain">
+                      {{ submittedAppInfo.status || '已解析' }}
+                    </el-tag>
+                  </div>
+                  <p class="app-result-sub">
+                    <span class="app-result-pkg">{{ submittedAppInfo.pkg_name || '—' }}</span>
+                    <span
+                      v-if="submittedAppInfo.app_id && submittedAppInfo.app_id !== submittedAppInfo.pkg_name"
+                      class="app-result-id"
+                    >
+                      ID {{ submittedAppInfo.app_id }}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              <div v-if="submittedAppInfo" class="app-result-stats">
+                <span>
+                  <em>下载量</em>
+                  <b>{{ formatDownloads(submittedAppInfo.download_count || submittedAppInfo.downloads) }}</b>
+                </span>
+                <span>
+                  <em>大小</em>
+                  <b>{{ formatSize(submittedAppInfo.size_bytes || submittedAppInfo.size) }}</b>
+                </span>
+                <span>
+                  <em>上架时间</em>
+                  <b>{{ formatDate(submittedAppInfo.listed_at || submittedAppInfo.listed_time || submittedAppInfo.release_date || submittedAppInfo.release_time || submittedAppInfo.create_time || submittedAppInfo.created_at) }}</b>
+                </span>
+              </div>
+            </div>
+            <div v-else class="parse-empty">
+              <el-icon><Link /></el-icon>
+              <span>粘贴链接或包名后会自动解析，结果显示在这里</span>
+            </div>
+          </el-form-item>
         </template>
 
         <!-- Substance Submission Form -->
@@ -101,139 +130,161 @@
           </el-form-item>
 
           <el-form-item label="解析结果">
-            <div v-if="parsedSubstance" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
-              <div class="extract-row">
-                <div class="extract-left">
-                  <el-tag :type="parsedSubstance.substance_id ? 'success' : 'info'" size="large">
+            <div v-if="parsedSubstance" class="parse-result">
+              <div class="parse-status">
+                <div class="parse-tags">
+                  <el-tag :type="parsedSubstance.substance_id ? 'success' : 'info'" size="small">
                     {{ parsedSubstance.substance_id || '—' }}
                   </el-tag>
                 </div>
-                <el-tag :type="getStatusTagType(parsedSubstance?.status || (topicParsing ? '解析中' : '待解析'))" size="large">
+                <el-tag :type="getStatusTagType(parsedSubstance?.status || (topicParsing ? '解析中' : '待解析'))" size="small">
                   {{ parsedSubstance?.status || (topicParsing ? '解析中' : '待解析') }}
                 </el-tag>
               </div>
-              <div><span>标题：</span><span>{{ parsedSubstance.title || parsedSubstance.name || '—' }}</span></div>
-              <div><span>副标题：</span><span>{{ parsedSubstance.subtitle || '—' }}</span></div>
-              <div><span>专题：</span><span>{{ parsedSubstance.name || parsedSubstance.title || '—' }}</span></div>
-              <div v-if="parsedSubstance.remark"><span>备注：</span><span>{{ parsedSubstance.remark }}</span></div>
-              <div v-if="parsedSubstance.platform"><span>提交平台：</span><span>{{ parsedSubstance.platform }}</span></div>
-              <div v-if="parsedSubstance.user"><span>提交用户：</span><span>{{ parsedSubstance.user }}</span></div>
+
+              <dl class="topic-meta">
+                <div class="topic-meta-row">
+                  <dt>标题</dt>
+                  <dd>{{ parsedSubstance.title || parsedSubstance.name || '—' }}</dd>
+                </div>
+                <div class="topic-meta-row">
+                  <dt>副标题</dt>
+                  <dd>{{ parsedSubstance.subtitle || '—' }}</dd>
+                </div>
+                <div class="topic-meta-row">
+                  <dt>专题</dt>
+                  <dd>{{ parsedSubstance.name || parsedSubstance.title || '—' }}</dd>
+                </div>
+                <div v-if="parsedSubstance.remark" class="topic-meta-row">
+                  <dt>备注</dt>
+                  <dd>{{ parsedSubstance.remark }}</dd>
+                </div>
+                <div v-if="parsedSubstance.platform" class="topic-meta-row">
+                  <dt>提交平台</dt>
+                  <dd>{{ parsedSubstance.platform }}</dd>
+                </div>
+                <div v-if="parsedSubstance.user" class="topic-meta-row">
+                  <dt>提交用户</dt>
+                  <dd>{{ parsedSubstance.user }}</dd>
+                </div>
+              </dl>
             </div>
-            <el-tag v-else type="info" size="large">等待输入...</el-tag>
+            <div v-else class="parse-empty">
+              <el-icon><Link /></el-icon>
+              <span>粘贴专题链接或 ID 后会自动解析</span>
+            </div>
           </el-form-item>
 
           <el-form-item label="相关应用" v-if="topicApps.length > 0">
-            <div style="width: 100%;" v-loading="topicParsing">
-              <el-table :data="topicApps" style="width: 100%" border>
-                <el-table-column label="图标" width="80" align="center">
-                  <template #default="{ row }">
-                    <el-image 
-                      :src="row.icon_url || row.icon" 
-                      style="width: 48px; height: 48px; border-radius: 8px"
-                      fit="cover"
-                    >
-                      <template #error>
-                        <el-icon><Picture /></el-icon>
-                      </template>
-                    </el-image>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="pkg_name" label="包名" min-width="120" show-overflow-tooltip />
-                <el-table-column prop="app_id" label="应用 ID" width="100" show-overflow-tooltip />
-                <el-table-column prop="name" label="应用名称" min-width="120" show-overflow-tooltip />
-                <el-table-column label="下载量" width="100">
-                  <template #default="{ row }">
-                    {{ formatDownloads(row.download_count || row.downloads) }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="大小" width="100">
-                  <template #default="{ row }">
-                    {{ formatSize(row.size_bytes || row.size) }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="列出时间" width="160">
-                  <template #default="{ row }">
-                    {{ formatDate(row.listed_at || row.listed_time || row.release_date || row.release_time || row.create_time || row.created_at) }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="状态" width="100" align="center">
-                  <template #default="{ row }">
-                    <el-tag :type="row.status === '解析失败' ? 'danger' : row.status === '解析中' ? 'warning' : 'success'">
-                      {{ row.status || '已解析' }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-              </el-table>
+            <div class="topic-apps" v-loading="topicParsing">
+              <div v-for="row in topicApps" :key="row.pkg_name || row.app_id" class="topic-app-row">
+                <el-image
+                  :src="row.icon_url || row.icon"
+                  class="topic-app-icon"
+                  fit="cover"
+                >
+                  <template #error><span /></template>
+                </el-image>
+                <div class="topic-app-main">
+                  <span class="topic-app-name">{{ row.name || row.pkg_name || '—' }}</span>
+                  <span class="topic-app-pkg">{{ row.pkg_name || row.app_id || '—' }}</span>
+                </div>
+                <span class="topic-app-count">{{ formatDownloads(row.download_count || row.downloads) }} 次下载</span>
+                <el-tag
+                  size="small"
+                  :type="row.status === '解析失败' ? 'danger' : row.status === '解析中' ? 'warning' : 'success'"
+                >
+                  {{ row.status || '已解析' }}
+                </el-tag>
+              </div>
             </div>
           </el-form-item>
         </template>
 
-          </el-form>
-        </el-collapse-item>
-      </el-collapse>
-    </el-card>
-    <el-card class="submission-card" :body-style="{ padding: '0px' }">
-      <el-collapse v-model="activeNames">
-        <el-collapse-item name="submission">
-          <template #title>
-            <div class="card-header">
-              <h2>应用投稿</h2>
-            </div>
-          </template>
-          <el-form :model="submitForm" label-position="top" v-if="submissionStep === 'edit'">
-        <el-form-item label="投稿类型">
-          <el-tag type="warning" size="large">侧载/测试类型</el-tag>
-        </el-form-item>
-        <el-form-item label="应用名称">
-          <el-input v-model="submitForm.name" placeholder="请输入应用名称" clearable />
-        </el-form-item>
-        <el-form-item label="应用提供者">
-          <el-input v-model="submitForm.provider" placeholder="请输入应用提供者" clearable />
-        </el-form-item>
-        <el-form-item label="背景URL">
-          <el-input v-model="submitForm.bg_url" placeholder="请输入背景URL" clearable />
-        </el-form-item>
-        <el-form-item label="图标URL">
-          <el-input v-model="submitForm.icon_url" placeholder="请输入图标URL" clearable />
-        </el-form-item>
-        <el-form-item label="下载链接">
-          <el-input v-model="submitForm.download_url" placeholder="请输入下载链接" clearable />
-        </el-form-item>
-        <div class="submit-actions">
-          <el-button type="primary" @click="saveForPreview">保存并预览</el-button>
+        </el-form>
         </div>
-          </el-form>
+      </el-collapse-transition>
+    </section>
 
-          <div v-else class="preview-section">
-            <el-alert
-              title="请确认投稿信息"
-              type="info"
-              description="请仔细检查下方应用卡片预览效果，确认无误后点击提交。"
-              show-icon
-              :closable="false"
-              style="margin-bottom: 20px;"
-            />
-            
-            <div class="preview-card-wrapper">
-               <AppDetailCard :item="previewData" :is-detail="true" />
-            </div>
+    <section class="panel">
+      <div
+        class="panel-head is-clickable"
+        role="button"
+        tabindex="0"
+        :aria-expanded="openPanels.submission"
+        @click="togglePanel('submission')"
+        @keydown.enter.prevent="togglePanel('submission')"
+        @keydown.space.prevent="togglePanel('submission')"
+      >
+        <span class="panel-index">2</span>
+        <div class="panel-text">
+          <h2 class="panel-title">应用投稿</h2>
+        </div>
+        <el-icon class="panel-caret" :class="{ 'is-open': openPanels.submission }"><ArrowDown /></el-icon>
+      </div>
 
-            <div class="submit-actions" style="margin-top: 24px; justify-content: center;">
-              <el-button :icon="Back" @click="backToEdit">返回修改</el-button>
-              <el-button type="primary" :loading="submitting" :icon="Check" @click="submitApp">确认提交</el-button>
-            </div>
+      <el-collapse-transition>
+        <div v-show="openPanels.submission" class="panel-body">
+        <el-form
+          :model="submitForm"
+          label-position="top"
+          v-if="submissionStep === 'edit'"
+          class="submit-form"
+        >
+        <el-form-item label="投稿类型">
+          <el-tag type="warning" size="small">侧载 / 测试类型</el-tag>
+        </el-form-item>
+        <div class="form-grid">
+          <el-form-item label="应用名称">
+            <el-input v-model="submitForm.name" placeholder="请输入应用名称" clearable />
+          </el-form-item>
+          <el-form-item label="应用提供者">
+            <el-input v-model="submitForm.provider" placeholder="请输入应用提供者" clearable />
+          </el-form-item>
+          <el-form-item label="图标 URL">
+            <el-input v-model="submitForm.icon_url" placeholder="请输入图标 URL" clearable />
+          </el-form-item>
+          <el-form-item label="背景 URL">
+            <el-input v-model="submitForm.bg_url" placeholder="请输入背景 URL" clearable />
+          </el-form-item>
+          <el-form-item label="下载链接" class="form-grid-full">
+            <el-input v-model="submitForm.download_url" placeholder="请输入下载链接" clearable />
+          </el-form-item>
+        </div>
+        <div class="submit-actions">
+          <el-button type="primary" :icon="Check" @click="saveForPreview">保存并预览</el-button>
+        </div>
+        </el-form>
+
+        <div v-else class="preview-section">
+          <el-alert
+            title="请确认投稿信息"
+            type="info"
+            description="仔细检查下方应用卡片预览效果，确认无误后点击提交。"
+            show-icon
+            :closable="false"
+            class="preview-alert"
+          />
+
+          <div class="preview-card-wrapper">
+            <AppDetailCard :item="previewData" :is-detail="true" />
           </div>
 
-        </el-collapse-item>
-      </el-collapse>
-    </el-card>
+          <div class="submit-actions is-center">
+            <el-button :icon="Back" @click="backToEdit">返回修改</el-button>
+            <el-button type="primary" :loading="submitting" :icon="Check" @click="submitApp">确认提交</el-button>
+          </div>
+        </div>
+        </div>
+      </el-collapse-transition>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Link, Picture, Back, Check } from '@element-plus/icons-vue';
+import { Link, Back, Check, ArrowDown } from '@element-plus/icons-vue';
 import { hmApi } from '../services/hm-api';
 import { getTopicDetail, submitAppSubmission } from '../services/api';
 import AppDetailCard from '../components/AppDetailCard.vue';
@@ -259,7 +310,12 @@ type SubmittedAppInfo = {
 
 const parsing = ref(false);
 const topicParsing = ref(false);
-const activeNames = ref<string[]>([]);
+
+// 两个面板可展开/折叠，提交收录默认展开
+const openPanels = reactive({ collection: true, submission: false });
+const togglePanel = (key: 'collection' | 'submission') => {
+  openPanels[key] = !openPanels[key];
+};
 
 const form = reactive({
   type: 'app',
@@ -391,7 +447,7 @@ const parseAppInput = (raw: string) => {
 };
 
 const fetchByPkgName = async (pkgName: string) => {
-  const res: any = await hmApi.get<any>('/apps/list/0', {
+  const res: any = await hmApi.get<any>('/apps/list/1', {
     search_key: 'pkg_name',
     search_value: pkgName,
     search_exact: true,
@@ -861,106 +917,396 @@ const handleSubstanceInput = (value: string) => {
 .submission-view {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  padding: 40px 20px;
+  gap: 18px;
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px 20px 40px;
+  /* width:100% + 左右内边距必须算进宽度里，否则会溢出父容器导致页面能左右滑 */
+  box-sizing: border-box;
   overflow-x: hidden;
 }
 
-.submission-card {
-  width: 100%;
-  max-width: 1000px;
-  border-radius: 12px;
+.page-hero {
+  margin-bottom: 2px;
 }
 
-.card-header {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  width: 100%;
+.page-hero-title {
+  margin: 0 0 6px;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--el-text-color-primary);
 }
 
-.card-header h2 {
+.page-hero-desc {
   margin: 0;
+  font-size: 13.5px;
+  color: var(--el-text-color-secondary);
+}
+
+/* ---------- 分区面板 ---------- */
+.panel {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 14px;
+  background-color: var(--el-bg-color);
+  overflow: hidden;
+}
+
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  background-color: var(--el-fill-color-light);
+  transition: background-color 0.2s;
+}
+
+.panel-head.is-clickable {
+  cursor: pointer;
+}
+
+.panel-head.is-clickable:hover {
+  background-color: var(--el-fill-color);
+}
+
+.panel-head:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-5);
+  outline-offset: -2px;
+}
+
+.panel-caret {
+  flex: 0 0 auto;
+  margin-left: auto;
+  margin-top: 4px;
+  font-size: 16px;
+  color: var(--el-text-color-secondary);
+  transition: transform 0.25s ease;
+}
+
+.panel-caret.is-open {
+  transform: rotate(180deg);
+}
+
+.panel-index {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.panel-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.panel-title {
+  margin: 0 0 3px;
   font-size: 16px;
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+  color: var(--el-text-color-primary);
+}
+
+.panel-body {
+  padding: 20px;
 }
 
 .form-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-top: 4px;
 }
 
-.extract-row {
+/* ---------- 解析结果 ---------- */
+.parse-result {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background-color: var(--el-fill-color-blank);
+}
+
+.parse-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   width: 100%;
+  flex-wrap: wrap;
 }
 
-.extract-left {
+.parse-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
 }
 
+.parse-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 18px 16px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
+/* 命中应用：卡片式，窄屏也不会像表格那样横向挤 */
+.app-result {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.app-result-icon {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background-color: var(--el-fill-color-light);
+}
+
+.app-result-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-result-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-result-name {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-result-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--el-text-color-secondary);
+}
+
+.app-result-pkg {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-all;
+}
+
+.app-result-id {
+  padding-left: 10px;
+  border-left: 1px solid var(--el-border-color);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* 指标区：标签在上、数值在下，窄屏自动换行 */
+.app-result-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px 16px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.app-result-stats > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.app-result-stats em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.app-result-stats b {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+/* ---------- 专题元信息 ---------- */
+.topic-meta {
+  margin: 14px 0 0;
+}
+
+.topic-meta-row {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.topic-meta-row + .topic-meta-row {
+  border-top: 1px dashed var(--el-border-color-lighter);
+}
+
+.topic-meta-row dt {
+  flex: 0 0 68px;
+  margin: 0;
+  color: var(--el-text-color-secondary);
+}
+
+.topic-meta-row dd {
+  margin: 0;
+  min-width: 0;
+  word-break: break-all;
+}
+
+/* ---------- 专题相关应用 ---------- */
+.topic-apps {
+  width: 100%;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.topic-app-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.topic-app-row + .topic-app-row {
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.topic-app-icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background-color: var(--el-fill-color-light);
+}
+
+.topic-app-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.topic-app-name {
+  font-size: 13.5px;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topic-app-pkg {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topic-app-count {
+  font-size: 12.5px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 投稿表单 ---------- */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.form-grid-full {
+  grid-column: 1 / -1;
+}
+
 .submit-actions {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-top: 4px;
 }
 
-:deep(.el-collapse) {
-  border-top: none;
-  border-bottom: none;
-  width: 100%;
+.submit-actions.is-center {
+  justify-content: center;
+  margin-top: 24px;
 }
 
-:deep(.el-collapse-item__header) {
+.preview-alert {
+  margin-bottom: 20px;
+}
+
+.preview-card-wrapper {
   display: flex;
-  align-items: center;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  box-sizing: border-box;
-  max-width: 100%;
-  overflow: hidden;
-}
-
-:deep(.el-collapse-item__title) {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-}
-
-:deep(.el-collapse-item__arrow) {
-  flex: 0 0 auto;
-  margin-left: 8px;
-}
-
-:deep(.el-collapse-item__wrap) {
-  border-bottom: none;
-}
-
-:deep(.el-collapse-item__content) {
-  padding: 20px;
-  padding-bottom: 20px;
-}
-
-:deep(.el-card__body) {
-  overflow-x: hidden;
+  justify-content: center;
 }
 
 :deep(.el-input__wrapper),
 :deep(.el-input) {
   max-width: 100%;
+}
+
+@media (max-width: 768px) {
+  .submission-view {
+    padding: 18px 14px 28px;
+    gap: 14px;
+  }
+
+  .page-hero-title {
+    font-size: 22px;
+  }
+
+  .panel-head {
+    padding: 14px;
+  }
+
+  .panel-body {
+    padding: 14px;
+  }
+
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 窄屏省掉下载量，避免行内太挤 */
+  .topic-app-count {
+    display: none;
+  }
+
+  .app-result {
+    align-items: flex-start;
+  }
+
+  .topic-meta-row dt {
+    flex-basis: 56px;
+  }
 }
 </style>

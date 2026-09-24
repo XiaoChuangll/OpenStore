@@ -871,12 +871,11 @@ onUnmounted(() => {
 }
 
 .chart-container {
-  padding: 16px 0 16px;
-  margin-bottom: 24px;
+  padding: 8px 0 0;
 }
 
 .custom-collapse-title {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--el-text-color-primary);
   flex: 1;
@@ -884,19 +883,15 @@ onUnmounted(() => {
 }
 
 :deep(.el-collapse-item__header) {
-  flex-direction: row;
   justify-content: space-between;
-  padding: 0;
 }
 
 :deep(.el-collapse-item__title) {
   flex: 1;
-  padding-left: 0;
-  margin-left: 0;
 }
 
 :deep(.el-collapse-item__arrow) {
-  margin: 0 0 0 8px;
+  margin-left: 8px;
 }
 
 .chart {

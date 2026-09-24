@@ -17,48 +17,43 @@
         <el-switch 
           v-model="isExactSearch" 
           active-text="精确搜索" 
-          @change="handleSearch" 
           class="exact-switch"
         />
         <div class="search-bar">
+          <el-select v-model="searchKey" placeholder="搜索类型" class="search-scope">
+            <el-option
+              v-for="item in searchOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
           <el-input
             v-model="searchQuery"
             placeholder="搜索应用..."
             class="search-input"
+            :prefix-icon="Search"
             @keyup.enter="handleSearch"
             clearable
             @clear="handleSearch"
-          >
-            <template #prepend>
-              <el-select v-model="searchKey" placeholder="搜索类型" style="width: 110px">
-                <el-option
-                  v-for="item in searchOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </el-select>
-            </template>
-            <template #append>
-              <el-button :icon="Search" @click="handleSearch" />
-            </template>
-          </el-input>
+          />
         </div>
       </header>
     </template>
     
     <el-table
       v-if="!isMobile && viewMode === 'table'"
-      :data="apps"
+      :data="tableData"
+      :row-class-name="() => (isTableSkeleton ? 'is-skeleton-row' : '')"
       style="width: 100%"
       v-loading="loading"
       @row-click="handleRowClick"
       :default-sort="{ prop: sortKey, order: sortDesc ? 'descending' : 'ascending' }"
       @sort-change="onSortChange"
     >
-      <el-table-column label="序号" width="80" align="center">
+      <el-table-column label="序号" width="56" align="center">
         <template #default="scope">
-          <span style="font-weight: bold; color: #909399;">
+          <span class="row-index">
             {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
           </span>
         </template>
@@ -197,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { Search, Download, Switch } from '@element-plus/icons-vue';
 import { hmApi } from '../services/hm-api';
@@ -241,6 +236,28 @@ const updateWidth = () => {
 
 const isMobile = computed(() => windowWidth.value <= 768);
 const pagerCount = computed(() => (isMobile.value ? 5 : 7));
+
+/**
+ * 表格数据：加载中且还没有任何数据时，用一批「占位行」把表格撑到最终高度，
+ * 这样数据到达时不会把下面的内容顶下去（CLS）。
+ */
+const isTableSkeleton = computed(() => loading.value && apps.value.length === 0);
+const tableData = computed(() => {
+  if (!isTableSkeleton.value) return apps.value;
+  return Array.from({ length: pageSize.value }, (_, i) => ({
+    id: `__skeleton_${i}`,
+    app_id: '',
+    name: '',
+    pkg_name: '',
+    icon_url: '',
+    download_count: 0,
+    average_rating: '',
+    updated_at: 0,
+    listed_at: 0,
+    developer_name: '',
+    kind_name: '',
+  }));
+});
 
 const toggleViewMode = () => {
   viewMode.value = viewMode.value === 'table' ? 'grid' : 'table';
@@ -326,20 +343,35 @@ const applyLocalSort = () => {
 };
 
 const handleSearch = () => {
+  // 直接触发时取消待执行的防抖，避免重复请求
+  if (searchTimer) {
+    window.clearTimeout(searchTimer);
+    searchTimer = null;
+  }
   currentPage.value = 1;
   fetchApps();
 };
 
+// 输入即搜：关键词 / 搜索字段 / 精确搜索任一变化都防抖后自动搜索，不再需要搜索按钮
+const SEARCH_DEBOUNCE_MS = 400;
+let searchTimer: number | null = null;
+
+watch([searchQuery, searchKey, isExactSearch], () => {
+  if (searchTimer) window.clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(() => {
+    searchTimer = null;
+    handleSearch();
+  }, SEARCH_DEBOUNCE_MS);
+});
+
 const handleSearchByDeveloper = (developerName: string) => {
   searchKey.value = 'developer_name';
   searchQuery.value = developerName;
-  handleSearch();
 };
 
 const handleSearchByKind = (kindName: string) => {
   searchKey.value = 'kind_name';
   searchQuery.value = kindName;
-  handleSearch();
 };
 
 const handleRowClick = (row: App) => {
@@ -361,6 +393,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  if (searchTimer) window.clearTimeout(searchTimer);
   window.removeEventListener('resize', updateWidth);
 });
 </script>
@@ -390,7 +423,22 @@ onUnmounted(() => {
   margin-right: 12px;
 }
 .search-bar {
-  width: 400px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.search-scope {
+  width: 120px;
+  flex: 0 0 auto;
+}
+
+.search-input {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 240px;
 }
 .clickable-tag {
   cursor: pointer;
@@ -399,23 +447,68 @@ onUnmounted(() => {
 .clickable-tag:hover {
   opacity: 0.8;
 }
+/*
+ * 表格骨架行：占位行里的真实内容隐藏，改画一条带光泽的灰条，
+ * 行高与真实行一致，所以数据到位时表格高度不变。
+ */
+:deep(.is-skeleton-row .cell > *) {
+  visibility: hidden;
+}
+
+:deep(.is-skeleton-row .cell) {
+  position: relative;
+}
+
+:deep(.is-skeleton-row .cell::after) {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 50%;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 7px;
+  background: linear-gradient(
+    90deg,
+    var(--el-fill-color) 25%,
+    var(--el-fill-color-dark) 37%,
+    var(--el-fill-color) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
 .pagination-container {
   display: flex;
   justify-content: center;
   margin-top: 20px;
   overflow-x: auto;
   padding: 10px 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 :deep(.el-pagination) {
-  flex-wrap: wrap;
+  /* 必须是 nowrap：Element Plus 默认不换行，之前写成 wrap，
+     窄屏（约 320~380px）时「上一页 / 下一页」会被挤到独立的第二行。
+     真的放不下时由 .pagination-container 的横向滚动兜底。 */
+  flex-wrap: nowrap;
   justify-content: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {
+  :deep(.el-pagination) {
+    gap: 4px;
+  }
+
   :deep(.el-pagination .el-pager) {
-    margin: 0 4px;
+    margin: 0 2px;
   }
 }
 .app-info {
@@ -423,13 +516,21 @@ onUnmounted(() => {
   align-items: center;
 }
 .app-icon {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   margin-right: 10px;
+  border: 1px solid var(--el-border-color-lighter);
 }
 .app-name {
   font-weight: 500;
+}
+
+/* 序号列：用令牌色，不用硬编码灰 */
+.row-index {
+  font-weight: 500;
+  color: var(--el-text-color-placeholder);
+  font-variant-numeric: tabular-nums;
 }
 
 :deep(th.no-wrap .cell) {
@@ -449,6 +550,16 @@ onUnmounted(() => {
     width: 100%;
     margin-top: 10px;
     order: 3;
+    flex-wrap: wrap;
+  }
+
+  .search-scope {
+    width: 110px;
+  }
+
+  .search-input {
+    flex: 1 1 140px;
+    width: auto;
   }
 }
 

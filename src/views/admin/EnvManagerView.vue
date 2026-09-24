@@ -33,7 +33,7 @@
     </el-row>
 
     <el-dialog v-model="showPwdDialog" title="修改管理员密码" :fullscreen="isMobile" :width="isMobile ? '100%' : '480px'">
-      <el-form label-width="120px">
+      <el-form label-position="top">
         <el-form-item label="旧密码"><el-input v-model="oldPwd" type="password" show-password /></el-form-item>
         <el-form-item label="新密码"><el-input v-model="newPwd" type="password" show-password /></el-form-item>
         <el-alert type="info" title="需包含大小写字母、数字与特殊字符，长度≥8" show-icon class="mb-2" />
@@ -45,7 +45,7 @@
     </el-dialog>
 
     <el-dialog v-model="showDialog" title="编辑变量" :width="isMobile ? '90%' : '600px'">
-      <el-form :model="form" :label-width="isMobile ? 'auto' : '120px'" :label-position="isMobile ? 'top' : 'right'">
+      <el-form label-position="top" :model="form">
         <el-form-item label="Key"><el-input v-model="form.key" /></el-form-item>
         <el-form-item label="值"><el-input v-model="form.value" /></el-form-item>
         <el-form-item label="分类">

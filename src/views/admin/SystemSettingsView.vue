@@ -749,7 +749,6 @@ onMounted(() => {
   display: flex;
   align-items: center;
   padding: 0 2px;
-  /* justify-content: flex-end; Removed to allow absolute positioning logic or transform */
   cursor: pointer;
   transition: background-color 0.3s;
 }
