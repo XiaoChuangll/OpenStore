@@ -8,6 +8,9 @@ nginx
 
 # Database
 *.db
+# WAL 模式下的旁挂文件（切到 WAL 后会出现，绝对不要提交）
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 

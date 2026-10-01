@@ -1,6 +1,6 @@
 <template>
   <div class="about-view">
-    <el-card class="about-card mb-4" v-if="showContent">
+    <el-card class="about-card mb-4" v-if="showContent" :style="cardStyle('content')">
       <div 
         class="about-content" 
         :class="{ 'ql-editor': !aboutData.content_markdown, 'markdown-body': !!aboutData.content_markdown }"
@@ -8,7 +8,7 @@
       ></div>
     </el-card>
 
-    <el-card class="about-card mb-4">
+    <el-card class="about-card mb-4" :style="cardStyle('author')">
       <template #header>
         <div class="card-header">
           <span>关于作者</span>
@@ -45,7 +45,7 @@
       </div>
     </el-card>
 
-    <el-card class="about-card mb-4">
+    <el-card class="about-card mb-4" :style="cardStyle('tech-stack')">
       <template #header>
         <div class="card-header">
           <span>技术栈</span>
@@ -65,7 +65,7 @@
       </div>
     </el-card>
 
-    <el-card class="about-card mb-4">
+    <el-card class="about-card mb-4" :style="cardStyle('changelogs')">
       <template #header>
         <div class="card-header cursor-pointer select-none flex items-center justify-between" @click="toggleChangelogs">
           <div class="flex items-center">
@@ -95,7 +95,7 @@
       </el-collapse-transition>
     </el-card>
 
-    <el-card class="about-card mb-4" v-if="aboutData.github_repo">
+    <el-card class="about-card mb-4" v-if="aboutData.github_repo" :style="cardStyle('commits')">
       <template #header>
         <div class="card-header cursor-pointer select-none flex items-center justify-between" @click="toggleCommits">
           <div class="flex items-center">
@@ -130,7 +130,7 @@
       </el-collapse-transition>
     </el-card>
 
-    <el-card class="about-card mb-4">
+    <el-card class="about-card mb-4" :style="cardStyle('feedback')">
       <template #header>
         <div class="card-header cursor-pointer select-none flex items-center justify-between" @click="toggleFeedback">
           <div class="flex items-center">
@@ -200,16 +200,17 @@
               <div class="hash-query">
                 <el-form label-position="top" :model="queryForm">
                   <el-form-item label="反馈编号">
-                    <el-input
-                      v-model="hashQueryInput"
-                      placeholder="输入编号查询进度"
-                      style="width: 100%;"
-                      clearable
-                      @clear="onQueryClear"
-                    />
-                  </el-form-item>
-                  <el-form-item>
-                    <el-button type="primary" :loading="queryLoading" @click="queryFeedbackProgress">查询</el-button>
+                    <!-- 输入框 + 查询按钮同一行：按钮贴着输入框右侧 -->
+                    <div class="hash-query-row">
+                      <el-input
+                        v-model="hashQueryInput"
+                        placeholder="输入编号查询进度"
+                        clearable
+                        @clear="onQueryClear"
+                        @keyup.enter="queryFeedbackProgress"
+                      />
+                      <el-button type="primary" :loading="queryLoading" @click="queryFeedbackProgress">查询</el-button>
+                    </div>
                   </el-form-item>
                 </el-form>
                 <el-alert
@@ -228,21 +229,34 @@
                   :title="queryNotFound ? '未找到反馈' : '查询结果'"
                   class="mt-2"
                 />
-                <el-descriptions
+                <div
                   v-if="queryResult"
-                  border
-                  :column="2"
-                  size="small"
-                  class="query-result-desc"
+                  class="query-result"
+                  :class="`is-${(queryResult.status || 'pending').trim()}`"
                 >
-                  <el-descriptions-item label="进度">{{ statusLabel(queryResult.status) }}</el-descriptions-item>
-                  <el-descriptions-item label="提交时间">{{ formatTime(queryResult.created_at) }}</el-descriptions-item>
-                  <el-descriptions-item label="类型">{{ typeLabel(queryResult.type) }}</el-descriptions-item>
-                  <el-descriptions-item label="标题">{{ queryResult.title }}</el-descriptions-item>
-                </el-descriptions>
+                  <div class="query-result-head">
+                    <el-tag
+                      :type="statusTagType(queryResult.status)"
+                      effect="light"
+                      round
+                      size="small"
+                      class="qr-status"
+                    >
+                      {{ statusLabel(queryResult.status) }}
+                    </el-tag>
+                    <el-tag type="info" effect="plain" round size="small" class="qr-type">
+                      {{ typeLabel(queryResult.type) }}
+                    </el-tag>
+                    <span class="qr-time">
+                      <el-icon><Clock /></el-icon>
+                      {{ formatTime(queryResult.created_at) }}
+                    </span>
+                  </div>
+                  <div class="query-result-title">{{ queryResult.title }}</div>
+                </div>
                 <div v-if="completedList.length > 0" class="success-list success-list-completed">
                   <div class="success-list-header flex items-center">
-                    <el-icon class="mr-1"><CircleCheckFilled /></el-icon> 已完成
+                    <el-icon><CircleCheckFilled /></el-icon> 已完成
                   </div>
                   <div class="success-item" v-for="item in completedList" :key="item.id">
                     <span class="title">{{ item.title }}</span>
@@ -251,7 +265,7 @@
                 </div>
                 <div v-if="acceptedList.length > 0" class="success-list success-list-accepted">
                   <div class="success-list-header flex items-center">
-                    <el-icon class="mr-1"><CircleCheck /></el-icon> 已接纳
+                    <el-icon><CircleCheck /></el-icon> 已接纳
                   </div>
                   <div class="success-item" v-for="item in acceptedList" :key="item.id">
                     <span class="title">{{ item.title }}</span>
@@ -275,13 +289,47 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from 'vue';
 import { useLayoutStore } from '../stores/layout';
-import { Link, ArrowRight, StarFilled, CircleCheck, CircleCheckFilled } from '@element-plus/icons-vue';
+import { Link, ArrowRight, StarFilled, CircleCheck, CircleCheckFilled, Clock } from '@element-plus/icons-vue';
 import { getAboutPage, getPublicChangelogs, submitFeedback, getFeedbackProgressByHash, getFeedbackSuccessList, type AboutPage, type Changelog, type FeedbackSummary } from '../services/api';
 import axios from 'axios';
 import MarkdownIt from 'markdown-it';
 import '@vueup/vue-quill/dist/vue-quill.snow.css'; // Import Quill styles for content rendering
 import 'github-markdown-css/github-markdown.css';
 import { useAuthStore } from '../stores/auth';
+import { getPublicSiteCards } from '../services/admin';
+
+/*
+ * 关于页面的卡片顺序 / 显隐由后台「首页配置 → 关于」决定：
+ * 卡片都留在模板原位，用 flex order + display 调整，避免大改结构。
+ */
+const aboutCards = ref<Record<string, { enabled: boolean; order: number }>>({});
+const ABOUT_CARD_FALLBACK = ['content', 'author', 'tech-stack', 'changelogs', 'commits', 'feedback'];
+
+const loadAboutCards = async () => {
+  let keys = ABOUT_CARD_FALLBACK;
+  try {
+    const cards = await getPublicSiteCards('about');
+    keys = cards.map((card) => card.key);
+  } catch {
+    keys = ABOUT_CARD_FALLBACK;
+  }
+
+  const next: Record<string, { enabled: boolean; order: number }> = {};
+  keys.forEach((key, index) => {
+    if (!ABOUT_CARD_FALLBACK.includes(key)) return;
+    next[key] = { enabled: true, order: index + 1 };
+  });
+  aboutCards.value = next;
+};
+
+const cardStyle = (key: string) => {
+  const config = aboutCards.value[key];
+  if (!config) return {};
+  // order 负责排序，display 负责显隐（未配置的卡片保持模板原顺序）
+  return config.enabled
+    ? { order: config.order }
+    : { order: config.order, display: 'none' };
+};
 
 const layoutStore = useLayoutStore();
 const aboutData = ref<AboutPage>({ id: 0, version: '', author_name: '', author_avatar: '', author_github: '', github_repo: '', content_html: '', content_markdown: '' });
@@ -361,6 +409,20 @@ const statusOptions = [
 const statusLabel = (s?: string) => {
   const opt = statusOptions.find(o => o.value === (s || '').trim());
   return opt ? opt.label : '待优化';
+};
+/** 状态标签配色：待优化=警告、已接纳=主题、已完成=成功、不接纳=中性 */
+const statusTagType = (s?: string) => {
+  switch ((s || '').trim()) {
+    case 'completed':
+      return 'success';
+    case 'accepted':
+      return 'primary';
+    case 'rejected':
+      return 'info';
+    case 'pending':
+    default:
+      return 'warning';
+  }
 };
 
 const getUserRole = () => {
@@ -770,6 +832,7 @@ onMounted(async () => {
   await fetchData();
   fetchChangelogs();
   fetchSuccessList();
+  loadAboutCards();
 });
 
 onUnmounted(() => {
@@ -782,6 +845,9 @@ onUnmounted(() => {
 .about-view {
   max-width: 800px;
   margin: 0 auto;
+  /* 卡片顺序由后台配置决定，用 flex order 调换位置 */
+  display: flex;
+  flex-direction: column;
 }
 .mb-4 {
   margin-bottom: 20px;
@@ -808,8 +874,65 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 8px;
 }
-.query-result-desc {
-  margin-top: 8px;
+.hash-query-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.hash-query-row .el-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.hash-query-row .el-button {
+  flex: 0 0 auto;
+}
+.query-result {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  /*
+   * 底色保持中性：状态色只由上面的标签承担，
+   * 否则标签会和整块底色撞成一个颜色、反而看不清。
+   */
+  background-color: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.query-result-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  line-height: 1;
+}
+.query-result .qr-time {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.query-result .qr-time .el-icon {
+  font-size: 13px;
+}
+.query-result-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--el-text-color-primary);
+  word-break: break-word;
+}
+@media (max-width: 480px) {
+  .query-result .qr-time {
+    /* 窄屏让时间换行到下一行，别把两个标签挤变形 */
+    margin-left: 0;
+    width: 100%;
+  }
 }
 .success-list {
   margin-top: 20px;
@@ -832,6 +955,8 @@ onUnmounted(() => {
   padding-left: 12px;
   position: relative;
   line-height: 1.2;
+  /* 图标与标题之间留出间距：flex 会吃掉模板里那个空格，不显式给 gap 就会贴在一起 */
+  gap: 6px;
 }
 .success-list-header::before {
   content: "";
@@ -1061,6 +1186,7 @@ onUnmounted(() => {
   transform: translateY(-3px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
+.mr-1 { margin-right: 4px; }
 .mr-2 { margin-right: 12px; }
 .mb-2 { margin-bottom: 12px; }
 
@@ -1090,6 +1216,8 @@ li {
   margin-bottom: 8px;
 }
 .footer-info {
+  /* 页脚永远排在所有卡片之后 */
+  order: 100;
   margin-top: 40px;
   padding-top: 20px;
   border-top: 1px solid var(--el-border-color-light);

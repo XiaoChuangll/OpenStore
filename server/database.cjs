@@ -1,5 +1,6 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const defaultSiteCards = require('./lib/site-card-defaults.cjs');
 
 const dbPath = path.resolve(__dirname, 'visitors.db');
 const db = new sqlite3.Database(dbPath, (err) => {
@@ -9,6 +10,13 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.log('Connected to SQLite database');
   }
 });
+
+/*
+ * SQLite 默认一撞上写锁就立刻抛 SQLITE_BUSY。
+ * 后台维护（VACUUM、切日志模式）和前台写访客日志撞在一起时就会报 "database is locked"，
+ * 这里给 5 秒等待窗口：让它排队等锁，而不是直接失败。
+ */
+db.configure('busyTimeout', 5000);
 
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS visitors (
@@ -25,6 +33,27 @@ db.serialize(() => {
   db.run('CREATE INDEX IF NOT EXISTS idx_visitors_timestamp ON visitors(timestamp)');
   db.run('CREATE INDEX IF NOT EXISTS idx_visitors_location ON visitors(location)');
   db.run('CREATE INDEX IF NOT EXISTS idx_visitors_device ON visitors(device)');
+  /*
+   * 访客量大之后另外两个高频查询也走索引：
+   *   ip + timestamp   —— 后台点某个 IP 看「最近访问」（按 ip 过滤 + 按时间排序）
+   *   timestamp + ip   —— 趋势里统计「独立 IP」这类按时间窗口的去重计数（覆盖索引，不回表）
+   */
+  db.all("PRAGMA index_list(visitors)", [], (err, indexRows) => {
+    if (err || !Array.isArray(indexRows)) return;
+    const names = new Set(indexRows.map((row) => row.name));
+    const needIpIndex = !names.has('idx_visitors_ip_time');
+    const needTimeIpIndex = !names.has('idx_visitors_time_ip');
+
+    if (needIpIndex) db.run('CREATE INDEX IF NOT EXISTS idx_visitors_ip_time ON visitors(ip, timestamp)');
+    if (needTimeIpIndex) db.run('CREATE INDEX IF NOT EXISTS idx_visitors_time_ip ON visitors(timestamp, ip)');
+
+    // 新建索引后刷新一次统计信息，让查询计划立刻用上新索引
+    if (needIpIndex || needTimeIpIndex) {
+      db.run('ANALYZE visitors', (analyzeErr) => {
+        if (analyzeErr) console.error('ANALYZE visitors failed:', analyzeErr.message);
+      });
+    }
+  });
 
   // Migration: Add path column if not exists
   db.all("PRAGMA table_info(visitors)", [], (err, rows) => {
@@ -333,25 +362,50 @@ db.serialize(() => {
 
   db.run(`CREATE TABLE IF NOT EXISTS site_cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    key TEXT NOT NULL UNIQUE,
+    page TEXT NOT NULL DEFAULT 'home',
+    key TEXT NOT NULL,
     title TEXT,
     enabled INTEGER DEFAULT 1,
     sort_order INTEGER DEFAULT 0,
     style TEXT,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(page, key)
   )`);
 
-  // Seed site_cards
-  const defaultCards = [
-    { key: 'friend_links', title: '友情链接', sort_order: 10, style: JSON.stringify({ span: 12, accent: 'bg-yellow' }) },
-    { key: 'group_chats', title: '群聊', sort_order: 20, style: JSON.stringify({ span: 12, accent: 'bg-green' }) },
-    { key: 'announcements', title: '公告', sort_order: 30, style: JSON.stringify({ span: 24, accent: 'bg-yellow' }) },
-    { key: 'apps', title: '应用', sort_order: 40, style: JSON.stringify({ span: 24, accent: 'bg-yellow' }) },
-    { key: 'music', title: '在线播放', sort_order: 5, style: JSON.stringify({ span: 24, accent: 'bg-red' }) }
-  ];
+  const seedSiteCards = () => {
+    defaultSiteCards.forEach(card => {
+      db.run(
+        `INSERT OR IGNORE INTO site_cards (page, key, title, sort_order, style) VALUES (?, ?, ?, ?, ?)`,
+        [card.page, card.key, card.title, card.sort_order, card.style ? JSON.stringify(card.style) : null]
+      );
+    });
+  };
 
-  defaultCards.forEach(card => {
-    db.run(`INSERT OR IGNORE INTO site_cards (key, title, sort_order, style) VALUES (?, ?, ?, ?)`, [card.key, card.title, card.sort_order, card.style]);
+  // 老库的 site_cards 没有 page 列：重建表，已有卡片归到首页「系统」页签，再补齐其它页面的默认卡片
+  db.all(`PRAGMA table_info(site_cards)`, [], (err, columns) => {
+    const hasPageColumn = !err && Array.isArray(columns) && columns.some(column => column.name === 'page');
+    if (hasPageColumn) {
+      seedSiteCards();
+      return;
+    }
+
+    db.serialize(() => {
+      db.run(`CREATE TABLE site_cards_page_migration (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        page TEXT NOT NULL DEFAULT 'home',
+        key TEXT NOT NULL,
+        title TEXT,
+        enabled INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        style TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(page, key)
+      )`);
+      db.run(`INSERT OR IGNORE INTO site_cards_page_migration (id, page, key, title, enabled, sort_order, style, updated_at)
+              SELECT id, 'system', key, title, enabled, sort_order, style, updated_at FROM site_cards`);
+      db.run(`DROP TABLE site_cards`);
+      db.run(`ALTER TABLE site_cards_page_migration RENAME TO site_cards`, () => seedSiteCards());
+    });
   });
 
   db.run(`CREATE TABLE IF NOT EXISTS about_page (
@@ -384,6 +438,23 @@ db.serialize(() => {
     });
   }
   ensureColumn('announcements', 'content_markdown', 'TEXT');
+  // 访客来源标记：1 = 经已知前置反代（如 beta-next.icu）进来的，0 = 直接访问本站。
+  // 老数据没有这个信息，默认 0；判定逻辑在 server/index.cjs 的 isViaTrustedFrontProxy()。
+  ensureColumn('visitors', 'via_proxy', 'INTEGER DEFAULT 0');
+  /*
+   * 访客原始 User-Agent。
+   * device 是从它解析出来的展示名（丢掉了版本细节），原文留一份便于排查
+   * 「某个访客用的到底是什么客户端/版本」这类问题。
+   * 注意：转发上游时用的不是它，而是 lib/config.cjs 里统一的 UPSTREAM_USER_AGENT。
+   * 老数据没有这一列，值为 NULL（前端据此区分「没记录」和「确实没带 UA」）。
+   */
+  ensureColumn('visitors', 'ua', 'TEXT');
+  /*
+   * 这次请求是不是经 /api/v0 转发到应用市场上游的。
+   * 转发时用的 UA 是统一的 UPSTREAM_USER_AGENT，和访客自己的 ua 是两回事，
+   * 后台要靠这一列决定「这一行该显示哪个 UA」。
+   */
+  ensureColumn('visitors', 'via_upstream', 'INTEGER DEFAULT 0');
   ensureColumn('announcements', 'published_at', 'DATETIME');
   ensureColumn('announcements', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
   ensureColumn('group_chats', 'enabled', 'INTEGER DEFAULT 1');
@@ -394,6 +465,8 @@ db.serialize(() => {
   ensureColumn('apps', 'original_id', 'TEXT');
   ensureColumn('about_page', 'github_repo', 'TEXT');
   ensureColumn('about_page', 'author_avatar', 'TEXT');
+  // 事故 / 维护 / 提示 卡片的图标（存图标名，前台按名字取 SVG；留空则按类型取默认图标）
+  ensureColumn('incidents', 'icon', 'TEXT');
   ensureColumn('about_page', 'author_github', 'TEXT');
   ensureColumn('about_page', 'content_markdown', 'TEXT');
   ensureColumn('app_submissions', 'review_note', 'TEXT');
@@ -406,6 +479,8 @@ db.serialize(() => {
   ensureColumn('blogs', 'seo_description', 'TEXT');
   ensureColumn('blogs', 'seo_keywords', 'TEXT');
   ensureColumn('blogs', 'password', 'TEXT');
+  // 文章密码改成存哈希：password 列保留只为兼容旧数据，读到旧明文时会在校验通过后自动升级成哈希
+  ensureColumn('blogs', 'password_hash', 'TEXT');
   ensureColumn('blogs', 'allow_comments', 'INTEGER DEFAULT 1');
   ensureColumn('blogs', 'scheduled_at', 'DATETIME');
   ensureColumn('blogs', 'published_at', 'DATETIME');

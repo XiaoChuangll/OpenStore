@@ -86,6 +86,7 @@ import 'katex/dist/katex.min.css';
 import { getPublicBlogBySlug, type Blog } from '../services/api';
 import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
+import { clearPageShareMeta, setPageShareMeta } from '../utils/page-share';
 import MobileAppCard from '../components/MobileAppCard.vue';
 import { User, Calendar, Folder, View } from '@element-plus/icons-vue';
 import CommentSection from '../components/CommentSection.vue';
@@ -223,9 +224,15 @@ const fetchDetail = async (password?: string) => {
     const title = data.title || '文章详情';
     // 顶栏不显示标题（正文里有），只保留返回按钮；浏览器标签标题照旧
     layoutStore.setPageInfo('', true, () => router.back());
-    document.title = `${title} - OpenStore`;
+    document.title = `OpenStore | ${title}`;
 
     const description = data.seo_description || data.summary || '';
+    // 分享卡片：文章封面 + 标题 / 摘要
+    setPageShareMeta({
+      title,
+      description,
+      image: data.cover_url || '',
+    });
     const defaultKeywords = 'OpenStore,华为应用市场看板,鸿蒙应用看板,鸿蒙应用数据面板,鸿蒙,应用商店,应用下载,榜单,更新,应用分发';
     let keywords = data.seo_keywords ? data.seo_keywords : title;
     if (keywords) {
@@ -303,6 +310,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   layoutStore.reset();
+  clearPageShareMeta();
 });
 
 watch(() => route.params.slug, () => {

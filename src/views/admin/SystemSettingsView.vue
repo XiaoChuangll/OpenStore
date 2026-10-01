@@ -1,291 +1,190 @@
 <template>
-  <div class="admin-page">
+  <div class="admin-page settings-page">
     <div class="page-header">
       <h2 class="page-title">主题设置</h2>
+      <p class="page-subtitle">调整全站品牌配色，保存后立即生效</p>
     </div>
 
-    <el-row :gutter="24">
-      <!-- Settings Column -->
-      <el-col :xs="24" :lg="14">
-        <el-card class="settings-card" shadow="hover">
-          <template #header>
-            <div class="card-header">
-              <span>全局配色</span>
-              <el-button link type="primary" @click="resetTheme">恢复默认</el-button>
-            </div>
-          </template>
-
-          <el-form label-position="left">
-            <div class="settings-list">
-              <!-- Primary Color Item -->
-              <div class="setting-item primary-item">
-                <div class="setting-info">
-                  <div class="setting-label">主色调 (Primary)</div>
-                  <div class="setting-desc">用于按钮、链接、激活状态等核心交互元素</div>
-                </div>
-                <div class="setting-control">
-                  <el-color-picker v-model="theme.theme_primary_color" show-alpha />
-                  <div class="hex-input-wrapper">
-                    <el-input v-model="theme.theme_primary_color" placeholder="#409EFF" />
-                  </div>
-                </div>
-              </div>
-
-              <div class="setting-divider"></div>
-
-              <!-- Functional Colors Grid -->
-              <div class="functional-grid">
-                <div class="functional-item">
-                  <div class="func-header">
-                    <span class="dot success"></span>
-                    <span class="func-label">成功 (Success)</span>
-                  </div>
-                  <div class="func-control">
-                    <el-color-picker v-model="theme.theme_success_color" show-alpha size="small" />
-                    <el-input v-model="theme.theme_success_color" placeholder="#67C23A" size="small" />
-                  </div>
-                </div>
-
-                <div class="functional-item">
-                  <div class="func-header">
-                    <span class="dot warning"></span>
-                    <span class="func-label">警告 (Warning)</span>
-                  </div>
-                  <div class="func-control">
-                    <el-color-picker v-model="theme.theme_warning_color" show-alpha size="small" />
-                    <el-input v-model="theme.theme_warning_color" placeholder="#E6A23C" size="small" />
-                  </div>
-                </div>
-
-                <div class="functional-item">
-                  <div class="func-header">
-                    <span class="dot danger"></span>
-                    <span class="func-label">危险 (Danger)</span>
-                  </div>
-                  <div class="func-control">
-                    <el-color-picker v-model="theme.theme_danger_color" show-alpha size="small" />
-                    <el-input v-model="theme.theme_danger_color" placeholder="#F56C6C" size="small" />
-                  </div>
-                </div>
-
-                <div class="functional-item">
-                  <div class="func-header">
-                    <span class="dot info"></span>
-                    <span class="func-label">信息 (Info)</span>
-                  </div>
-                  <div class="func-control">
-                    <el-color-picker v-model="theme.theme_info_color" show-alpha size="small" />
-                    <el-input v-model="theme.theme_info_color" placeholder="#909399" size="small" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-actions">
-              <el-button type="primary" size="large" @click="saveTheme" :loading="saving" class="save-btn">
-                保存配置
-              </el-button>
-            </div>
-          </el-form>
-        </el-card>
-      </el-col>
-
-      <!-- Preview Column -->
-      <el-col :xs="24" :lg="10">
-        <div class="preview-container">
-          <el-divider content-position="center">实时预览</el-divider>
-          
-          <!-- Mock Interface -->
-          <div class="mock-window">
-            <div class="mock-header" :style="{ backgroundColor: previewColors.primary }">
-              <div class="mock-dots">
-                <span></span><span></span><span></span>
-              </div>
-              <div class="mock-title">Dashboard</div>
-              <div class="mock-user"></div>
-            </div>
-            
-            <div class="mock-body">
-              <div class="mock-sidebar">
-                <div 
-                  class="mock-menu-item" 
-                  :class="{ active: activePreviewTab === 'overview' }"
-                  :style="activePreviewTab === 'overview' ? { color: previewColors.primary, backgroundColor: fadeColor(previewColors.primary, 0.1) } : {}"
-                  @click="activePreviewTab = 'overview'"
-                >
-                  <div class="mock-icon" :style="activePreviewTab === 'overview' ? { backgroundColor: previewColors.primary } : {}"></div>
-                  <span>概览</span>
-                </div>
-                <div 
-                  class="mock-menu-item" 
-                  :class="{ active: activePreviewTab === 'analytics' }"
-                  :style="activePreviewTab === 'analytics' ? { color: previewColors.primary, backgroundColor: fadeColor(previewColors.primary, 0.1) } : {}"
-                  @click="activePreviewTab = 'analytics'"
-                >
-                  <div class="mock-icon" :style="activePreviewTab === 'analytics' ? { backgroundColor: previewColors.primary } : {}"></div>
-                  <span>分析</span>
-                </div>
-                <div 
-                  class="mock-menu-item" 
-                  :class="{ active: activePreviewTab === 'settings' }"
-                  :style="activePreviewTab === 'settings' ? { color: previewColors.primary, backgroundColor: fadeColor(previewColors.primary, 0.1) } : {}"
-                  @click="activePreviewTab = 'settings'"
-                >
-                  <div class="mock-icon" :style="activePreviewTab === 'settings' ? { backgroundColor: previewColors.primary } : {}"></div>
-                  <span>设置</span>
-                </div>
-              </div>
-              
-              <div class="mock-content">
-                <!-- Overview Tab -->
-                <template v-if="activePreviewTab === 'overview'">
-                  <!-- Stats Cards -->
-                  <div class="mock-stats-row">
-                    <div class="mock-stat-card">
-                      <div class="stat-value" :style="{ color: previewColors.primary }">98.5%</div>
-                      <div class="stat-label">活跃度</div>
-                    </div>
-                    <div class="mock-stat-card">
-                      <div class="stat-value" :style="{ color: previewColors.success }">+12%</div>
-                      <div class="stat-label">增长</div>
-                    </div>
-                  </div>
-
-                  <!-- Components Showcase -->
-                  <div class="mock-section">
-                    <div class="mock-subtitle">组件示例</div>
-                    <div class="mock-buttons">
-                      <button class="mock-btn primary" :style="{ backgroundColor: previewColors.primary }">主要按钮</button>
-                      <button class="mock-btn success" :style="{ backgroundColor: previewColors.success }">成功</button>
-                      <button class="mock-btn warning" :style="{ backgroundColor: previewColors.warning }">警告</button>
-                      <button class="mock-btn danger" :style="{ backgroundColor: previewColors.danger }">危险</button>
-                    </div>
-                    
-                    <div class="mock-tags">
-                      <span class="mock-tag" :style="{ color: previewColors.primary, borderColor: previewColors.primary, backgroundColor: fadeColor(previewColors.primary, 0.1) }">标签一</span>
-                      <span class="mock-tag" :style="{ color: previewColors.success, borderColor: previewColors.success, backgroundColor: fadeColor(previewColors.success, 0.1) }">标签二</span>
-                      <span class="mock-tag" :style="{ color: previewColors.warning, borderColor: previewColors.warning, backgroundColor: fadeColor(previewColors.warning, 0.1) }">标签三</span>
-                    </div>
-
-                    <div class="mock-alert" :style="{ backgroundColor: fadeColor(previewColors.info, 0.1), borderLeftColor: previewColors.info }">
-                      <div class="alert-icon" :style="{ backgroundColor: previewColors.info }"></div>
-                      <div class="alert-text" :style="{ color: previewColors.info }">这是一条普通的消息提示</div>
-                    </div>
-                  </div>
-                </template>
-
-                <!-- Analytics Tab -->
-                <template v-if="activePreviewTab === 'analytics'">
-                  <div class="mock-section">
-                    <div class="mock-subtitle">数据趋势</div>
-                    <div class="mock-chart-placeholder" :style="{ borderColor: fadeColor(previewColors.primary, 0.3), backgroundColor: fadeColor(previewColors.primary, 0.05) }">
-                       <div class="mock-chart-line" :style="{ borderColor: previewColors.primary }"></div>
-                    </div>
-                  </div>
-                  <div class="mock-section">
-                    <div class="mock-subtitle">状态分布</div>
-                    <div class="mock-progress-list">
-                      <div class="mock-progress-item">
-                        <div class="mock-progress-label">已完成</div>
-                        <div class="mock-progress-bar-bg"><div class="mock-progress-bar" :style="{ width: '80%', backgroundColor: previewColors.success }"></div></div>
-                      </div>
-                      <div class="mock-progress-item">
-                        <div class="mock-progress-label">处理中</div>
-                        <div class="mock-progress-bar-bg"><div class="mock-progress-bar" :style="{ width: '45%', backgroundColor: previewColors.primary }"></div></div>
-                      </div>
-                      <div class="mock-progress-item">
-                        <div class="mock-progress-label">异常</div>
-                        <div class="mock-progress-bar-bg"><div class="mock-progress-bar" :style="{ width: '15%', backgroundColor: previewColors.danger }"></div></div>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-
-                <!-- Settings Tab -->
-                <template v-if="activePreviewTab === 'settings'">
-                  <div class="mock-card-container">
-                    <div class="mock-card">
-                      <div class="mock-card-header">
-                        <div class="mock-card-title">个人资料</div>
-                        <div class="mock-card-btn" :style="{ color: previewColors.primary }">编辑</div>
-                      </div>
-                      <div class="mock-form-group">
-                        <div class="mock-avatar-row">
-                          <div class="mock-avatar-large"></div>
-                          <div class="mock-avatar-info">
-                            <div class="mock-avatar-name">Admin User</div>
-                            <div class="mock-avatar-role">Administrator</div>
-                          </div>
-                        </div>
-                        <div class="mock-form-item">
-                          <div class="mock-label">用户名</div>
-                          <div class="mock-input-styled">admin</div>
-                        </div>
-                        <div class="mock-form-item">
-                          <div class="mock-label">邮箱</div>
-                          <div class="mock-input-styled">admin@example.com</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="mock-card">
-                      <div class="mock-card-header">
-                        <div class="mock-card-title">偏好设置</div>
-                      </div>
-                      <div class="mock-list-item">
-                        <div class="mock-list-text">
-                          <div class="mock-list-title">消息通知</div>
-                          <div class="mock-list-desc">接收系统更新通知</div>
-                        </div>
-                        <div 
-                          class="mock-switch" 
-                          :style="{ backgroundColor: mockSettings.notifications ? previewColors.primary : '#dcdfe6' }"
-                          @click="mockSettings.notifications = !mockSettings.notifications"
-                        >
-                          <div class="mock-switch-dot" :style="{ transform: mockSettings.notifications ? 'translateX(16px)' : 'translateX(0)' }"></div>
-                        </div>
-                      </div>
-                      <div class="mock-list-item">
-                        <div class="mock-list-text">
-                          <div class="mock-list-title">自动保存</div>
-                          <div class="mock-list-desc">每5分钟自动保存</div>
-                        </div>
-                        <div 
-                          class="mock-switch" 
-                          :style="{ backgroundColor: mockSettings.autoSave ? previewColors.primary : '#dcdfe6' }"
-                          @click="mockSettings.autoSave = !mockSettings.autoSave"
-                        >
-                          <div class="mock-switch-dot" :style="{ transform: mockSettings.autoSave ? 'translateX(16px)' : 'translateX(0)' }"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </div>
+    <div class="settings-grid">
+      <!-- 颜色变量 -->
+      <section class="section-card">
+        <div class="section-head">
+          <div class="section-left">
+            <span class="section-title">颜色变量</span>
+            <span class="meta-chip">{{ TOKENS.length }} 项</span>
+          </div>
+          <div class="head-right">
+            <span v-if="isDirty" class="meta-chip is-dirty">未保存</span>
+            <el-button size="small" :icon="RefreshLeft" :disabled="!hasCustomColor" @click="resetTheme">
+              恢复默认
+            </el-button>
+            <el-button size="small" type="primary" :icon="Check" :loading="saving" @click="saveTheme">
+              保存配置
+            </el-button>
           </div>
         </div>
-      </el-col>
-    </el-row>
+
+        <ul class="token-list">
+          <li v-for="token in TOKENS" :key="token.key" class="token-row">
+            <span class="token-dot" :style="{ backgroundColor: colorOf(token) }"></span>
+            <div class="token-text">
+              <span class="token-head">
+                <span class="token-name">{{ token.label }}</span>
+                <span v-if="!theme[token.key]" class="meta-chip token-default">默认</span>
+              </span>
+              <span class="token-desc">{{ token.desc }}</span>
+            </div>
+            <div class="token-control">
+              <el-color-picker
+                size="small"
+                :model-value="colorOf(token)"
+                :predefine="PRESET_COLORS"
+                @change="(value: string | null) => onPickColor(token, value)"
+              />
+              <el-input
+                v-model="theme[token.key]"
+                size="small"
+                class="hex-input"
+                maxlength="9"
+                spellcheck="false"
+                :placeholder="colorOf(token)"
+              />
+            </div>
+          </li>
+        </ul>
+
+        <div class="preset-bar">
+          <span class="preset-label">预设配色</span>
+          <button
+            v-for="preset in PRESETS"
+            :key="preset.name"
+            type="button"
+            class="preset-chip"
+            :class="{ 'is-active': activePreset === preset.name }"
+            @click="applyPreset(preset)"
+          >
+            <i class="preset-swatch">
+              <span v-for="color in preset.colors" :key="color" :style="{ backgroundColor: color }"></span>
+            </i>
+            <span class="preset-name">{{ preset.name }}</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 组件预览：把颜色放进一段真实的后台片段里，比单摆控件更接近实际观感 -->
+      <section class="section-card preview-card" :style="previewVars">
+        <div class="section-head">
+          <div class="section-left">
+            <span class="section-title">组件预览</span>
+            <span class="meta-chip">跟随左侧数值</span>
+          </div>
+        </div>
+
+        <div class="preview-panel">
+          <!-- 工具条 -->
+          <div class="preview-toolbar">
+            <el-input
+              v-model="mock.keyword"
+              size="small"
+              class="preview-search"
+              placeholder="搜索任务"
+              :prefix-icon="Search"
+              clearable
+            />
+            <el-button type="primary" size="small" :icon="Plus">新增</el-button>
+            <el-button size="small" plain>导出</el-button>
+            <el-button type="danger" size="small" link :icon="Delete">删除</el-button>
+          </div>
+
+          <!-- 列表 -->
+          <ul class="preview-list">
+            <li v-for="row in PREVIEW_ROWS" :key="row.name" class="preview-item">
+              <span class="row-dot" :class="`is-${row.tone}`"></span>
+              <span class="row-name">{{ row.name }}</span>
+              <span class="row-sub">{{ row.sub }}</span>
+              <el-tag :type="row.tone" size="small" effect="light">{{ row.status }}</el-tag>
+              <el-button type="primary" size="small" link>编辑</el-button>
+            </li>
+          </ul>
+
+          <!-- 反馈与数据 -->
+          <div class="preview-metrics">
+            <div class="metric">
+              <span class="metric-label">存储用量</span>
+              <el-progress
+                :percentage="68"
+                :stroke-width="6"
+                :show-text="false"
+                :color="theme.theme_primary_color"
+                class="metric-bar"
+              />
+              <span class="metric-value">68%</span>
+            </div>
+            <el-switch v-model="mock.enabled" size="small" active-text="实时同步" />
+          </div>
+
+          <el-alert type="success" :closable="false" show-icon title="配色保存后立即对全站生效" />
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
+import { Check, Delete, Plus, RefreshLeft, Search } from '@element-plus/icons-vue';
 import { getSystemSettings, updateSystemSettings } from '../../services/admin';
 import { useThemeStore } from '../../stores/theme';
+import { buildColorVars, THEME_COLOR_TOKENS } from '../../utils/theme-color';
+
+/**
+ * 站点设计系统的默认配色（见 src/style.css）。
+ * 注意：明暗两套默认色不一样（深色下主色是 #6ea8fe 而不是 #2563EB），
+ * 所以「恢复默认」不能写死这组色值，而是清空自定义、交还给样式表里的默认值。
+ */
+const SITE_DEFAULT_COLORS: Record<string, string> = {
+  theme_primary_color: '#2563EB',
+  theme_success_color: '#2F9E63',
+  theme_warning_color: '#C88A2E',
+  theme_danger_color: '#C94F4F',
+  theme_info_color: '#64748B',
+};
+
+const TOKENS = [
+  { key: 'theme_primary_color', name: 'primary', label: '主色调', desc: '按钮、链接、激活状态' },
+  { key: 'theme_success_color', name: 'success', label: '成功色', desc: '提交成功、运行正常' },
+  { key: 'theme_warning_color', name: 'warning', label: '警告色', desc: '待处理、需要注意' },
+  { key: 'theme_danger_color', name: 'danger', label: '危险色', desc: '删除、异常与错误' },
+  { key: 'theme_info_color', name: 'info', label: '信息色', desc: '中性说明与次要信息' },
+];
+
+const PRESET_COLORS = [
+  '#2563EB', '#2F9E63', '#C88A2E', '#C94F4F', '#64748B',
+  '#7C5CFF', '#14B8A6', '#F97316', '#EF4444', '#64748B',
+];
+
+const PRESETS = [
+  // 站点默认 = 不写自定义色，让明暗两套默认色各自生效
+  { name: '站点默认', colors: ['#2563EB', '#2F9E63', '#C88A2E', '#C94F4F', '#64748B'], values: ['', '', '', '', ''] },
+  { name: '靛青', colors: ['#4F46E5', '#10B981', '#F59E0B', '#F43F5E', '#64748B'], values: ['#4F46E5', '#10B981', '#F59E0B', '#F43F5E', '#64748B'] },
+  { name: '松绿', colors: ['#14B8A6', '#22C55E', '#EAB308', '#EF4444', '#6B7280'], values: ['#14B8A6', '#22C55E', '#EAB308', '#EF4444', '#6B7280'] },
+  { name: '紫罗兰', colors: ['#7C5CFF', '#22C55E', '#F59E0B', '#EC4899', '#8B95A5'], values: ['#7C5CFF', '#22C55E', '#F59E0B', '#EC4899', '#8B95A5'] },
+  { name: '石墨', colors: ['#475569', '#16A34A', '#D97706', '#DC2626', '#94A3B8'], values: ['#475569', '#16A34A', '#D97706', '#DC2626', '#94A3B8'] },
+];
+
+const PREVIEW_ROWS = [
+  { name: '应用更新同步', sub: '每天 03:00', status: '已完成', tone: 'success' },
+  { name: '公告定时发布', sub: '今天 12:00', status: '排队中', tone: 'warning' },
+  { name: '访问日志清理', sub: '每周一', status: '已暂停', tone: 'info' },
+] as const;
 
 const themeStore = useThemeStore();
 const saving = ref(false);
-const activePreviewTab = ref('overview');
+const savedTheme = ref<Record<string, string>>({});
+const mock = reactive({ enabled: true, view: 'overview', keyword: '' });
 
-// Mock state for interactions
-const mockSettings = ref({
-  notifications: true,
-  autoSave: false
-});
-
+// 空字符串 = 未自定义，直接使用样式表里的站点默认色
 const theme = ref<Record<string, string>>({
   theme_primary_color: '',
   theme_success_color: '',
@@ -294,34 +193,70 @@ const theme = ref<Record<string, string>>({
   theme_info_color: '',
 });
 
-// Helper to simulate fade/alpha color
-// Simple hex to rgba approximation for preview
-const fadeColor = (hex: string, alpha: number) => {
-  if (!hex) return 'rgba(0,0,0,0.1)';
-  let c = hex.substring(1).split('');
-  if(c.length === 3) c = [c[0], c[0], c[1], c[1], c[2], c[2]];
-  const r = parseInt(c[0]+c[1], 16);
-  const g = parseInt(c[2]+c[3], 16);
-  const b = parseInt(c[4]+c[5], 16);
-  return `rgba(${r},${g},${b},${alpha})`;
+/** 该项真正生效的颜色：自定义值优先，否则取当前明暗模式下样式表里的默认值 */
+const colorOf = (token: { key: string; name: string }) => {
+  const custom = theme.value[token.key];
+  if (custom) return custom;
+
+  // 读实时值，切换明暗模式后会重新计算
+  void themeStore.isDark;
+  const live = getComputedStyle(document.documentElement)
+    .getPropertyValue(`--el-color-${token.name}`)
+    .trim();
+  return live || SITE_DEFAULT_COLORS[token.key];
 };
 
-const previewColors = computed(() => {
-  // Use default Element Plus colors if empty
-  const primary = theme.value.theme_primary_color || '#409EFF';
-  const success = theme.value.theme_success_color || '#67C23A';
-  const warning = theme.value.theme_warning_color || '#E6A23C';
-  const danger = theme.value.theme_danger_color || '#F56C6C';
-  const info = theme.value.theme_info_color || '#909399';
-  return { primary, success, warning, danger, info };
+const hasCustomColor = computed(() => TOKENS.some((token) => !!theme.value[token.key]));
+
+/** 颜色选择器清空（value = null）等于回到站点默认 */
+const onPickColor = (token: { key: string }, value: string | null) => {
+  theme.value[token.key] = value || '';
+};
+
+/**
+ * 预览卡片直接用主题变量，所以这里放进去的梯度要和全站一致。
+ * 未自定义的项不写变量，直接继承当前明暗模式下真正生效的颜色，
+ * 免得深色模式下预览和实际对不上。
+ */
+const previewVars = computed(() => {
+  const vars: Record<string, string> = {};
+  THEME_COLOR_TOKENS.forEach(({ key, name }) => {
+    const value = theme.value[key];
+    if (!value) return;
+    Object.assign(vars, buildColorVars(name, value, themeStore.isDark));
+  });
+  return vars;
 });
+
+const isDirty = computed(() =>
+  TOKENS.some((token) => (theme.value[token.key] || '') !== (savedTheme.value[token.key] || ''))
+);
+
+const activePreset = computed(() => {
+  const preset = PRESETS.find((item) =>
+    THEME_COLOR_TOKENS.every(
+      ({ key }, index) => (theme.value[key] || '').toUpperCase() === item.values[index].toUpperCase()
+    )
+  );
+  return preset?.name ?? '';
+});
+
+const applyPreset = (preset: (typeof PRESETS)[number]) => {
+  THEME_COLOR_TOKENS.forEach(({ key }, index) => {
+    theme.value[key] = preset.values[index];
+  });
+};
 
 const loadSettings = async () => {
   try {
     const settings = await getSystemSettings();
-    Object.keys(theme.value).forEach(k => {
-      if (settings[k]) theme.value[k] = settings[k];
+    const next: Record<string, string> = {};
+    TOKENS.forEach((token) => {
+      // 服务器上留空表示「用站点默认色」，这里保持原样，不要再写死具体色值
+      next[token.key] = settings[token.key] || '';
     });
+    theme.value = next;
+    savedTheme.value = { ...next };
   } catch (e) {
     ElMessage.error('加载设置失败');
   }
@@ -331,11 +266,12 @@ const saveTheme = async () => {
   saving.value = true;
   try {
     const payload: Record<string, string> = {};
-    Object.keys(theme.value).forEach(k => {
-      payload[k] = theme.value[k] || ''; 
+    TOKENS.forEach((token) => {
+      payload[token.key] = theme.value[token.key] || '';
     });
-    
+
     await updateSystemSettings(payload);
+    savedTheme.value = { ...theme.value };
     ElMessage.success('主题配置已保存');
     themeStore.loadThemeSettings();
   } catch (e) {
@@ -346,13 +282,9 @@ const saveTheme = async () => {
 };
 
 const resetTheme = () => {
-  theme.value = {
-    theme_primary_color: '',
-    theme_success_color: '',
-    theme_warning_color: '',
-    theme_danger_color: '',
-    theme_info_color: '',
-  };
+  TOKENS.forEach((token) => {
+    theme.value[token.key] = '';
+  });
 };
 
 onMounted(() => {
@@ -361,574 +293,346 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.admin-page {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.page-header {
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0;
-  color: var(--el-text-color-primary);
-}
-
-.settings-card {
-  border-radius: 12px;
-  border: 1px solid var(--el-border-color-lighter);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 600;
-  font-size: 16px;
-}
-
-/* New List Styles */
-.settings-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.setting-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 8px 0;
-}
-
-.setting-info {
-  flex: 1;
-  padding-right: 24px;
-}
-
-.setting-label {
-  font-weight: 600;
-  font-size: 15px;
-  color: var(--el-text-color-primary);
-  margin-bottom: 4px;
-}
-
-.setting-desc {
+.page-subtitle {
+  margin: 6px 0 0;
   font-size: 13px;
   color: var(--el-text-color-secondary);
 }
 
-.setting-control {
+.settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+/* 侧边栏 + 内边距占掉约 230px，1024 的视口刚好够并排放下两栏 */
+@media (min-width: 1024px) {
+  .settings-grid {
+    grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr);
+  }
+}
+
+.section-card {
+  padding: 16px 18px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background-color: var(--el-bg-color-overlay);
+}
+
+.section-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
+  flex-wrap: nowrap;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
-.hex-input-wrapper {
-  width: 140px;
-}
-
-.setting-divider {
-  height: 1px;
-  background-color: var(--el-border-color-lighter);
-  margin: 24px 0;
-}
-
-/* Functional Colors Grid */
-.functional-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-}
-
-.functional-item {
-  background: var(--el-fill-color-light);
-  border-radius: 8px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.func-header {
+.section-left {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.dot {
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
+}
+
+.meta-chip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: var(--el-fill-color-light);
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta-chip.is-dirty {
+  color: var(--el-color-warning);
+  background-color: var(--el-color-warning-light-9);
+}
+
+/* 未自定义的项：跟输入框占位色一致，弱化处理 */
+.token-default {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border: 1px solid var(--el-border-color-lighter);
+  background-color: transparent;
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+}
+
+.head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* 颜色变量 */
+.token-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.token-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+}
+
+.token-row + .token-row {
+  border-top: 1px dashed var(--el-border-color-lighter);
+}
+
+.token-dot {
+  flex: 0 0 auto;
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--el-fill-color-light);
 }
 
-.dot.success { background-color: #67C23A; }
-.dot.warning { background-color: #E6A23C; }
-.dot.danger { background-color: #F56C6C; }
-.dot.info { background-color: #909399; }
-
-.func-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--el-text-color-regular);
+.token-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.func-control {
+.token-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.token-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.form-actions {
-  margin-top: 32px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.save-btn {
-  min-width: 120px;
-}
-
-@media (max-width: 768px) {
-  .setting-item {
-    flex-direction: column;
-    gap: 12px;
-  }
-  .setting-control {
-    width: 100%;
-  }
-  .hex-input-wrapper {
-    flex: 1;
-  }
-  .functional-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Preview Styles */
-.preview-container {
-  position: sticky;
-  top: 24px;
-}
-
-.mock-window {
-  background: #fff;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.08);
-  border: 1px solid var(--el-border-color-lighter);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-
-.mock-header {
-  height: 48px;
-  padding: 0 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: white;
-}
-
-.mock-dots {
-  display: flex;
   gap: 6px;
-}
-.mock-dots span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.4);
+  min-width: 0;
 }
 
-.mock-title {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.mock-user {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.4);
-}
-
-.mock-body {
-  display: flex;
-  height: 320px;
-}
-
-.mock-sidebar {
-  width: 60px;
-  background: #f8f9fa;
-  border-right: 1px solid #eee;
-  padding: 16px 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-}
-
-.mock-menu-item {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  font-size: 9px;
-  color: #909399;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.mock-menu-item:hover {
-  background: rgba(0,0,0,0.02);
-}
-
-.mock-menu-item.active {
-  font-weight: 600;
-}
-
-/* Mock Chart */
-.mock-chart-placeholder {
-  height: 80px;
-  border: 1px dashed;
-  border-radius: 4px;
-  position: relative;
+.token-desc {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
   overflow: hidden;
-  display: flex;
-  align-items: flex-end;
-  padding-bottom: 10px;
+  text-overflow: ellipsis;
 }
 
-.mock-chart-line {
-  width: 100%;
-  height: 40px;
-  border-top: 2px solid;
-  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
-  transform: scaleX(1.5);
-}
-
-/* Mock Progress */
-.mock-progress-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.mock-progress-item {
+.token-control {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.mock-progress-label {
-  font-size: 11px;
-  width: 40px;
-  color: #606266;
-}
-.mock-progress-bar-bg {
-  flex: 1;
-  height: 6px;
-  background: #f0f2f5;
-  border-radius: 3px;
-  overflow: hidden;
-}
-.mock-progress-bar {
-  height: 100%;
-  border-radius: 3px;
+  flex: 0 0 auto;
 }
 
-/* Mock Settings Card */
-.mock-card-container {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  background: #f5f7fa;
-  padding: 16px;
-  margin: -20px;
-  /* Ensure it fills height and allows scroll if needed */
-  min-height: calc(100% + 40px);
-  overflow-y: auto;
+.hex-input {
+  width: 104px;
 }
 
-.mock-content {
-  flex: 1;
-  padding: 20px;
-  background: #fff;
-  overflow-y: auto;
-  position: relative;
-}
-
-.mock-card {
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  overflow: hidden;
-}
-
-.mock-card-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid #f0f0f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.mock-card-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.mock-card-btn {
+.hex-input :deep(.el-input__inner) {
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 12px;
-  cursor: pointer;
+  letter-spacing: 0.2px;
 }
 
-.mock-form-group {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.mock-avatar-row {
+/* 预设配色 */
+.preset-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 4px;
-}
-
-.mock-avatar-large {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: #e4e7ed;
-}
-
-.mock-avatar-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.mock-avatar-role {
-  font-size: 12px;
-  color: #909399;
-}
-
-.mock-input-styled {
-  font-size: 13px;
-  color: #606266;
-  padding: 6px 10px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  border: 1px solid transparent;
-}
-
-.mock-form-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.mock-label {
-  font-size: 12px;
-  color: #606266;
-}
-
-.mock-switch {
-  width: 32px;
-  height: 16px;
-  border-radius: 8px;
-  position: relative;
-  display: flex;
-  align-items: center;
-  padding: 0 2px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-.mock-switch-dot {
-  width: 12px;
-  height: 12px;
-  background: #fff;
-  border-radius: 50%;
-  transition: transform 0.3s;
-}
-
-.mock-list-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid #f5f7fa;
-}
-
-.mock-list-item:last-child {
-  border-bottom: none;
-}
-
-.mock-list-title {
-  font-size: 13px;
-  color: #303133;
-  margin-bottom: 2px;
-}
-
-.mock-list-desc {
-  font-size: 11px;
-  color: #909399;
-}
-
-/* Dark mode for new elements */
-html.dark .mock-card-container {
-  background: #141414;
-}
-html.dark .mock-card {
-  background: #1d1e1f;
-  box-shadow: none;
-  border: 1px solid #303030;
-}
-html.dark .mock-card-header,
-html.dark .mock-list-item {
-  border-color: #303030;
-}
-html.dark .mock-card-title,
-html.dark .mock-avatar-name,
-html.dark .mock-list-title {
-  color: #E5EAF3;
-}
-html.dark .mock-input-styled {
-  background: #262727;
-  color: #cfd3dc;
-}
-html.dark .mock-avatar-large {
-  background: #303030;
-}
-
-.mock-icon {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  background: #dcdfe6;
-}
-
-.mock-content {
-  flex: 1;
-  padding: 20px;
-  background: #fff;
-}
-
-.mock-stats-row {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.mock-stat-card {
-  flex: 1;
-  background: #fcfcfc;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.stat-value {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #909399;
-}
-
-.mock-section {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.mock-subtitle {
-  font-size: 13px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.mock-buttons {
-  display: flex;
+  gap: 8px;
   flex-wrap: wrap;
-  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
-.mock-btn {
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  color: white;
+.preset-label {
   font-size: 12px;
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  color: var(--el-text-color-secondary);
 }
 
-.mock-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.mock-tag {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 1px solid;
-}
-
-.mock-alert {
-  padding: 10px;
-  border-radius: 4px;
-  border-left: 3px solid;
-  display: flex;
+.preset-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px 0 6px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 999px;
+  background-color: transparent;
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
 }
 
-.alert-icon {
-  width: 14px;
+.preset-chip:hover {
+  border-color: var(--el-border-color);
+  color: var(--el-text-color-primary);
+}
+
+.preset-chip.is-active {
+  border-color: var(--el-color-primary-light-5);
+  background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+.preset-swatch {
+  display: inline-flex;
   height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.preset-swatch span {
+  width: 9px;
+  height: 100%;
+}
+
+.preset-name {
+  white-space: nowrap;
+}
+
+/* 组件预览：一段迷你后台片段 */
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preview-search {
+  width: 168px;
+  max-width: 100%;
+}
+
+.preview-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.preview-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  transition: background-color 0.16s ease;
+}
+
+.preview-item + .preview-item {
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.preview-item:hover {
+  background-color: var(--el-fill-color-lighter);
+}
+
+.row-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
 }
 
-.alert-text {
+.row-dot.is-success { background-color: var(--el-color-success); }
+.row-dot.is-warning { background-color: var(--el-color-warning); }
+.row-dot.is-info { background-color: var(--el-color-info); }
+
+.row-name {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
+}
+
+.row-sub {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Dark mode overrides for preview container (not mock window content) */
-html.dark .mock-window {
-  background: #1d1e1f;
-  border-color: #363637;
+.preview-item :deep(.el-tag),
+.preview-item :deep(.el-button) {
+  flex: 0 0 auto;
 }
 
-html.dark .mock-sidebar {
-  background: #2b2b2c;
-  border-color: #363637;
+.preview-metrics {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-html.dark .mock-content {
-  background: #1d1e1f;
+.metric {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 180px;
+  min-width: 0;
 }
 
-html.dark .mock-stat-card {
-  background: #262727;
-  border-color: #363637;
+.metric-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
 }
 
-html.dark .mock-subtitle {
-  color: #e5eaf3;
+.metric-bar {
+  flex: 1 1 auto;
+  min-width: 70px;
+}
+
+.metric-value {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-card :deep(.el-alert) {
+  padding: 8px 12px;
+}
+
+@media (max-width: 560px) {
+  .section-card {
+    padding: 14px 12px;
+  }
+
+  .token-control {
+    margin-left: auto;
+  }
+
+  .token-desc {
+    display: none;
+  }
 }
 </style>

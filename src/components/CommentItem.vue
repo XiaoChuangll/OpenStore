@@ -13,9 +13,8 @@
             <el-tag v-if="comment.status === 'pending'" size="small" type="warning" effect="plain" round class="status-tag">审核中</el-tag>
             <span class="time-text">{{ formatDate(comment.created_at) }}</span>
           </div>
-          <div class="meta-right">
-            <span class="ip-text" v-if="comment.ip_address">{{ comment.ip_address }}</span>
-          </div>
+          <!-- 这里原来会显示 comment.ip_address：评论者 IP 属于隐私，
+               接口已不再返回该字段，公开页面也不应该展示 -->
         </div>
         
         <div class="comment-body markdown-body" v-html="renderMarkdown(comment.content)"></div>

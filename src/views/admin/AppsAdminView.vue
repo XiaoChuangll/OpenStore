@@ -13,152 +13,256 @@
 
     <el-tabs v-model="activeTab" type="border-card">
       <el-tab-pane label="应用列表" name="apps">
-        <el-table :data="items" stripe style="width: 100%">
-          <el-table-column label="应用" min-width="140">
+        <div class="filter-bar">
+          <el-input
+            v-model="appKeyword"
+            class="filter-search"
+            size="small"
+            clearable
+            placeholder="搜索应用名 / 提供者 / 下载链接"
+          >
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+          <el-select v-model="appStatus" size="small" class="filter-status" @change="() => {}">
+            <el-option label="全部状态" value="all" />
+            <el-option label="已启用" value="enabled" />
+            <el-option label="已停用" value="disabled" />
+          </el-select>
+          <span class="filter-count">共 {{ filteredApps.length }} 个</span>
+          <el-button size="small" text :icon="Refresh" @click="refreshAll">刷新</el-button>
+        </div>
+
+        <el-table :data="filteredApps" style="width: 100%" :row-key="(row: AppItem) => row.id">
+          <el-table-column label="应用" min-width="150">
             <template #default="{ row }">
               <div class="app-info-cell">
                 <img v-if="getAppIconUrl(row) && !failedIcons.has(row.id)" :src="getAppIconUrl(row)" class="app-icon" alt="icon" loading="lazy" @error="onIconError(row.id)" />
-                <div v-else class="app-icon fallback-icon" style="background-color: var(--el-fill-color-light); display: flex; align-items: center; justify-content: center; padding: 2px;">
-                  <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
-                    <path fill="currentColor" d="M511.6 76.3C264.3 76.2 64 276.4 64 523.5 64 718.9 189.3 885 363.8 946c23.5 5.9 19.9-10.8 19.9-22.2v-77.5c-135.7 15.9-141.2-73.9-150.8-88.9C215 726 171.5 718 184.5 703c30.9-15.9 62.4 4 98.9 57.9 26.4 39.1 77.9 32.5 104 26 5.7-23.5 17.9-44.5 34.7-60.8-140.6-25.2-199.2-111-199.2-213 0-49.5 16.3-95 48.3-131.7-20.4-60.5 1.9-112.3 4.9-120 58.1-5.2 118.5 41.6 123.2 45.3 33-8.9 70.7-13.6 112.9-13.6 42.4 0 80.2 4.9 113.5 13.9 11.3-8.6 67.3-48.8 121.3-43.9 2.9 7.7 24.7 58.3 5.5 118 32.4 36.8 48.9 82.7 48.9 132.3 0 102.2-59 188.1-200 212.9a127.5 127.5 0 0 1 38.1 91v112.5c.8 9 0 17.9 15 17.9 177.1-59.7 304.6-227 304.6-424.1 0-247.2-200.4-447.3-447.5-447.3z"></path>
-                  </svg>
+                <span v-else class="app-icon app-icon-fallback">{{ (row.name || '?').charAt(0) }}</span>
+                <div class="app-text">
+                  <span class="app-name">{{ row.name }}</span>
+                  <span class="app-sub">{{ row.provider || '未填写提供者' }}</span>
                 </div>
-                <span class="app-name">{{ row.name }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          
-          <el-table-column label="管理" width="160">
-            <template #default="{ row }">
-              <div class="action-cell">
-                <el-switch 
-                  :model-value="row.enabled === 1" 
-                  @update:model-value="(v: boolean) => toggleEnabled(row, v)" 
-                  style="margin-right: 12px"
-                />
-                <el-button link type="primary" :icon="Edit" @click="editRow(row)" />
-                <el-button link type="danger" :icon="Delete" @click="remove(row)" />
               </div>
             </template>
           </el-table-column>
 
-          <el-table-column v-if="!isMobile" prop="provider" label="提供者" width="150" show-overflow-tooltip />
-          <el-table-column v-if="!isMobile" prop="download_url" label="下载链接" show-overflow-tooltip />
-          <el-table-column v-if="!isMobile" label="背景" width="160">
+          <el-table-column label="状态" min-width="96">
             <template #default="{ row }">
-              <img v-if="row.bg_url" :src="row.bg_url" class="banner" alt="bg" loading="lazy" />
-              <el-tag v-else type="info">无</el-tag>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
-      <el-tab-pane label="待审核应用" name="pending">
-        <el-table :data="pendingItems" stripe style="width: 100%">
-          <el-table-column label="应用" min-width="160">
-            <template #default="{ row }">
-              <div class="app-info-cell">
-                <img v-if="getAppIconUrl(row) && !failedIcons.has(row.id)" :src="getAppIconUrl(row)" class="app-icon" alt="icon" loading="lazy" @error="onIconError(row.id)" />
-                <div v-else class="app-icon fallback-icon" style="background-color: var(--el-fill-color-light); display: flex; align-items: center; justify-content: center; padding: 2px;">
-                  <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
-                    <path fill="currentColor" d="M511.6 76.3C264.3 76.2 64 276.4 64 523.5 64 718.9 189.3 885 363.8 946c23.5 5.9 19.9-10.8 19.9-22.2v-77.5c-135.7 15.9-141.2-73.9-150.8-88.9C215 726 171.5 718 184.5 703c30.9-15.9 62.4 4 98.9 57.9 26.4 39.1 77.9 32.5 104 26 5.7-23.5 17.9-44.5 34.7-60.8-140.6-25.2-199.2-111-199.2-213 0-49.5 16.3-95 48.3-131.7-20.4-60.5 1.9-112.3 4.9-120 58.1-5.2 118.5 41.6 123.2 45.3 33-8.9 70.7-13.6 112.9-13.6 42.4 0 80.2 4.9 113.5 13.9 11.3-8.6 67.3-48.8 121.3-43.9 2.9 7.7 24.7 58.3 5.5 118 32.4 36.8 48.9 82.7 48.9 132.3 0 102.2-59 188.1-200 212.9a127.5 127.5 0 0 1 38.1 91v112.5c.8 9 0 17.9 15 17.9 177.1-59.7 304.6-227 304.6-424.1 0-247.2-200.4-447.3-447.5-447.3z"></path>
-                  </svg>
-                </div>
-                <span class="app-name">{{ row.name }}</span>
+              <div class="status-cell">
+                <el-switch
+                  :model-value="row.enabled === 1"
+                  size="small"
+                  @update:model-value="(v: boolean) => toggleEnabled(row, v)"
+                />
+                <span class="status-text" :class="{ 'is-off': row.enabled !== 1 }">
+                  {{ row.enabled === 1 ? '已启用' : '已停用' }}
+                </span>
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="120">
+
+          <el-table-column v-if="!isMobile" label="下载链接" min-width="130">
             <template #default="{ row }">
-              <el-tag :type="getSubmissionStatusType(row.status)">{{ getSubmissionStatusText(row.status) }}</el-tag>
+              <a v-if="row.download_url" class="link-text" :href="row.download_url" target="_blank" rel="noopener" :title="row.download_url">
+                {{ row.download_url }}
+              </a>
+              <span v-else class="muted-text">未填写</span>
             </template>
           </el-table-column>
-          <el-table-column v-if="!isMobile" prop="provider" label="提供者" width="160" show-overflow-tooltip />
-          <el-table-column v-if="!isMobile" prop="download_url" label="下载链接" show-overflow-tooltip />
-          <el-table-column v-if="!isMobile" prop="created_at" label="提交时间" width="180" />
-          <el-table-column label="操作" width="260">
+
+          <el-table-column v-if="!isMobile" label="背景" min-width="88">
             <template #default="{ row }">
-              <el-button size="small" type="primary" @click="editPending(row)" :disabled="row.loading">编辑</el-button>
-              <el-button size="small" type="success" @click="approve(row)" :loading="row.loading">通过</el-button>
-              <el-button size="small" type="danger" @click="reject(row)" :loading="row.loading">拒绝</el-button>
+              <img v-if="row.bg_url" :src="row.bg_url" class="banner" alt="bg" loading="lazy" />
+              <span v-else class="muted-text">无</span>
             </template>
           </el-table-column>
+
+          <el-table-column label="操作" min-width="150" align="right">
+            <template #default="{ row }">
+              <div class="action-cell">
+                <el-tooltip content="编辑" placement="top" :show-after="300">
+                  <el-button link type="primary" :icon="Edit" @click="editRow(row)" />
+                </el-tooltip>
+                <el-tooltip content="删除" placement="top" :show-after="300">
+                  <el-button link type="danger" :icon="Delete" @click="remove(row)" />
+                </el-tooltip>
+              </div>
+            </template>
+          </el-table-column>
+
+          <template #empty>
+            <div class="table-empty">
+              <span>{{ appKeyword || appStatus !== 'all' ? '没有符合条件的应用' : '还没有应用' }}</span>
+              <el-button v-if="!appKeyword && appStatus === 'all'" size="small" type="primary" plain @click="openCreate">
+                新增应用
+              </el-button>
+            </div>
+          </template>
+        </el-table>
+      </el-tab-pane>
+      <el-tab-pane label="待审核应用" name="pending">
+        <div class="filter-bar">
+          <el-input
+            v-model="pendingKeyword"
+            class="filter-search"
+            size="small"
+            clearable
+            placeholder="搜索投稿应用名 / 提供者"
+          >
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+          <span class="filter-count">共 {{ filteredPending.length }} 条</span>
+          <el-button size="small" text :icon="Refresh" @click="refreshPending">刷新</el-button>
+        </div>
+
+        <el-table :data="filteredPending" style="width: 100%" :row-key="(row: any) => row.id">
+          <el-table-column label="应用" min-width="150">
+            <template #default="{ row }">
+              <div class="app-info-cell">
+                <img v-if="getAppIconUrl(row) && !failedIcons.has(row.id)" :src="getAppIconUrl(row)" class="app-icon" alt="icon" loading="lazy" @error="onIconError(row.id)" />
+                <span v-else class="app-icon app-icon-fallback">{{ (row.name || '?').charAt(0) }}</span>
+                <div class="app-text">
+                  <span class="app-name">{{ row.name }}</span>
+                  <span class="app-sub">{{ row.provider || '未填写提供者' }}</span>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" min-width="96">
+            <template #default="{ row }">
+              <el-tag :type="getSubmissionStatusType(row.status)" effect="light" size="small">
+                {{ getSubmissionStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="!isMobile" label="下载链接" min-width="150">
+            <template #default="{ row }">
+              <a v-if="row.download_url" class="link-text" :href="row.download_url" target="_blank" rel="noopener" :title="row.download_url">
+                {{ row.download_url }}
+              </a>
+              <span v-else class="muted-text">未填写</span>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="!isMobile" label="提交时间" min-width="120">
+            <template #default="{ row }">
+              <span class="muted-text">{{ formatDateTime(row.created_at) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" min-width="190" align="right">
+            <template #default="{ row }">
+              <div class="action-cell">
+                <el-button size="small" text :disabled="row.loading" @click="editPending(row)">编辑</el-button>
+                <el-button size="small" type="success" plain :loading="row.loading" @click="approve(row)">通过</el-button>
+                <el-button size="small" type="danger" plain :loading="row.loading" @click="reject(row)">拒绝</el-button>
+              </div>
+            </template>
+          </el-table-column>
+
+          <template #empty>
+            <div class="table-empty">
+              <span>{{ pendingKeyword ? '没有符合条件的投稿' : '暂无待审核投稿' }}</span>
+            </div>
+          </template>
         </el-table>
       </el-tab-pane>
     </el-tabs>
 
-    <el-dialog v-model="showDialog" :title="dialogTitle" :width="isMobile ? '90%' : '600px'">
-      <el-form label-position="top" :model="form">
-        <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
-        <el-form-item label="提供者"><el-input v-model="form.provider" /></el-form-item>
-        <el-form-item label="背景URL">
-          <div class="upload-row">
-            <el-input v-model="form.bg_url" placeholder="输入图片URL或上传" class="url-input" />
-            <el-upload
-              :auto-upload="true"
-              :show-file-list="false"
-              :http-request="onUploadBg"
-              accept="image/*"
-              :before-upload="beforeUpload"
-            >
-              <el-button>上传背景</el-button>
-            </el-upload>
-          </div>
+    <el-dialog v-model="showDialog" :title="dialogTitle" :width="isMobile ? '92%' : '680px'">
+      <p class="dialog-hint">
+        {{ editingTargetType === 'submission'
+          ? '修改投稿内容后仍会保留在待审核列表里。'
+          : '图标与背景可以直接上传，也可以粘贴图片外链。' }}
+      </p>
+
+      <el-form label-position="top" :model="form" class="app-form">
+        <div class="form-grid">
+          <el-form-item label="名称" required>
+            <el-input v-model="form.name" placeholder="应用名称" />
+          </el-form-item>
+          <el-form-item label="提供者">
+            <el-input v-model="form.provider" placeholder="开发者 / 提供方" />
+          </el-form-item>
+        </div>
+
+        <div class="form-grid">
+          <el-form-item label="图标">
+            <div class="media-field">
+              <div class="media-preview is-icon">
+                <el-image
+                  v-if="form.icon_url"
+                  :src="form.icon_url"
+                  fit="cover"
+                  :preview-src-list="[form.icon_url]"
+                  preview-teleported
+                />
+                <span v-else class="media-empty">无</span>
+              </div>
+              <div class="media-input">
+                <el-input v-model="form.icon_url" placeholder="图片 URL" />
+                <el-upload
+                  :auto-upload="true"
+                  :show-file-list="false"
+                  :http-request="onUploadIcon"
+                  accept="image/*"
+                  :before-upload="beforeUpload"
+                >
+                  <el-button size="small">上传</el-button>
+                </el-upload>
+              </div>
+            </div>
+          </el-form-item>
+
+          <el-form-item label="背景">
+            <div class="media-field">
+              <div class="media-preview is-bg">
+                <el-image
+                  v-if="form.bg_url"
+                  :src="form.bg_url"
+                  fit="cover"
+                  :preview-src-list="[form.bg_url]"
+                  preview-teleported
+                />
+                <span v-else class="media-empty">无</span>
+              </div>
+              <div class="media-input">
+                <el-input v-model="form.bg_url" placeholder="图片 URL" />
+                <el-upload
+                  :auto-upload="true"
+                  :show-file-list="false"
+                  :http-request="onUploadBg"
+                  accept="image/*"
+                  :before-upload="beforeUpload"
+                >
+                  <el-button size="small">上传</el-button>
+                </el-upload>
+              </div>
+            </div>
+          </el-form-item>
+        </div>
+
+        <el-form-item label="下载链接">
+          <el-input v-model="form.download_url" placeholder="https://example.com/app.hap" />
         </el-form-item>
-        <el-form-item label="图标URL">
-          <div class="upload-row">
-            <el-input v-model="form.icon_url" placeholder="输入图标URL或上传" class="url-input" />
-            <el-upload
-              :auto-upload="true"
-              :show-file-list="false"
-              :http-request="onUploadIcon"
-              accept="image/*"
-              :before-upload="beforeUpload"
-            >
-              <el-button>上传图标</el-button>
-            </el-upload>
-          </div>
-        </el-form-item>
-        <el-form-item label="下载链接"><el-input v-model="form.download_url" /></el-form-item>
-        <el-form-item label="启用"><el-switch v-model="form.enabledSwitch" /></el-form-item>
-        <el-form-item label="背景预览">
-          <div class="preview-box">
-            <el-image
-              v-if="form.bg_url"
-              class="preview-bg"
-              :src="form.bg_url"
-              :preview-src-list="[form.bg_url]"
-              fit="cover"
-              preview-teleported
-            />
-            <div v-else class="preview-placeholder">无背景</div>
-          </div>
-        </el-form-item>
-        <el-form-item label="图标预览">
-          <div class="preview-box">
-            <el-image
-              v-if="form.icon_url"
-              class="preview-icon-img"
-              :src="form.icon_url"
-              :preview-src-list="[form.icon_url]"
-              fit="cover"
-              preview-teleported
-            />
-            <div v-else class="preview-placeholder icon-placeholder">无图标</div>
+
+        <el-form-item label="状态">
+          <div class="switch-row">
+            <el-switch v-model="form.enabledSwitch" />
+            <span class="switch-text">{{ form.enabledSwitch ? '上架展示' : '暂不展示' }}</span>
           </div>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showDialog=false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
-import { Plus, Edit, Delete } from '@element-plus/icons-vue';
+import { Plus, Edit, Delete, Search, Refresh } from '@element-plus/icons-vue';
 import { getApps, createApp, updateApp, deleteApp, uploadFile, getAppSubmissions, approveAppSubmission, rejectAppSubmission, updateAppSubmission, type AppItem, type AppSubmission } from '../../services/admin';
 import { useRouter } from 'vue-router';
 import { getAppIconUrl } from '../../utils/app-info';
@@ -170,6 +274,47 @@ const items = ref<AppItem[]>([]);
 const pendingItems = ref<Array<AppSubmission & { loading?: boolean }>>([]);
 const activeTab = ref<'apps' | 'pending'>('apps');
 const isMobile = ref(window.innerWidth < 768);
+
+/* 列表筛选：都走前端过滤，数据量不大 */
+const appKeyword = ref('');
+const appStatus = ref<'all' | 'enabled' | 'disabled'>('all');
+const pendingKeyword = ref('');
+
+const matchKeyword = (keyword: string, ...fields: Array<string | null | undefined>) => {
+  const q = keyword.trim().toLowerCase();
+  if (!q) return true;
+  return fields.some((field) => String(field || '').toLowerCase().includes(q));
+};
+
+const filteredApps = computed(() =>
+  items.value.filter((app) => {
+    if (appStatus.value === 'enabled' && app.enabled !== 1) return false;
+    if (appStatus.value === 'disabled' && app.enabled === 1) return false;
+    return matchKeyword(appKeyword.value, app.name, app.provider, app.download_url);
+  })
+);
+
+const filteredPending = computed(() =>
+  pendingItems.value.filter((item) =>
+    matchKeyword(pendingKeyword.value, item.name, item.provider, item.download_url)
+  )
+);
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '—';
+  const date = new Date(String(value).replace(' ', 'T'));
+  if (Number.isNaN(date.getTime())) return String(value);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+const refreshAll = async () => {
+  await Promise.all([fetchList(), fetchPending()]);
+};
+
+const refreshPending = async () => {
+  await fetchPending();
+};
 
 const checkMobile = () => {
   isMobile.value = window.innerWidth < 768;
@@ -371,69 +516,229 @@ const goBack = () => router.push('/');
 <style scoped>
 .mb-4 { margin-bottom: 20px; }
 .toolbar { display: flex; gap: 10px; margin-bottom: 12px; }
-.banner { width: 120px; height: 60px; object-fit: cover; border-radius: 6px; }
-.app-icon { width: 40px; height: 40px; object-fit: contain; border-radius: 4px; }
-.upload-row { display: flex; align-items: center; gap: 10px; width: 100%; }
-.url-input { flex: 1; }
+
+/* ---------- 顶部过滤条 ---------- */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.filter-search { width: 260px; max-width: 100%; }
+.filter-status { width: 120px; }
+
+.filter-count {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-right: auto;
+}
+
+/* ---------- 应用单元格 ---------- */
+.admin-view :deep(.el-table .el-table__cell) {
+  padding: 6px 0;
+}
 
 .app-info-cell {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
-.app-icon-placeholder {
-  width: 40px;
-  height: 40px;
-  background: #f0f2f5;
-  border-radius: 4px;
+
+.app-icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 9px;
+  background-color: var(--el-fill-color-light);
+}
+
+.app-icon-fallback {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #909399;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
 }
+
+.app-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .app-name {
   font-weight: 500;
+  color: var(--el-text-color-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.app-sub {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 状态 / 链接 / 背景 ---------- */
+.status-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-text {
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
+
+.status-text.is-off {
+  color: var(--el-text-color-placeholder);
+}
+
+.link-text {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 13px;
+  color: var(--el-color-primary);
+  text-decoration: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.link-text:hover {
+  text-decoration: underline;
+}
+
+.muted-text {
+  font-size: 13px;
+  color: var(--el-text-color-placeholder);
+}
+
+.banner {
+  width: 80px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+}
+
 .action-cell {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
-.preview-box {
-  border: 1px dashed #dcdfe6;
-  border-radius: 6px;
-  padding: 4px;
-  display: inline-block;
-  background-color: #fafafa;
+.table-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 0;
+  font-size: 13px;
+  color: var(--el-text-color-placeholder);
 }
-.preview-bg {
-  width: 160px;
-  height: 80px;
-  display: block;
-  border-radius: 4px;
-  cursor: pointer;
+
+/* ---------- 弹窗表单 ---------- */
+.dialog-hint {
+  margin: 0 0 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
 }
-.preview-icon-img {
-  width: 60px;
-  height: 60px;
-  display: block;
-  border-radius: 12px;
-  cursor: pointer;
+
+.app-form :deep(.el-form-item) {
+  margin-bottom: 16px;
 }
-.preview-placeholder {
-  width: 160px;
-  height: 80px;
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.media-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.media-preview {
+  flex: 0 0 auto;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  background-color: var(--el-fill-color-lighter);
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #909399;
-  font-size: 12px;
 }
-.icon-placeholder {
-  width: 60px;
-  height: 60px;
+
+.media-preview.is-icon {
+  width: 56px;
+  height: 56px;
+}
+
+.media-preview.is-bg {
+  width: 88px;
+  height: 56px;
+}
+
+.media-preview :deep(.el-image) {
+  width: 100%;
+  height: 100%;
+}
+
+.media-empty {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
+.media-input {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.media-input :deep(.el-input) {
+  flex: 1;
+  min-width: 0;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.switch-text {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+@media (max-width: 768px) {
+  .filter-search { width: 100%; }
+
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .media-input {
+    flex-wrap: wrap;
+  }
 }
 </style>

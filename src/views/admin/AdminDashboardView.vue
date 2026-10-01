@@ -127,56 +127,22 @@
           <h2 class="pane-title">{{ currentSection.title }}</h2>
           <span class="pane-hint">{{ currentSection.hint }}</span>
         </div>
-        <div v-if="active === 'overview'" class="admin-pane">
-          <DashboardOverviewView @switch-tab="handleSwitchTab" />
-        </div>
-        <div v-else-if="active === 'music-apis'" class="admin-pane">
-          <MusicApisAdminView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'links'" class="admin-pane">
-          <FriendLinksView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'groups'" class="admin-pane">
-          <GroupChatsView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'apps'" class="admin-pane">
-          <AppsAdminView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'announcements'" class="admin-pane">
-          <AnnouncementsView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'articles'" class="admin-pane">
-          <ArticlesAdminView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'comments'" class="admin-pane">
-          <CommentsAdminView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'env'" class="admin-pane">
-          <EnvManagerView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'incidents'" class="admin-pane">
-          <IncidentsAdminView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'changelogs'" class="admin-pane">
-          <ChangelogsAdminView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'site-cards'" class="admin-pane">
-          <SiteCardsAdminView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'about'" class="admin-pane">
-          <AboutManageView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'visitors'" class="admin-pane">
-          <VisitorLogsView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'logs'" class="admin-pane">
-          <SystemLogsView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'feedbacks'" class="admin-pane">
-          <FeedbackAdminView :embedded="true" />
-        </div>
-        <div v-else-if="active === 'settings'" class="admin-pane">
-          <SystemSettingsView />
+        <!--
+          面板全部挂载、只切显示：进入后台后「数据总览」先挂载先请求，
+          其余面板随后分批在后台挂好（数据也就一起加载完了），
+          所以点任何面板都是立刻出内容，不会再有「进去才加载」。
+          非当前面板挪到屏幕外但保留真实宽度，图表照常按真实尺寸初始化。
+        -->
+        <div class="admin-pane-stage">
+          <div
+            v-for="key in mountedPanes"
+            :key="key"
+            class="admin-pane"
+            :class="{ 'is-parked': key !== active }"
+            :aria-hidden="key !== active ? 'true' : undefined"
+          >
+            <component :is="PANE_COMPONENTS[key]" v-bind="paneProps(key)" />
+          </div>
         </div>
       </section>
     </div>
@@ -184,10 +150,11 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue';
+  import { ref, computed, nextTick, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue';
   import type { Component } from 'vue';
-  import { useRouter } from 'vue-router';
+  import { useRoute, useRouter } from 'vue-router';
   import { useLayoutStore } from '../../stores/layout';
+  import { goBackOrHome } from '../../utils/route-scroll';
 import {
   DataLine,
   Grid,
@@ -202,6 +169,7 @@ import {
   Message,
   View,
   List,
+  Coin,
   Key,
   Warning,
   Memo,
@@ -211,26 +179,127 @@ import {
   ArrowDown,
 } from '@element-plus/icons-vue';
 
-  import FriendLinksView from './FriendLinksView.vue';
   import MenuSettingIcon from '../../components/MenuSettingIcon.vue';
-import MusicApisAdminView from './MusicApisAdminView.vue';
-  import GroupChatsView from './GroupChatsView.vue';
-  import AppsAdminView from './AppsAdminView.vue';
-  import AnnouncementsView from './AnnouncementsView.vue';
-  import ArticlesAdminView from './ArticlesAdminView.vue';
-import CommentsAdminView from './CommentsAdminView.vue';
-  import EnvManagerView from './EnvManagerView.vue';
-import VisitorLogsView from './VisitorLogsView.vue';
-import SystemLogsView from './SystemLogsView.vue';
-import IncidentsAdminView from './IncidentsAdminView.vue';
-import ChangelogsAdminView from './ChangelogsAdminView.vue';
-import SiteCardsAdminView from './SiteCardsAdminView.vue';
-import AboutManageView from './AboutManageView.vue';
-import FeedbackAdminView from './FeedbackAdminView.vue';
-import SystemSettingsView from './SystemSettingsView.vue';
-import DashboardOverviewView from './DashboardOverviewView.vue';
 
-const active = ref<'overview' | 'links' | 'groups' | 'apps' | 'announcements' | 'articles' | 'comments' | 'env' | 'visitors' | 'logs' | 'changelogs' | 'site-cards' | 'about' | 'incidents' | 'music-apis' | 'feedbacks' | 'settings'>('overview');
+  /*
+   * 面板一律按需加载：管理端里文章/公告/关于/更新日志都带 Quill + markdown 渲染器，
+   * 访客/系统日志带 echarts，全部静态导入会让打开任意一个面板都要先下载整个管理端的依赖
+   * （实测一次加载 240+ 个模块请求、12MB 左右）。改成异步组件后，只加载当前面板需要的那部分。
+   */
+  const DashboardOverviewView = defineAsyncComponent(() => import('./DashboardOverviewView.vue'));
+  const AppsAdminView = defineAsyncComponent(() => import('./AppsAdminView.vue'));
+  const AnnouncementsView = defineAsyncComponent(() => import('./AnnouncementsView.vue'));
+  const ArticlesAdminView = defineAsyncComponent(() => import('./ArticlesAdminView.vue'));
+  const CommentsAdminView = defineAsyncComponent(() => import('./CommentsAdminView.vue'));
+  const SiteCardsAdminView = defineAsyncComponent(() => import('./SiteCardsAdminView.vue'));
+  const AboutManageView = defineAsyncComponent(() => import('./AboutManageView.vue'));
+  const MusicApisAdminView = defineAsyncComponent(() => import('./MusicApisAdminView.vue'));
+  const FriendLinksView = defineAsyncComponent(() => import('./FriendLinksView.vue'));
+  const GroupChatsView = defineAsyncComponent(() => import('./GroupChatsView.vue'));
+  const FeedbackAdminView = defineAsyncComponent(() => import('./FeedbackAdminView.vue'));
+  const VisitorLogsView = defineAsyncComponent(() => import('./VisitorLogsView.vue'));
+  const DatabaseAdminView = defineAsyncComponent(() => import('./DatabaseAdminView.vue'));
+  const SystemLogsView = defineAsyncComponent(() => import('./SystemLogsView.vue'));
+  const EnvManagerView = defineAsyncComponent(() => import('./EnvManagerView.vue'));
+  const IncidentsAdminView = defineAsyncComponent(() => import('./IncidentsAdminView.vue'));
+  const ChangelogsAdminView = defineAsyncComponent(() => import('./ChangelogsAdminView.vue'));
+  const SystemSettingsView = defineAsyncComponent(() => import('./SystemSettingsView.vue'));
+
+type PaneKey =
+  | 'overview'
+  | 'links'
+  | 'groups'
+  | 'apps'
+  | 'announcements'
+  | 'articles'
+  | 'comments'
+  | 'env'
+  | 'visitors'
+  | 'logs'
+  | 'changelogs'
+  | 'site-cards'
+  | 'about'
+  | 'incidents'
+  | 'music-apis'
+  | 'feedbacks'
+  | 'database'
+  | 'settings';
+
+const PANE_KEYS: PaneKey[] = [
+  'overview', 'links', 'groups', 'apps', 'announcements', 'articles', 'comments', 'env',
+  'visitors', 'logs', 'changelogs', 'site-cards', 'about', 'incidents', 'music-apis',
+  'feedbacks', 'database', 'settings'
+];
+
+const route = useRoute();
+
+/*
+ * 当前面板写进地址栏（?pane=xxx）：刷新、前进后退、复制链接都能回到同一个面板。
+ * 直接访问没有 pane 参数时，回到默认的「数据总览」。
+ */
+const paneFromQuery = (): PaneKey => {
+  const raw = String(route.query.pane || '');
+  return (PANE_KEYS as string[]).includes(raw) ? (raw as PaneKey) : 'overview';
+};
+
+const active = ref<PaneKey>(paneFromQuery());
+
+// 面板 → 组件：切换时交给 <KeepAlive> 缓存，切回来不再重新挂载、重新请求
+const PANE_COMPONENTS: Record<PaneKey, Component> = {
+  overview: DashboardOverviewView,
+  'music-apis': MusicApisAdminView,
+  links: FriendLinksView,
+  groups: GroupChatsView,
+  apps: AppsAdminView,
+  announcements: AnnouncementsView,
+  articles: ArticlesAdminView,
+  comments: CommentsAdminView,
+  env: EnvManagerView,
+  incidents: IncidentsAdminView,
+  changelogs: ChangelogsAdminView,
+  'site-cards': SiteCardsAdminView,
+  about: AboutManageView,
+  visitors: VisitorLogsView,
+  database: DatabaseAdminView,
+  logs: SystemLogsView,
+  feedbacks: FeedbackAdminView,
+  settings: SystemSettingsView
+};
+
+/*
+ * 数据总览要接快捷操作切面板的事件；「主题设置」自带标题，不传 embedded；
+ * 其余面板都用 embedded 让外层统一画标题行。
+ */
+const paneProps = (key: PaneKey) => {
+  if (key === 'overview') return { onSwitchTab: handleSwitchTab };
+  if (key === 'settings') return {};
+  return { embedded: true };
+};
+
+/*
+ * 已挂载的面板：进后台先把当前面板（默认「数据总览」）挂上，
+ * 首屏画完再分批把其余面板在后台挂好 —— 等于一次性把所有面板的数据都加载完，
+ * 只是总览那批请求排在前面发出去。
+ */
+const mountedPanes = ref<PaneKey[]>([active.value]);
+
+const warmUpRestPanes = () => {
+  const rest = PANE_KEYS.filter((key) => key !== active.value && key !== 'overview');
+  // 总览始终排在最前（就算当前落点不是总览，也要让它尽快加载）
+  const queue: PaneKey[] = active.value === 'overview' ? rest : ['overview', ...rest];
+  const BATCH = 4;
+  let cursor = 0;
+
+  const mountNextBatch = () => {
+    const batch = queue.slice(cursor, cursor + BATCH);
+    cursor += BATCH;
+    if (batch.length) mountedPanes.value = [...mountedPanes.value, ...batch];
+    if (cursor < queue.length) window.setTimeout(mountNextBatch, 200);
+  };
+
+  // 先给首屏（总览的走势图/统计）让出 300ms，再开始后台挂载
+  window.setTimeout(mountNextBatch, 300);
+};
 
 // 面板标题：侧边栏只显示名称，这里补一行标题 + 一句提示，让右侧内容有明确的落点
 const SECTIONS: Record<string, { title: string; hint: string }> = {
@@ -239,18 +308,19 @@ const SECTIONS: Record<string, { title: string; hint: string }> = {
   announcements: { title: '公告管理', hint: '公告分类与发布' },
   articles: { title: '文章管理', hint: '分类、标签与文章' },
   comments: { title: '评论管理', hint: '评论审核与筛选' },
-  'site-cards': { title: '首页配置', hint: '首页卡片与排序' },
+  'site-cards': { title: '首页配置', hint: '各页面卡片与拖拽排序' },
   about: { title: '关于页面', hint: '站点信息与版本' },
   'music-apis': { title: '接口管理', hint: '第三方接口与可用性检测' },
   links: { title: '链接管理', hint: '友情链接' },
   groups: { title: '群聊管理', hint: '群聊信息' },
   feedbacks: { title: '用户反馈', hint: '提交记录与限频' },
   visitors: { title: '访客日志', hint: '访问记录与筛选' },
+  database: { title: '数据管理', hint: '表数据、维护、备份与只读查询' },
   logs: { title: '系统日志', hint: '后台操作记录' },
   env: { title: '环境变量', hint: '.env 配置项' },
   incidents: { title: '故障维护', hint: '故障与维护公告' },
   changelogs: { title: '更新日志', hint: '版本更新记录' },
-  settings: { title: '系统设置', hint: '主题配色与实时预览' },
+  settings: { title: '主题设置', hint: '配色变量与组件预览' },
 };
 
 const currentSection = computed(() => SECTIONS[active.value] ?? { title: '', hint: '' });
@@ -282,6 +352,7 @@ const MENU_GROUPS: { title: string; items: { key: string; label: string; icon: C
     title: '数据',
     items: [
       { key: 'visitors', label: '访客日志', icon: View },
+      { key: 'database', label: '数据管理', icon: Coin },
       { key: 'logs', label: '系统日志', icon: List },
     ],
   },
@@ -291,7 +362,7 @@ const MENU_GROUPS: { title: string; items: { key: string; label: string; icon: C
       { key: 'env', label: '环境变量', icon: Key },
       { key: 'incidents', label: '故障维护', icon: Warning },
       { key: 'changelogs', label: '更新日志', icon: Memo },
-      { key: 'settings', label: '系统设置', icon: Setting },
+      { key: 'settings', label: '主题设置', icon: Setting },
     ],
   },
 ];
@@ -371,6 +442,46 @@ watch(active, () => {
   openGroupTitle.value = null;
 });
 
+/*
+ * 切到一个面板时补一次「重新量尺寸」。
+ * 被挂起的面板是 display: none，里面用 ECharts / el-table 的组件是按 0 尺寸挂载的，
+ * 显示出来之后必须让它们重新读一次容器尺寸，否则图表会糊、表格列宽会错。
+ * 真机上这一步还兼作一次强制重绘，避免出现「切回来是空白，点一下才出来」。
+ */
+/*
+ * 横向溢出的表格打个标记：移动端在表格角上显示「可左右滑动」。
+ * 真机（iOS Safari）既不支持自定义原生滚动条，EP 自带的滚动条又要 hover 才出现，
+ * 光靠滚动条用户根本不知道右边还有列。
+ */
+const markScrollableTables = () => {
+  const pane = document.querySelector('.admin-pane:not(.is-parked)');
+  if (!pane) return;
+  pane.querySelectorAll('.el-table').forEach((table) => {
+    const wrap = table.querySelector<HTMLElement>('.el-scrollbar__wrap');
+    const scrollable = !!wrap && wrap.scrollWidth > wrap.clientWidth + 4;
+    table.classList.toggle('is-x-scrollable', scrollable);
+  });
+};
+
+/** 表格是异步渲染的（数据回来才有列宽），所以量尺寸分两次：立刻一次，稍后再兜一次 */
+let markTablesTimer = 0;
+const scheduleMarkTables = () => {
+  nextTick(() => {
+    window.requestAnimationFrame(markScrollableTables);
+    window.clearTimeout(markTablesTimer);
+    markTablesTimer = window.setTimeout(markScrollableTables, 400);
+  });
+};
+
+watch(active, () => {
+  nextTick(() => {
+    const pane = document.querySelector('.admin-pane:not(.is-parked)');
+    if (pane) void (pane as HTMLElement).offsetHeight;
+    window.dispatchEvent(new Event('resize'));
+    scheduleMarkTables();
+  });
+});
+
 // 展开的菜单是浮层：点空白处收起
 const handleOutsideClick = (event: MouseEvent) => {
   const target = event.target as HTMLElement | null;
@@ -415,7 +526,28 @@ const resetMenuVisibility = () => {
 
 const router = useRouter();
   const layoutStore = useLayoutStore();
-  const goHome = () => router.push('/');
+  // 后台也是从首页进来的：优先回上一页，首页的滚动位置才会被恢复
+  const goHome = () => goBackOrHome(router);
+
+// 面板 → 地址栏：用 replace，避免每切一次都往历史里塞一条
+watch(active, (key) => {
+  const nextPane = key === 'overview' ? '' : key;
+  if (String(route.query.pane || '') === nextPane) return;
+
+  const query = { ...route.query };
+  if (nextPane) query.pane = nextPane;
+  else delete query.pane;
+  router.replace({ query });
+});
+
+// 地址栏 → 面板：前进后退或直接改 URL 时同步
+watch(
+  () => route.query.pane,
+  () => {
+    const key = paneFromQuery();
+    if (key !== active.value) active.value = key;
+  }
+);
   
 // 切换面板时回到顶部：内容区是页面级滚动，不重置的话新面板会停在半截
 const scrollToTop = () => {
@@ -444,12 +576,17 @@ const handleSwitchTab = (tabName: any) => {
   onMounted(() => {
     layoutStore.setPageInfo('后台管理', true, goHome);
     navMediaQuery.addEventListener('change', handleNavMediaChange);
+    window.addEventListener('resize', scheduleMarkTables);
     window.addEventListener('scroll', handlePageScroll, { passive: true });
     syncPageScrolled();
+    scheduleMarkTables();
+    warmUpRestPanes();
   });
   
   onUnmounted(() => {
     navMediaQuery.removeEventListener('change', handleNavMediaChange);
+    window.removeEventListener('resize', scheduleMarkTables);
+    window.clearTimeout(markTablesTimer);
     document.removeEventListener('click', handleOutsideClick, true);
     window.removeEventListener('scroll', handlePageScroll);
     if (pageScrollRaf) window.cancelAnimationFrame(pageScrollRaf);
@@ -480,10 +617,11 @@ const handleSwitchTab = (tabName: any) => {
     菜单比可视区高时只有侧边栏内部滚动。
   */
   position: fixed;
-  top: 76px; /* 顶栏 60 + 间距 16 */
+  /* 顶栏 60 + el-main 的 20px 上内边距：与右侧面板内容的起始位置对齐 */
+  top: 80px;
   left: 20px; /* 与 el-main 的左右内边距一致 */
   width: var(--nav-w);
-  height: calc(100vh - 92px);
+  height: calc(100vh - 96px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -716,9 +854,8 @@ const handleSwitchTab = (tabName: any) => {
   min-width: 0;
   /* 侧边栏是 fixed 的，用左外边距把内容让开 */
   margin-left: calc(var(--nav-w) + 16px);
-  /* 悬浮 Dock 的占位放在这里（顶栏那条 main-content 的底部内边距已去掉），
-     不然页面底部多出来的滚动距离会把侧边栏顶上去 */
-  padding-bottom: 100px;
+  /* 后台不再展示悬浮 Dock，底部只留一点呼吸空间 */
+  padding-bottom: 32px;
 }
 
 /* 面板标题行：高度固定，方便把视图里的操作按钮对齐到这一行 */
@@ -743,9 +880,27 @@ const handleSwitchTab = (tabName: any) => {
   color: var(--el-text-color-secondary);
 }
 
+.admin-pane-stage {
+  position: relative;
+  min-width: 0;
+}
+
 .admin-pane {
   position: relative;
   min-width: 0;
+}
+
+/*
+  非当前面板：留在 DOM（数据保持最新、切回来不用重新加载），但不占版面。
+  这里以前是「挪到屏幕外 + visibility: hidden」，真机上会踩两个坑：
+  1. 比当前面板高的面板照样撑大文档滚动区，页面能往下滑出一大段空白；
+  2. 移动端浏览器对屏幕外的隐藏层经常不重绘，切回来后整块内容（图表、表格）
+     要等用户点一下才刷出来 —— 也就是「看着没加载完整」。
+  改成 display: none：同样留在 DOM、数据照旧，但不参与排版、也不产生隐藏层，
+  切回来时浏览器会重新布局 + 重绘。
+*/
+.admin-pane.is-parked {
+  display: none;
 }
 
 /* 系统设置页自带标题和内边距，嵌进侧边栏布局后要跟其它面板对齐 */
@@ -1027,6 +1182,47 @@ const handleSwitchTab = (tabName: any) => {
   .topnav-groups {
     /* 分类胶囊上下留白由悬浮条的内边距负责，这里不要再加，否则上下不等高 */
     padding: 0;
+  }
+
+  /*
+    手机端宽表格：列宽是 px 的，加起来比屏幕宽，Element Plus 默认只把横向滚动条藏起来，
+    于是表头被右边裁掉、看着像「没加载完整」。这里把横向滚动条显示出来（表头会跟着滚，
+    EP 自己会同步 scrollLeft），列数多的表在手机上才能滑到后面的列。
+  */
+  .admin-pane :deep(.el-table .el-scrollbar__wrap) {
+    scrollbar-width: thin;
+    -ms-overflow-style: auto;
+  }
+
+  .admin-pane :deep(.el-table .el-scrollbar__wrap)::-webkit-scrollbar {
+    display: block;
+    height: 6px;
+    width: 6px;
+  }
+
+  .admin-pane :deep(.el-table .el-scrollbar__wrap)::-webkit-scrollbar-thumb {
+    background-color: var(--el-border-color-darker);
+    border-radius: 3px;
+  }
+
+  .admin-pane :deep(.el-table .el-scrollbar__wrap)::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  /* 真机滚动条看不见，用一枚角标说明这张表还能左右滑 */
+  .admin-pane :deep(.el-table.is-x-scrollable)::after {
+    content: '可左右滑动 →';
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    z-index: 3;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background-color: var(--el-fill-color);
+    color: var(--el-text-color-secondary);
+    font-size: 11px;
+    line-height: 18px;
+    pointer-events: none;
   }
 }
 </style>

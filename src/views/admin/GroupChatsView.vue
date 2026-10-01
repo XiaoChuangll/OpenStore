@@ -13,22 +13,22 @@
     <el-table :data="items" style="width: 100%" stripe>
       <el-table-column prop="name" label="名称" />
       <el-table-column v-if="!isMobile" prop="link" label="群聊链接" />
-      <el-table-column label="头像" width="80">
+      <el-table-column label="头像" min-width="80">
         <template #default="{ row }">
           <img v-if="row.avatar_url" :src="row.avatar_url" class="avatar" alt="avatar" />
           <el-tag v-else type="info" size="small">无</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="启用" width="70">
+      <el-table-column label="启用" min-width="70">
         <template #default="{ row }">
           <el-switch :model-value="row.enabled === 1" @update:model-value="(v: boolean) => toggleEnabled(row, v)" size="small" />
         </template>
       </el-table-column>
       <el-table-column label="操作" :width="isMobile ? 120 : 220">
         <template #default="{ row }">
-          <div :style="isMobile ? 'display: flex; flex-direction: column; gap: 4px;' : ''">
+          <div class="action-cell">
             <el-button size="small" @click="editRow(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="remove(row)" :style="isMobile ? 'margin-left: 0' : ''">删除</el-button>
+            <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
           </div>
         </template>
       </el-table-column>

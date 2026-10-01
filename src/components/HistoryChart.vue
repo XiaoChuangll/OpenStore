@@ -39,44 +39,109 @@
             type="success"
             size="small"
           >增量</el-tag>
+          <!-- 图表 / 数据列表 切换，选择记在本地，默认图表 -->
+          <el-tooltip :content="viewMode === 'list' ? '切换为图表' : '切换为列表'" placement="top">
+            <el-button
+              size="small"
+              class="view-toggle"
+              :icon="viewMode === 'list' ? TrendCharts : List"
+              @click="toggleView"
+            />
+          </el-tooltip>
         </div>
       </div>
     </template>
-    <div ref="chartRef" style="width: 100%; height: 300px;"></div>
-  </el-card>
-  <el-card
-    v-if="route.path === '/rank/history'"
-    class="chart-card"
-    shadow="hover"
-  >
-    <template #header>
-      <div class="card-header">
-        <div class="header-left">
-          <span>鸿蒙应用下载量历史 · 矩阵图</span>
-        </div>
+    <div v-if="viewMode === 'chart'" ref="chartRef" class="chart-box"></div>
+    <!--
+      这张卡的数据是"一个应用随时间的下载量"，不是排行榜，
+      所以列表视图不做排名条，而是一份自上而下的时间台账：
+      日期 / 当前累计 / 较上次新增（最新的在最上面，像变更记录一样从上往下读）。
+    -->
+    <div v-else class="tl-list">
+      <div class="tl-head">
+        <span>日期</span>
+        <span class="tl-num">累计下载</span>
+        <span class="tl-num">较上次</span>
       </div>
-    </template>
-    <div ref="matrixChartRef" style="width: 100%; height: 260px;"></div>
+      <ol class="tl-body">
+        <li v-for="row in timelineRows" :key="row.key" class="tl-row">
+          <span class="tl-date">{{ row.date }}</span>
+          <span class="tl-num tl-total">{{ formatCount(row.total) }}</span>
+          <span class="tl-num tl-delta" :class="{ 'is-up': row.delta > 0 }">
+            {{ row.delta > 0 ? '+' + formatCount(row.delta) : '—' }}
+          </span>
+        </li>
+      </ol>
+      <p v-if="!timelineRows.length" class="tl-empty">暂无数据</p>
+    </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import * as echarts from 'echarts';
+import { TrendCharts, List } from '@element-plus/icons-vue';
 import { hmApi } from '../services/hm-api';
+
+const VIEW_MODE_KEY = 'rank.history.view';
 
 const router = useRouter();
 const route = useRoute();
 const chartRef = ref<HTMLElement | null>(null);
 let chartInstance: echarts.ECharts | null = null;
-const matrixChartRef = ref<HTMLElement | null>(null);
-let matrixChartInstance: echarts.ECharts | null = null;
 const appName = ref('Loading...');
 const topApp = ref<any>(null);
 const todayIncrement = ref<number | null>(null);
 const showTotal = ref(true);
 const showIncrement = ref(true);
+/** 拉回来的原始时间序列，图表和列表共用 */
+const seriesData = ref<any[]>([]);
+
+/* 展示方式：chart（每次进页面都从图表开始）/ list（时间台账） */
+const viewMode = ref<'list' | 'chart'>(localStorage.getItem(VIEW_MODE_KEY) === 'list' ? 'list' : 'chart');
+const toggleView = () => {
+  viewMode.value = viewMode.value === 'list' ? 'chart' : 'list';
+  if (viewMode.value === 'list') { showTotal.value = true; showIncrement.value = false; }
+  else { showTotal.value = true; showIncrement.value = true; }
+};
+
+/** 列表里画哪个指标：图表模式下沿用开关，列表模式下需要一个主指标 */
+const primaryMetric = computed<'total' | 'increment'>(() =>
+  showIncrement.value && !showTotal.value ? 'increment' : 'total'
+);
+
+const formatCount = (value: number) => {
+  const n = Number(value) || 0;
+  if (Math.abs(n) >= 1e8) return `${(n / 1e8).toFixed(1)}亿`;
+  if (Math.abs(n) >= 1e4) return `${(n / 1e4).toFixed(1)}万`;
+  return n.toLocaleString('zh-CN');
+};
+
+/**
+ * 时间点 → 台账行：日期 / 当前累计 / 较上次新增。
+ * 按时间倒序（最新的在最上面），和"看变更记录"的习惯一致；
+ * 看曲线趋势就切回图表。
+ */
+const timelineRows = computed(() => {
+  const rows = seriesData.value.map((item: any, index: number) => {
+    const raw = item.created_at || item.timestamp || item.time || '';
+    const date = toDate(raw);
+    const label = date
+      ? `${String(date.getFullYear()).slice(-2)}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` +
+        (/^\d{4}-\d{2}-\d{2}$/.test(String(raw).trim()) ? '' : ` ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`)
+      : String(raw) || `第 ${index + 1} 个采样点`;
+    const total = Number(item.download_count ?? item.downloads ?? 0) || 0;
+    const incRaw = item.download_increment ?? item.increment ?? item.download_increase;
+    const inc = Number.isFinite(Number(incRaw))
+      ? Math.max(0, Number(incRaw))
+      : index > 0
+        ? Math.max(0, total - (Number(seriesData.value[index - 1]?.download_count ?? 0) || 0))
+        : 0;
+    return { key: `${label}-${index}`, date: label, total, delta: inc };
+  });
+  return rows.reverse();
+});
 
 const goToRank = () => {
   if (route.path !== '/rank/history') {
@@ -97,18 +162,26 @@ const goToAppDetail = () => {
 };
 
 const toggleTotal = () => {
-  showTotal.value = !showTotal.value;
-  updateVisibility();
+  if (viewMode.value === 'chart') {
+    showTotal.value = !showTotal.value;
+    updateVisibility();
+  } else {
+    // 列表模式：两个标签是单选，决定条形画哪个指标
+    const next = primaryMetric.value === 'total' ? false : true;
+    showTotal.value = next;
+    showIncrement.value = !next;
+  }
 };
 
 const toggleIncrement = () => {
-  showIncrement.value = !showIncrement.value;
-  updateVisibility();
-};
-
-const formatNumber = (value: number) => {
-  if (!Number.isFinite(value)) return '0';
-  return value.toLocaleString();
+  if (viewMode.value === 'chart') {
+    showIncrement.value = !showIncrement.value;
+    updateVisibility();
+  } else {
+    const next = primaryMetric.value === 'increment' ? false : true;
+    showIncrement.value = next;
+    showTotal.value = !next;
+  }
 };
 
 const updateVisibility = () => {
@@ -147,82 +220,15 @@ const toDate = (raw: any) => {
   return isNaN(d.getTime()) ? null : d;
 };
 
-const initMatrixChart = (dates: string[], downloads: number[], increments: number[]) => {
-  if (!matrixChartRef.value) return;
-  if (!dates.length) return;
-
-  if (!matrixChartInstance) {
-    matrixChartInstance = echarts.init(matrixChartRef.value);
+const initChart = () => {
+  // 切到列表时图表容器被销毁，切回来要重建实例
+  if (viewMode.value !== 'chart' || !chartRef.value) return;
+  if (!chartInstance) chartInstance = echarts.init(chartRef.value);
+  const data = seriesData.value;
+  if (!data.length) {
+    chartInstance.clear();
+    return;
   }
-
-  const monthMap = new Map<string, { name: string; value: number; increment: number; children: any[] }>();
-
-  dates.forEach((label, index) => {
-    if (!label) return;
-    const monthKey = label.slice(0, 5);
-    const base = label.includes(' ') ? label.split(' ')[0] : label;
-    const dayLabel = base.slice(3);
-    const inc = increments[index] || 0;
-    const total = downloads[index] || 0;
-
-    let monthItem = monthMap.get(monthKey);
-    if (!monthItem) {
-      monthItem = {
-        name: monthKey,
-        value: 0,
-        increment: 0,
-        children: []
-      };
-      monthMap.set(monthKey, monthItem);
-    }
-
-    monthItem.increment += inc;
-    monthItem.value += inc;
-
-    monthItem.children.push({
-      name: dayLabel,
-      value: inc,
-      total,
-      increment: inc
-    });
-  });
-
-  const data = Array.from(monthMap.values());
-
-  const option = {
-    tooltip: {
-      formatter: (info: any) => {
-        const d = info.data || {};
-        if (Array.isArray(d.children) && d.children.length) {
-          return `${d.name}<br/>当月新增下载：${formatNumber(d.increment || 0)}`;
-        }
-        const total = d.total || 0;
-        const inc = d.increment || d.value || 0;
-        return `${info.name}<br/>总下载量：${formatNumber(total)}<br/>新增下载：${formatNumber(inc)}`;
-      }
-    },
-    series: [
-      {
-        name: '历史榜矩阵',
-        type: 'treemap',
-        roam: false,
-        nodeClick: 'zoomToNode',
-        data,
-        label: {
-          show: true,
-          formatter: '{b}'
-        }
-      }
-    ]
-  };
-
-  matrixChartInstance.setOption(option);
-};
-
-const initChart = (data: any[]) => {
-  if (!chartRef.value) return;
-  
-  chartInstance = echarts.init(chartRef.value);
   
   // Data: { created_at: string, download_count: number, ... }
   
@@ -370,8 +376,6 @@ const initChart = (data: any[]) => {
   };
 
   chartInstance.setOption(option);
-
-  initMatrixChart(dates, downloads, increments);
 };
 
 const fetchData = async () => {
@@ -379,7 +383,9 @@ const fetchData = async () => {
     const topAppRes = await hmApi.get<any>('/apps/list/1', {
       page_size: 1,
       sort: 'download_count',
-      desc: true
+      desc: true,
+      // 只要第一名应用的 app_id / 名称，简略信息足够
+      detail: false
     });
     const topAppData = topAppRes?.data?.data?.[0] || topAppRes?.data?.[0];
     if (topAppData && topAppData.app_id) {
@@ -429,7 +435,8 @@ const fetchData = async () => {
       todayIncrement.value = null;
     }
     
-    initChart(metrics);
+    seriesData.value = metrics;
+    initChart();
   } catch (error) {
     console.error('Failed to fetch history:', error);
     appName.value = 'Error';
@@ -438,11 +445,24 @@ const fetchData = async () => {
 };
 
 const handleResize = () => {
-  chartInstance?.resize();
-  matrixChartInstance?.resize();
+  if (viewMode.value === 'chart') chartInstance?.resize();
 };
 
 let resizeObserver: ResizeObserver | null = null;
+
+/*
+ * 图表容器由 v-if 控制：切到列表时容器被销毁，实例要跟着 dispose；
+ * 切回图表再重建，否则 echarts 会抱着一块不存在的 canvas。
+ */
+watch(viewMode, async (mode) => {
+  if (mode === 'chart') {
+    await nextTick();
+    initChart();
+  } else {
+    chartInstance?.dispose();
+    chartInstance = null;
+  }
+});
 
 onMounted(() => {
   fetchData();
@@ -455,14 +475,6 @@ onMounted(() => {
     resizeObserver.observe(chartRef.value);
   }
   
-  if (matrixChartRef.value) {
-    if (!resizeObserver) {
-      resizeObserver = new ResizeObserver(() => {
-        matrixChartInstance?.resize();
-      });
-    }
-    resizeObserver.observe(matrixChartRef.value);
-  }
 });
 
 onUnmounted(() => {
@@ -472,7 +484,6 @@ onUnmounted(() => {
     resizeObserver = null;
   }
   chartInstance?.dispose();
-  matrixChartInstance?.dispose();
 });
 </script>
 
@@ -488,7 +499,101 @@ onUnmounted(() => {
 }
 .controls {
   display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.view-toggle {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+.chart-box {
+  width: 100%;
+  height: 300px;
+}
+
+/* ---------------- 时间台账（历史榜的列表视图） ---------------- */
+.tl-list {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.tl-head,
+.tl-row {
+  display: grid;
+  /* 日期 | 累计下载 | 较上次 */
+  grid-template-columns: minmax(88px, 1fr) minmax(80px, 1fr) minmax(74px, 0.9fr);
+  align-items: center;
   gap: 10px;
+  padding: 8px 12px;
+}
+
+.tl-head {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  background-color: var(--el-fill-color-lighter);
+}
+
+.tl-body {
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tl-row {
+  font-size: 13px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.tl-row:nth-child(odd) {
+  background-color: var(--el-fill-color-lighter);
+}
+
+.tl-date {
+  font-variant-numeric: tabular-nums;
+  color: var(--el-text-color-regular);
+}
+
+.tl-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.tl-total {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.tl-delta {
+  color: var(--el-text-color-secondary);
+}
+
+.tl-delta.is-up {
+  color: var(--el-color-success);
+}
+
+.tl-empty {
+  margin: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--el-text-color-placeholder);
+}
+
+@media (max-width: 768px) {
+  .tl-head,
+  .tl-row {
+    grid-template-columns: minmax(76px, 1fr) minmax(72px, 1fr) minmax(66px, 0.9fr);
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .tl-body {
+    max-height: 300px;
+  }
 }
 .title-text {
   display: flex;
@@ -507,11 +612,34 @@ onUnmounted(() => {
   cursor: pointer;
 }
 @media (max-width: 768px) {
+  /*
+   * 窄屏：把 .header-left 拆开（display: contents），让「标题 / Top 1 / 今日新增 /
+   * 总量增量切换」四个元素变成同级 flex 项，由浏览器自己按行打包。
+   *
+   * 这样最省行数：放得下就是
+   *   第 1 行：标题 + Top 1
+   *   第 2 行：今日新增 + 总量/增量/切换（按钮紧跟在胶囊后面，不再多占一行）
+   * 真的很窄（≲320）时才继续往下排。
+   * 用 grid 反而不好：列宽被标题撑住，窄屏时按钮会从卡片右边溢出去。
+   */
   .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    column-gap: 8px;
+    row-gap: 6px;
     height: auto;
+  }
+
+  .header-left {
+    display: contents;
+  }
+
+  .controls {
+    /* 自动外边距把它推到所在行的最右边：和「今日新增」同一行，但贴右侧 */
+    margin-left: auto;
+    gap: 8px;
+    min-width: 0;
   }
 }
 

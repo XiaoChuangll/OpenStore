@@ -15,16 +15,19 @@
         <el-card class="mb-4">
           <div class="card-header"><h3>{{ labels[String(cat)] || String(cat) }}</h3></div>
           <el-table :data="list" @row-click="selectItem">
-            <el-table-column prop="key" label="Key" />
-            <el-table-column label="Value">
+            <!-- 手机上表格横向滚动：这两列给 min-width，Value 别被挤成一条竖着的字 -->
+            <el-table-column prop="key" label="Key" min-width="120" show-overflow-tooltip />
+            <el-table-column label="Value" min-width="240" show-overflow-tooltip>
               <template #default="{ row }">
                 <span>{{ row.secure ? '••••••' : row.value }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="160">
+            <el-table-column label="操作" min-width="160">
               <template #default="{ row }">
-                <el-button size="small" @click.stop="editItem(row)">编辑</el-button>
-                <el-button size="small" @click.stop="openHistory(row)">历史</el-button>
+                <div class="action-cell">
+                  <el-button size="small" @click.stop="editItem(row)">编辑</el-button>
+                  <el-button size="small" @click.stop="openHistory(row)">历史</el-button>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -68,11 +71,13 @@
 
     <el-dialog v-model="showHistory" title="修改历史" :width="isMobile ? '95%' : '700px'">
       <el-table :data="history">
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="updated_at" label="时间" width="200" />
-        <el-table-column label="操作" width="140">
+        <el-table-column prop="id" label="ID" min-width="72" />
+        <el-table-column prop="updated_at" label="时间" min-width="140" />
+        <el-table-column label="操作" min-width="140">
           <template #default="{ row }">
-            <el-button size="small" @click="rollback(row.id)">回滚到此版本</el-button>
+            <div class="action-cell">
+              <el-button size="small" @click="rollback(row.id)">回滚到此版本</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>

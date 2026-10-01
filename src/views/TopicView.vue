@@ -8,7 +8,14 @@
       <div v-if="total > 0" class="header-side">
         <span class="count-chip">已加载 {{ topics.length }} / {{ total }}</span>
         <el-tooltip content="刷新" placement="bottom">
-          <el-button :icon="Refresh" circle :loading="loading" @click="refresh" />
+          <el-button
+            class="refresh-btn"
+            :class="{ 'is-refreshing': refreshing }"
+            :icon="Refresh"
+            circle
+            :disabled="refreshing"
+            @click="refresh"
+          />
         </el-tooltip>
       </div>
     </header>
@@ -67,6 +74,13 @@
               <span v-if="iconsOf(topic.substance_id).more" class="app-icon-slot is-more">
                 +{{ iconsOf(topic.substance_id).more }}
               </span>
+              <!-- 应用不足时用虚线骨架把这一行补齐，左右边距才一致 -->
+              <span
+                v-for="n in fillerCount(topic.substance_id)"
+                :key="`filler-${n}`"
+                class="app-icon-slot is-filler"
+                aria-hidden="true"
+              />
             </template>
 
             <template v-else-if="isAppsLoading(topic.substance_id)">
@@ -205,6 +219,13 @@ const iconsOf = (id: string) => {
   };
 };
 
+/** 这一行还差几个槽位：应用不足时用虚线骨架补齐，卡片左右留白才会一致 */
+const fillerCount = (id: string) => {
+  const { icons, more } = iconsOf(id);
+  const used = icons.length + (more ? 1 : 0); // 「+N」胶囊也占一个槽位
+  return Math.max(0, iconsPerCard.value - used);
+};
+
 /* ---------------- 列表数据 ---------------- */
 
 const formatDate = (dateStr: string) => {
@@ -219,7 +240,8 @@ const formatDate = (dateStr: string) => {
 const fetchTopics = async (reset = false) => {
   if (reset) {
     currentPage.value = 1;
-    topics.value = [];
+    // 手动刷新时保留现有列表（只把 loading 交给按钮上的转圈），
+    // 否则整片网格会先闪成骨架再回来
   }
 
   loading.value = true;
@@ -248,8 +270,22 @@ const loadMore = () => {
   fetchTopics();
 };
 
-const refresh = () => {
-  fetchTopics(true);
+/** 刷新时让刷新图标转一会儿，太短的请求也保证有可见的动效反馈 */
+const MIN_SPIN_MS = 700;
+const refreshing = ref(false);
+
+const refresh = async () => {
+  if (refreshing.value) return;
+  refreshing.value = true;
+  const startedAt = Date.now();
+  try {
+    await fetchTopics(true);
+  } finally {
+    const rest = Math.max(0, MIN_SPIN_MS - (Date.now() - startedAt));
+    window.setTimeout(() => {
+      refreshing.value = false;
+    }, rest);
+  }
 };
 
 const goToDetail = (topic: ShortSubstanceInfo) => {
@@ -315,6 +351,17 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
+/* 刷新：图标转起来做反馈 */
+.refresh-btn.is-refreshing :deep(svg) {
+  animation: refresh-spin 0.9s linear infinite;
+}
+
+@keyframes refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .count-chip {
   padding: 4px 12px;
   border: 1px solid var(--el-border-color-lighter);
@@ -361,6 +408,8 @@ onBeforeUnmount(() => {
 .topic-icons {
   display: flex;
   align-items: center;
+  /* 槽位数量固定后，把不足一个槽位的零头均摊掉，左右留白才完全一致 */
+  justify-content: space-between;
   gap: var(--icon-gap, 8px);
   height: calc(var(--icon-size, 36px) + 22px);
   padding: 14px 16px 0;
@@ -373,6 +422,8 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: var(--icon-size, 36px);
   height: var(--icon-size, 36px);
+  /* 边框算进尺寸里，一行图标才能刚好铺满、左右留白一致 */
+  box-sizing: border-box;
   flex: 0 0 auto;
   overflow: hidden;
   border: 1px solid var(--el-border-color-lighter);
@@ -404,6 +455,13 @@ onBeforeUnmount(() => {
   background: transparent;
   box-shadow: none;
   animation: icon-pulse 1.4s ease-in-out infinite;
+}
+
+/* 应用数量不足时补的虚线骨架：不闪烁，只是占位 */
+.app-icon-slot.is-filler {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
 }
 
 .app-icon-slot.is-placeholder:nth-child(2) { animation-delay: 0.12s; }

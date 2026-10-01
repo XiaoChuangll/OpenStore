@@ -11,29 +11,24 @@
             </template>
           </el-image>
           <div class="app-title-block">
-            <h1 class="app-name">{{ appDetail.name }}</h1>
+            <div class="app-title-row">
+              <h1 class="app-name">{{ appDetail.name }}</h1>
+              <!-- 与「应用」页详情保持一致：下载（获取）+ 分享，放在应用名称这一行的右侧 -->
+              <div class="app-actions">
+                <el-tooltip content="打开应用商店" placement="top" :show-after="200">
+                  <el-button type="primary" round @click="openAppGallery">获取</el-button>
+                </el-tooltip>
+                <el-tooltip content="复制本页链接" placement="top" :show-after="200">
+                  <el-button round aria-label="分享" @click="copyLink">
+                    <el-icon><HarmonyShareIcon /></el-icon>
+                  </el-button>
+                </el-tooltip>
+              </div>
+            </div>
             <div class="app-subtitle">
               {{ appDetail.developer_name || '—' }} · {{ appDetail.pkg_name || '—' }}
             </div>
           </div>
-        </div>
-        <div class="app-header-right">
-          <el-tooltip content="分享" placement="left" :show-after="200">
-            <el-button
-              circle
-              :icon="HarmonyShareIcon"
-              aria-label="分享"
-              @click="copyLink"
-            />
-          </el-tooltip>
-          <el-tooltip content="打开应用商店" placement="left" :show-after="200">
-            <el-button
-              circle
-              :icon="HarmonyDownloadIcon"
-              aria-label="打开应用商店"
-              @click="openAppGallery"
-            />
-          </el-tooltip>
         </div>
       </div>
 
@@ -128,6 +123,10 @@
         <div class="meta-row meta-row-3">
           <div class="meta-group">
             <div class="meta-group-title">时间</div>
+            <div class="meta-kv">
+              <div class="meta-kv-key">更新时间</div>
+              <div class="meta-kv-value" :title="formatDateTime(appDetail.release_date)">{{ formatDateTime(appDetail.release_date) }}</div>
+            </div>
             <div class="meta-kv">
               <div class="meta-kv-key">数据更新时间</div>
               <div class="meta-kv-value" :title="formatDateTime(lastMetric?.created_at)">{{ formatDateTime(lastMetric?.created_at) }}</div>
@@ -257,10 +256,10 @@ import { useRoute, useRouter } from 'vue-router';
 import { hmApi } from '../services/hm-api';
 import AppMetricsChart from '../components/AppMetricsChart.vue';
 import HarmonyShareIcon from '../components/HarmonyShareIcon.vue';
-import HarmonyDownloadIcon from '../components/HarmonyDownloadIcon.vue';
 import { Picture, ArrowDown, ArrowLeft, ArrowRight, Close } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useLayoutStore } from '../stores/layout';
+import { buildAppShareMeta, clearPageShareMeta, setPageShareMeta, shareCurrentPage } from '../utils/page-share';
 
 const route = useRoute();
 const router = useRouter();
@@ -378,9 +377,10 @@ watch(viewerOpen, (open) => {
 
 const DEVICE_CODE_MAP: Record<string, string> = {
   '0': '手机',
+  '3': '智慧屏',
   '4': '平板',
-  '3': '智能手表/手环',
-  '7': '智慧屏',
+  // 上游设备码 7 = 手表（不是智慧屏/车机）
+  '7': '手表',
   '15': '电脑',
 };
 
@@ -403,7 +403,12 @@ const formatSize = (bytes: any) => {
 
 const formatDateTime = (ts: any) => {
   if (!ts) return '—';
-  return new Date(ts).toLocaleString();
+  // release_date 是毫秒时间戳（偶尔秒），也有 "2025/6/24 21:05:07" 这类字符串
+  const numeric = typeof ts === 'number' || /^\d+$/.test(String(ts).trim()) ? Number(ts) : NaN;
+  const parsed = Number.isFinite(numeric)
+    ? new Date(numeric < 1e12 ? numeric * 1000 : numeric)
+    : new Date(String(ts));
+  return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString('zh-CN', { hour12: false }) : String(ts);
 };
 
 const checkDescriptionOverflow = () => {
@@ -575,12 +580,17 @@ onUnmounted(() => {
   }
   descObserver?.disconnect();
   countryObserver?.disconnect();
+  clearPageShareMeta();
 });
 
-const copyLink = () => {
-  navigator.clipboard.writeText(window.location.href);
-  ElMessage.success('链接已复制');
-};
+/** 分享本页：带应用图标 + 名称 / 开发者 / 简介，系统分享面板不支持时退回复制 */
+const copyLink = () => shareCurrentPage('已复制应用分享信息');
+
+// 分享卡片带上这个应用自己的图标和文字
+watch(appDetail, (app) => {
+  if (app) setPageShareMeta(buildAppShareMeta(app));
+  else clearPageShareMeta();
+});
 
 const openAppGallery = () => {
   if (appDetail.value && appDetail.value.pkg_name) {
@@ -616,16 +626,7 @@ const fetchData = async () => {
     layoutStore.setPageInfo(title, true, () => router.back());
     document.title = `OpenStore | ${title}`;
 
-    const description = info.description || info.intro || '';
-    if (description) {
-      let el = document.querySelector('meta[name="description"]');
-      if (!el) {
-        el = document.createElement('meta');
-        el.setAttribute('name', 'description');
-        document.head.appendChild(el);
-      }
-      el.setAttribute('content', description.slice(0, 160));
-    }
+    // 分享 / meta 描述统一由 page-share 决定（用「应用简介」brief_desc，不是长「应用说明」）
 
     if (info.pkg_name) {
       try {
@@ -662,6 +663,27 @@ const fetchData = async () => {
 onMounted(() => {
   fetchData();
 });
+
+/*
+ * 详情页地址是 /dashboard?app_id=xxx：路径没变、只有 query 变时，
+ * Vue 会复用同一个组件实例，光靠 onMounted 就会一直显示上一个应用
+ * （表现：点了别的应用还是第一个应用的内容，刷新才好）。
+ * 这里盯住 app_id，换了就把旧数据清空重新拉。
+ */
+watch(
+  () => route.query.app_id,
+  (next, prev) => {
+    if (!next || next === prev) return;
+    appDetail.value = null;
+    lastMetric.value = null;
+    metricsData.value = [];
+    rateHistoryData.value = [];
+    screenshotList.value = [];
+    viewerIndex.value = 0;
+    window.scrollTo({ top: 0 });
+    fetchData();
+  }
+);
 </script>
 
 <style scoped>
@@ -680,13 +702,6 @@ onMounted(() => {
 }
 
 /* 分享 / 打开应用商店：图标按钮竖排靠右，和左侧应用图标同处一行 */
-.app-header-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
-
 .app-header {
   display: flex;
   justify-content: space-between;
@@ -698,6 +713,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .app-icon {
@@ -707,16 +724,49 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
+.app-title-block {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* 应用名称 + 右侧的下载 / 分享按钮同一行 */
+.app-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+  flex-wrap: wrap;
+}
+
 .app-name {
   font-size: 24px;
   font-weight: 600;
   margin: 0 0 4px 0;
   color: var(--el-text-color-primary);
+  overflow-wrap: anywhere;
 }
 
 .app-subtitle {
   font-size: 14px;
+  line-height: 1.5;
   color: var(--el-text-color-secondary);
+  /* 开发者 · 包名 很长时换行，避免把页面撑出横向滚动条 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 与「应用」页详情一致的下载 / 分享两个胶囊 */
+.app-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.app-actions :deep(.el-button) {
+  width: 88px;
+  height: 32px;
+  padding: 0;
 }
 
 .meta-grid {
@@ -1222,6 +1272,48 @@ onMounted(() => {
 
   .app-name {
     font-size: 20px;
+  }
+}
+
+/*
+ * 窄屏放不下「名称 + 右侧按钮」时：按钮整行落到图标那一行的下方，
+ * 两个按钮等宽铺满（而不是挤在名称右边换行）。
+ */
+@media (max-width: 560px) {
+  .app-header-left {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 14px;
+    row-gap: 8px;
+  }
+
+  .app-icon {
+    grid-area: 1 / 1 / 3 / 2;
+  }
+
+  .app-title-block,
+  .app-title-row {
+    display: contents;
+  }
+
+  .app-name {
+    grid-area: 1 / 2 / 2 / 3;
+    margin: 0;
+  }
+
+  .app-subtitle {
+    grid-area: 2 / 2 / 3 / 3;
+  }
+
+  .app-actions {
+    grid-area: 3 / 1 / 4 / -1;
+    width: 100%;
+  }
+
+  .app-actions :deep(.el-button) {
+    flex: 1 1 0;
+    width: auto;
   }
 }
 

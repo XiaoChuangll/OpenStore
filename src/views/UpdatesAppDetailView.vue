@@ -2,10 +2,15 @@
   <div class="updates-app-detail-view" v-loading="loading">
     <div v-if="appDetail" class="detail-container">
       <div class="detail-header">
-        <el-button round @click="copyLink">
-          <el-icon><HarmonyShareIcon /></el-icon>
-        </el-button>
-        <el-button type="primary" round @click="openAppGallery">前往应用商店</el-button>
+        <!-- 与「应用」页详情保持一致：分享 + 获取，两个按钮同尺寸 -->
+        <el-tooltip content="复制本页链接" placement="bottom" :show-after="200">
+          <el-button round class="detail-action" aria-label="分享" @click="copyLink">
+            <el-icon><HarmonyShareIcon /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="打开应用商店" placement="bottom" :show-after="200">
+          <el-button type="primary" round class="detail-action" @click="openAppGallery">获取</el-button>
+        </el-tooltip>
       </div>
 
       <div class="detail-card basic-card">
@@ -18,8 +23,11 @@
         </el-image>
         <div class="basic-info">
           <div class="app-name">{{ appDetail.name || '—' }}</div>
-          <div class="app-subtitle">
-            {{ appDetail.developer_name || '—' }} · {{ appDetail.pkg_name || '—' }}
+          <!-- 这里「开发者 · 包名」和「应用简介」来回切换展示 -->
+          <div class="app-subtitle" :title="subtitleLines[rotateIndex]">
+            <transition name="subtitle-fade" mode="out-in">
+              <span :key="rotateIndex">{{ subtitleLines[rotateIndex] }}</span>
+            </transition>
           </div>
           <div class="basic-stats">
             <div class="stat-item">
@@ -83,13 +91,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { ArrowDown, Clock, Picture } from '@element-plus/icons-vue';
 import HarmonyShareIcon from '../components/HarmonyShareIcon.vue';
 import { hmApi } from '../services/hm-api';
 import { useLayoutStore } from '../stores/layout';
+import { buildAppShareMeta, clearPageShareMeta, setPageShareMeta, shareCurrentPage } from '../utils/page-share';
 
 const route = useRoute();
 const router = useRouter();
@@ -103,10 +112,53 @@ const metrics = ref<any[]>([]);
 
 const appId = computed(() => String(route.params.id || '').trim());
 
+/** 应用简介（上游 brief_desc，短简介；不是详情里的长说明） */
+const briefText = computed(() => {
+  const detail = appDetail.value;
+  const raw = detail?.brief_desc ?? detail?.briefDesc ?? detail?.short_desc ?? detail?.intro;
+  return String(raw || '').trim();
+});
+
+/** 副标题两行：开发者 · 包名 + 应用简介（有简介才轮播） */
+const subtitleLines = computed(() => {
+  const detail = appDetail.value || {};
+  const who = `${detail.developer_name || '—'} · ${detail.pkg_name || '—'}`;
+  return briefText.value ? [who, briefText.value] : [who];
+});
+
+const SUBTITLE_ROTATE_MS = 5000;
+const rotateIndex = ref(0);
+let subtitleTimer: number | null = null;
+
 const getMetricTimeMs = (m: any) => {
   const raw = m?.created_at || m?.update_time || m?.last_update || 0;
   const ms = new Date(raw).getTime();
   return Number.isFinite(ms) ? ms : 0;
+};
+
+/** 时间戳/时间字符串 → "2026/9/20 18:46:06"（release_date 是毫秒时间戳，偶尔是秒） */
+const formatTimestamp = (raw: any) => {
+  if (raw === undefined || raw === null || raw === '') return '—';
+  const numeric = typeof raw === 'number' || /^\d+$/.test(String(raw).trim()) ? Number(raw) : NaN;
+  const parsed = Number.isFinite(numeric)
+    ? new Date(numeric < 1e12 ? numeric * 1000 : numeric)
+    : new Date(String(raw).replace(/-/g, '/'));
+  return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString('zh-CN', { hour12: false }) : String(raw);
+};
+
+/**
+ * 版本发布时间：优先 release_date。
+ * metrics.created_at 只是「我们抓到这个版本数据」的时刻，通常比实际发布晚几天，不能当更新时间。
+ */
+const getMetricReleaseMs = (m: any) => {
+  const release = m?.release_date ?? m?.releaseDate;
+  if (release !== undefined && release !== null && release !== '') {
+    const numeric = typeof release === 'number' || /^\d+$/.test(String(release).trim()) ? Number(release) : NaN;
+    if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric;
+    const parsed = new Date(String(release));
+    if (Number.isFinite(parsed.getTime())) return parsed.getTime();
+  }
+  return getMetricTimeMs(m);
 };
 
 const sortedMetrics = computed(() => {
@@ -139,10 +191,18 @@ const latestVersionText = computed(() => {
 });
 
 const latestUpdateTimeText = computed(() => {
+  /*
+   * 应用真实的版本发布时间是上游的 release_date（毫秒时间戳）；
+   * metrics.created_at / updated_at 只是「我们这边抓到数据」的时刻，不能当更新时间用。
+   */
+  const release = appDetail.value?.release_date ?? appDetail.value?.releaseDate;
+  if (release !== undefined && release !== null && release !== '') {
+    const text = formatTimestamp(release);
+    if (text !== '—') return text;
+  }
+
   const raw = latestMetric.value?.created_at ?? latestMetric.value?.update_time ?? latestMetric.value?.last_update ?? appDetail.value?.update_time ?? appDetail.value?.created_at ?? null;
-  if (!raw) return '—';
-  const d = new Date(raw);
-  return Number.isFinite(d.getTime()) ? d.toLocaleString('zh-CN') : '—';
+  return formatTimestamp(raw);
 });
 
 const latestSizeText = computed(() => {
@@ -172,7 +232,8 @@ const historyItems = computed(() => {
   for (const m of list) {
     const versionRaw = m?.version_name ?? m?.version ?? m?.version_code ?? '';
     const version = String(versionRaw || '').trim();
-    const time = getMetricTimeMs(m);
+    // 用「版本发布时间」排序/取最新，而不是抓取时刻
+    const time = getMetricReleaseMs(m);
     const key = version || `__t_${time}`;
     const existing = bestByVersion.get(key);
     if (!existing || existing.time < time) {
@@ -186,8 +247,8 @@ const historyItems = computed(() => {
       const m = x.value;
       const versionRaw = m?.version_name ?? m?.version ?? m?.version_code ?? `版本 ${index + 1}`;
       const version = String(versionRaw || '—');
-      const dateRaw = m?.created_at || m?.update_time || m?.last_update || null;
-      const dateText = dateRaw ? new Date(dateRaw).toLocaleString('zh-CN') : '—';
+      const dateRaw = m?.release_date ?? m?.releaseDate ?? m?.created_at ?? m?.update_time ?? m?.last_update ?? null;
+      const dateText = formatTimestamp(dateRaw);
 
       const newFeatures = String(m?.new_features || '').trim();
       let description = newFeatures;
@@ -212,14 +273,8 @@ const historyItems = computed(() => {
 
 
 
-const copyLink = async () => {
-  try {
-    await navigator.clipboard.writeText(window.location.href);
-    ElMessage.success('链接已复制');
-  } catch {
-    ElMessage.error('复制失败');
-  }
-};
+/** 分享本页：带应用图标 + 名称 / 开发者 / 简介，系统分享面板不支持时退回复制 */
+const copyLink = () => shareCurrentPage('已复制应用分享信息');
 
 const openAppGallery = () => {
   const pkg = appDetail.value?.pkg_name;
@@ -248,17 +303,11 @@ const fetchDetail = async () => {
     const title = appDetail.value?.name || '应用更新详情';
     layoutStore.setPageInfo(title, true, () => router.back());
     document.title = `OpenStore | ${title}`;
+    // 分享卡片带上这个应用自己的图标和文字
+    setPageShareMeta(buildAppShareMeta(appDetail.value));
 
-    const description = appDetail.value?.description || appDetail.value?.intro || '';
-    if (description) {
-      let el = document.querySelector('meta[name="description"]');
-      if (!el) {
-        el = document.createElement('meta');
-        el.setAttribute('name', 'description');
-        document.head.appendChild(el);
-      }
-      el.setAttribute('content', description.slice(0, 160));
-    }
+    // 分享 / meta 描述统一由 page-share 决定：这里要的是「应用简介」（brief_desc），
+    // 不是详情里的长「应用说明」，所以不再单独改写 meta description。
 
     const pkg = appDetail.value?.pkg_name;
     if (pkg) {
@@ -279,6 +328,20 @@ const fetchDetail = async () => {
 
 onMounted(() => {
   fetchDetail();
+  // 「开发者 · 包名」与「应用简介」来回切换
+  subtitleTimer = window.setInterval(() => {
+    if (subtitleLines.value.length > 1) {
+      rotateIndex.value = (rotateIndex.value + 1) % subtitleLines.value.length;
+    }
+  }, SUBTITLE_ROTATE_MS);
+});
+
+onBeforeUnmount(() => {
+  if (subtitleTimer !== null) {
+    window.clearInterval(subtitleTimer);
+    subtitleTimer = null;
+  }
+  clearPageShareMeta();
 });
 </script>
 
@@ -301,6 +364,13 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+/* 分享 / 获取两个按钮同尺寸 */
+.detail-header :deep(.detail-action) {
+  width: 88px;
+  height: 32px;
+  padding: 0;
 }
 
 
@@ -357,6 +427,22 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 副标题轮播时的淡入淡出 */
+.subtitle-fade-enter-active,
+.subtitle-fade-leave-active {
+  transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+.subtitle-fade-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.subtitle-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 .basic-stats {

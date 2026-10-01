@@ -6,91 +6,157 @@
       </template>
     </el-page-header>
 
-    <el-row :gutter="20">
-      <el-col :span="24">
-        <el-card class="mb-4">
-          <div class="card-header">
-            <h3>文章分类</h3>
-            <el-button size="small" @click="openCreateCategory">新增分类</el-button>
+    <!-- 文章分类 / 标签管理：宽度够时并排，窄屏自动堆叠 -->
+    <div class="meta-grid">
+    <div class="section-card">
+      <div class="section-head">
+        <div class="section-left">
+          <span class="section-title">文章分类</span>
+          <span class="section-count">{{ categories.length }} 个</span>
+        </div>
+        <el-button size="small" :icon="Plus" @click="openCreateCategory">新增分类</el-button>
+      </div>
+      <div v-if="categories.length" class="meta-list">
+        <div v-for="row in categories" :key="row.id" class="meta-item">
+          <span class="meta-name">{{ row.name }}</span>
+          <div class="meta-actions">
+            <el-button link type="primary" :icon="Edit" @click="editCategory(row)" />
+            <el-button link type="danger" :icon="Delete" @click="removeCategory(row)" />
           </div>
-          <el-table :data="categories" :height="categoryTableHeight">
-            <el-table-column prop="name" label="名称" />
-            <el-table-column label="操作" width="180">
-              <template #default="{ row }">
-                <el-button size="small" @click="editCategory(row)">编辑</el-button>
-                <el-button size="small" type="danger" @click="removeCategory(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
+        </div>
+      </div>
+      <p v-else class="empty-hint">还没有分类，先建一个分类再写文章。</p>
+    </div>
 
-      <el-col :span="24">
-        <el-card class="mb-4">
-          <div class="card-header">
-            <h3>标签管理</h3>
-            <el-button size="small" @click="openCreateTag">新增标签</el-button>
+    <!-- 标签管理 -->
+    <div class="section-card">
+      <div class="section-head">
+        <div class="section-left">
+          <span class="section-title">标签管理</span>
+          <span class="section-count">{{ tags.length }} 个</span>
+        </div>
+        <el-button size="small" :icon="Plus" @click="openCreateTag">新增标签</el-button>
+      </div>
+      <div v-if="tags.length" class="meta-list">
+        <div v-for="row in tags" :key="row.id" class="meta-item">
+          <span class="tag-dot" :style="{ backgroundColor: row.color || 'var(--el-fill-color)' }"></span>
+          <span class="meta-name">{{ row.name }}</span>
+          <span v-if="row.group_name" class="meta-chip-text">{{ row.group_name }}</span>
+          <span class="meta-chip-text">热度 {{ row.usage_count ?? 0 }}</span>
+          <div class="meta-actions">
+            <el-button link type="primary" :icon="Edit" @click="editTag(row)" />
+            <el-button link type="danger" :icon="Delete" @click="removeTag(row)" />
           </div>
-          <el-table :data="tags" :height="tagTableHeight">
-            <el-table-column prop="name" label="名称" />
-            <el-table-column label="颜色" width="90">
-              <template #default="{ row }">
-                <div class="tag-color" :style="{ backgroundColor: row.color || 'var(--el-fill-color-light)' }"></div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="group_name" label="分组" width="120" />
-            <el-table-column prop="usage_count" label="热度" width="80" />
-            <el-table-column label="操作" width="180">
-              <template #default="{ row }">
-                <el-button size="small" @click="editTag(row)">编辑</el-button>
-                <el-button size="small" type="danger" @click="removeTag(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
+        </div>
+      </div>
+      <p v-else class="empty-hint">还没有标签。</p>
+    </div>
+    </div>
 
-      <el-col :span="24">
-        <el-card class="mb-4">
-          <div class="card-header">
-            <h3>文章列表</h3>
-            <el-button type="primary" size="small" @click="openCreate">新增文章</el-button>
+    <!-- 文章列表 -->
+    <div class="section-card">
+      <div class="section-head">
+        <div class="section-left">
+          <span class="section-title">文章列表</span>
+          <span class="section-count">共 {{ total }} 篇</span>
+        </div>
+        <el-button type="primary" size="small" :icon="Plus" @click="openCreate">新增文章</el-button>
+      </div>
+
+      <div class="filter-bar">
+        <el-input
+          v-model="searchKeyword"
+          class="filter-search"
+          size="small"
+          clearable
+          placeholder="搜索文章标题"
+          @keyup.enter="applyFilter"
+          @clear="applyFilter"
+        >
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <el-select v-model="categoryFilter" size="small" class="filter-select" clearable placeholder="全部分类" @change="applyFilter">
+          <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+        </el-select>
+        <el-select v-model="tagFilter" size="small" class="filter-select" clearable placeholder="全部标签" @change="applyFilter">
+          <el-option v-for="t in tags" :key="t.id" :label="t.name" :value="t.id" />
+        </el-select>
+        <el-select v-model="status" size="small" class="filter-select" placeholder="全部状态">
+          <el-option label="全部状态" value="" />
+          <el-option label="草稿" value="draft" />
+          <el-option label="已发布" value="published" />
+          <el-option label="已下线" value="offline" />
+        </el-select>
+        <el-button size="small" text :icon="Refresh" @click="fetchList">刷新</el-button>
+      </div>
+
+      <el-table :data="items" style="width: 100%">
+        <el-table-column label="文章" min-width="150">
+          <template #default="{ row }">
+            <div class="title-cell">
+              <span class="title-text">{{ row.title || '未命名文章' }}</span>
+              <span class="title-sub">
+                {{ row.category_name || '未分类' }}
+                <template v-if="row.tag_names"> · {{ row.tag_names }}</template>
+                <template v-if="row.slug"> · /{{ row.slug }}</template>
+              </span>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column v-if="!isMobile" label="状态" min-width="96">
+          <template #default="{ row }">
+            <el-tag :type="statusTagType(row.status)" effect="light" size="small">
+              {{ statusLabel(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column v-if="!isMobile" label="发布时间" min-width="140">
+          <template #default="{ row }">
+            <span :class="{ 'muted-text': !row.published_at }">
+              {{ row.published_at ? formatDateTime(row.published_at) : '未发布' }}
+            </span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="操作" min-width="160" align="right">
+          <template #default="{ row }">
+            <div class="action-cell">
+              <el-button link type="primary" :icon="Edit" @click="editRow(row)" />
+              <el-button
+                v-if="row.status !== 'published'"
+                size="small"
+                type="success"
+                plain
+                @click="publish(row)"
+              >发布</el-button>
+              <el-button v-else size="small" type="warning" plain @click="offline(row)">下线</el-button>
+              <el-button size="small" text @click="openVersions(row)">版本</el-button>
+              <el-button link type="danger" :icon="Delete" @click="remove(row)" />
+            </div>
+          </template>
+        </el-table-column>
+
+        <template #empty>
+          <div class="table-empty">
+            <span>{{ hasFilter ? '没有符合条件的文章' : '还没有文章' }}</span>
+            <el-button v-if="!hasFilter" size="small" type="primary" plain @click="openCreate">新增文章</el-button>
           </div>
-          <div class="toolbar">
-            <el-select v-model="status" placeholder="状态过滤" style="width: 160px" @change="fetchList">
-              <el-option label="全部" value="" />
-              <el-option label="草稿" value="draft" />
-              <el-option label="已发布" value="published" />
-              <el-option label="已下线" value="offline" />
-            </el-select>
-            <el-select v-model="categoryFilter" placeholder="分类" clearable style="width: 160px" @change="fetchList">
-              <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
-            </el-select>
-            <el-select v-model="tagFilter" placeholder="标签" clearable style="width: 160px" @change="fetchList">
-              <el-option v-for="t in tags" :key="t.id" :label="t.name" :value="t.id" />
-            </el-select>
-          </div>
-          <el-table :data="items" stripe>
-            <el-table-column prop="title" label="标题" min-width="200" />
-            <el-table-column prop="category_name" label="分类" width="120" />
-            <el-table-column prop="status" label="状态" width="100" />
-            <el-table-column prop="published_at" label="发布时间" width="180" />
-            <el-table-column label="操作" width="300">
-              <template #default="{ row }">
-                <el-button size="small" @click="editRow(row)">编辑</el-button>
-                <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
-                <el-button size="small" type="success" v-if="row.status !== 'published'" @click="publish(row)">发布</el-button>
-                <el-button size="small" type="warning" v-if="row.status === 'published'" @click="offline(row)">下线</el-button>
-                <el-button size="small" @click="openVersions(row)">版本</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <div class="pagination">
-            <el-pagination background layout="prev, pager, next" :page-size="pageSize" :total="total" :current-page="page" @current-change="onPageChange" />
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </template>
+      </el-table>
+
+      <div v-if="total > pageSize" class="pagination">
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :page-size="pageSize"
+          :total="total"
+          :current-page="page"
+          @current-change="onPageChange"
+        />
+      </div>
+    </div>
 
     <el-dialog v-model="showDialog" :title="dialogTitle" :width="isMobile ? '100%' : '980px'" :fullscreen="isMobile || fullScreen" :class="['article-dialog', { 'is-editor-fullscreen': fullScreen || isMobile }]">
       <el-form label-position="top" :model="form" class="article-form">
@@ -233,37 +299,29 @@
             <el-form-item label="密码保护">
               <el-input 
                 v-model="form.password" 
-                placeholder="可选，留空为公开" 
+                :placeholder="articleHasPassword ? '已设密码，留空则保持不变' : '可选，留空为公开'" 
                 show-password 
                 autocomplete="new-password"
                 name="article-password"
               />
+              <el-checkbox
+                v-if="articleHasPassword"
+                v-model="removeArticlePassword"
+                class="password-remove-check"
+              >
+                移除密码
+              </el-checkbox>
             </el-form-item>
-          </el-col>
-
-          <el-col :span="24">
-            <el-form-item label="编辑模式">
-              <el-radio-group v-model="markdownMode" @change="handleModeChange">
-                <el-radio :label="false">富文本编辑器</el-radio>
-                <el-radio :label="true">Markdown</el-radio>
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-
-          <el-col :span="24">
-            <div class="dialog-footer">
-              <div class="autosave-tip" v-if="autoSaveTip">{{ autoSaveTip }}</div>
-              <div class="footer-actions">
-                <el-button @click="showDialog=false">取消</el-button>
-                <el-button @click="saveSnapshot" :disabled="!editingId">保存快照</el-button>
-                <el-button type="primary" @click="save">保存</el-button>
-              </div>
-            </div>
           </el-col>
 
           <el-col :span="24">
             <div class="editor-container" :class="{ 'is-fullscreen': fullScreen }">
               <div class="editor-tools">
+                <span class="editor-tools-label">正文</span>
+                <el-radio-group v-model="markdownMode" size="small" class="editor-mode-switch" @change="handleModeChange">
+                  <el-radio-button :value="false">富文本</el-radio-button>
+                  <el-radio-button :value="true">Markdown</el-radio-button>
+                </el-radio-group>
                 <el-upload :show-file-list="false" :http-request="handleImageUpload" accept="image/*">
                   <el-button size="small">插入图片</el-button>
                 </el-upload>
@@ -309,19 +367,22 @@
               </div>
 
               <div v-if="!markdownMode" class="editor-section">
-                <div class="editor-label">文章内容</div>
                 <div class="quill-wrapper">
                   <QuillEditor ref="quillRef" v-model:content="form.content_html" contentType="html" theme="snow" class="quill-editor" :options="quillOptions" />
                 </div>
               </div>
 
               <div v-else class="editor-section markdown-section">
-                <div class="editor-label">Markdown编辑</div>
                 <el-row :gutter="16" class="markdown-row">
                   <el-col :xs="24" :md="12" class="markdown-col">
                     <div class="markdown-editor-wrapper">
                       <div class="sub-label">编辑区域</div>
-                      <el-input ref="markdownInputRef" type="textarea" v-model="contentMarkdown" class="markdown-editor" placeholder="在此编写 Markdown 内容" :autosize="{ minRows: 20 }" resize="none" />
+                      <!--
+                        不要用 autosize：它会按内容把 textarea 撑高（内联 height），
+                        而外层容器是固定高度 + overflow: hidden，超出的内容会被裁掉又滚不动。
+                        这里固定填满容器，由 textarea 自己内部滚动。
+                      -->
+                      <el-input ref="markdownInputRef" type="textarea" v-model="contentMarkdown" class="markdown-editor" placeholder="在此编写 Markdown 内容" resize="none" />
                     </div>
                   </el-col>
                   <el-col :xs="24" :md="12" class="markdown-col">
@@ -336,6 +397,16 @@
           </el-col>
         </el-row>
       </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <div class="autosave-tip" v-if="autoSaveTip">{{ autoSaveTip }}</div>
+          <div class="footer-actions">
+            <el-button @click="showDialog=false">取消</el-button>
+            <el-button @click="saveSnapshot" :disabled="!editingId">保存快照</el-button>
+            <el-button type="primary" @click="save">保存</el-button>
+          </div>
+        </div>
+      </template>
     </el-dialog>
 
     <el-dialog v-model="showCatDialog" :title="catDialogTitle" :width="isMobile ? '90%' : '500px'">
@@ -369,9 +440,9 @@
 
     <el-dialog v-model="showVersionDialog" title="版本管理" :width="isMobile ? '100%' : '820px'">
       <el-table :data="versions" height="360">
-        <el-table-column prop="created_at" label="时间" width="200" />
+        <el-table-column prop="created_at" label="时间" min-width="140" />
         <el-table-column prop="title" label="标题" />
-        <el-table-column label="操作" width="240">
+        <el-table-column label="操作" min-width="160">
           <template #default="{ row }">
             <el-button size="small" @click="restoreVersion(row)">恢复</el-button>
             <el-button size="small" @click="selectCompare(row)">加入对比</el-button>
@@ -425,7 +496,7 @@ import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/atom-one-light.css';
 import 'katex/dist/katex.min.css';
 import { useAuthStore } from '../../stores/auth';
-import { Picture } from '@element-plus/icons-vue';
+import { Picture, Plus, Edit, Delete, Search, Refresh } from '@element-plus/icons-vue';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
@@ -444,6 +515,7 @@ const items = ref<Blog[]>([]);
 const status = ref<string>('');
 const categoryFilter = ref<number | null>(null);
 const tagFilter = ref<number | null>(null);
+const searchKeyword = ref('');
 const page = ref(1);
 const pageSize = ref(10);
 const total = ref(0);
@@ -508,6 +580,15 @@ const form = ref<Partial<Blog>>({
   password: ''
 });
 
+/*
+ * 文章密码现在只存哈希，后端不再回传原文，所以编辑时输入框是空的：
+ * - 留空 + 不勾选「移除密码」 -> 保持原密码
+ * - 填入新值               -> 设为新密码
+ * - 勾选「移除密码」        -> 清除密码
+ */
+const articleHasPassword = ref(false);
+const removeArticlePassword = ref(false);
+
 const md = new MarkdownIt({
   html: true,
   linkify: true,
@@ -527,20 +608,31 @@ md.use(markdownItKatex);
 const markdownPreview = computed(() => md.render(contentMarkdown.value || ''));
 const titleCount = computed(() => (form.value.title ? String(form.value.title).length : 0));
 const summaryCount = computed(() => (form.value.summary ? String(form.value.summary).length : 0));
-const categoryTableHeight = computed(() => {
-  const cap = isMobile.value ? 240 : 360;
-  const header = 48;
-  const row = 48;
-  const desired = header + categories.value.length * row;
-  return Math.min(desired, cap);
-});
-const tagTableHeight = computed(() => {
-  const cap = isMobile.value ? 260 : 360;
-  const header = 48;
-  const row = 48;
-  const desired = header + tags.value.length * row;
-  return Math.min(desired, cap);
-});
+
+/* ---------- 列表筛选与展示 ---------- */
+const hasFilter = computed(
+  () => !!(searchKeyword.value.trim() || status.value || categoryFilter.value || tagFilter.value)
+);
+
+const statusLabel = (value?: string | null) => {
+  if (value === 'published') return '已发布';
+  if (value === 'offline') return '已下线';
+  return '草稿';
+};
+
+const statusTagType = (value?: string | null) => {
+  if (value === 'published') return 'success';
+  if (value === 'offline') return 'info';
+  return 'warning';
+};
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(String(value).replace(' ', 'T'));
+  if (Number.isNaN(date.getTime())) return String(value);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 
 const quillOptions = ref({
   modules: {
@@ -627,14 +719,19 @@ const fetchAppsByIds = async (ids: number[]) => {
   const matches = allApps.filter(a => ids.includes(a.id));
   mergeAppOptions(matches);
 };
+// 连续改筛选条件时只认最后一次请求
+let listRequestSeq = 0;
 const fetchList = async () => {
+  const seq = ++listRequestSeq;
   const data = await getBlogs({
     status: status.value || undefined,
+    search: searchKeyword.value.trim() || undefined,
     page: page.value,
     pageSize: pageSize.value,
     category_id: categoryFilter.value || undefined,
     tag_id: tagFilter.value || undefined
   });
+  if (seq !== listRequestSeq) return;
   items.value = data.items;
   total.value = data.total;
 };
@@ -668,8 +765,22 @@ const loadRecentUploads = async () => {
   }
 };
 
-watch(status, fetchList);
-watch([categoryFilter, tagFilter], fetchList);
+/** 改筛选条件后回到第一页再查 */
+function applyFilter() {
+  page.value = 1;
+  fetchList();
+}
+
+watch(status, applyFilter);
+watch([categoryFilter, tagFilter], applyFilter);
+
+// 标题输入即搜：停顿 300ms 再查
+let searchTimer: number | undefined;
+watch(searchKeyword, () => {
+  window.clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(() => applyFilter(), 300);
+});
+onUnmounted(() => window.clearTimeout(searchTimer));
 
 const slugify = (input: string) => {
   const cleaned = input
@@ -703,6 +814,8 @@ const openCreate = () => {
     seo_keywords: '',
     password: ''
   };
+  articleHasPassword.value = false;
+  removeArticlePassword.value = false;
   scheduled.value = null;
   markdownMode.value = false;
   contentMarkdown.value = '';
@@ -735,8 +848,11 @@ const editRow = (row: Blog) => {
     seo_title: row.seo_title || '',
     seo_description: row.seo_description || '',
     seo_keywords: row.seo_keywords || '',
-    password: row.password || ''
+    // 密码不回显（后端只给 has_password 标记），留空即保持不变
+    password: ''
   };
+  articleHasPassword.value = !!row.has_password;
+  removeArticlePassword.value = false;
   scheduled.value = row.scheduled_at || null;
   contentMarkdown.value = row.content_markdown || '';
   markdownMode.value = !!row.content_markdown;
@@ -927,6 +1043,18 @@ const save = async () => {
     
     // We no longer send app_ids, instead we send related_apps
     const payload: Partial<Omit<Blog, 'tag_ids' | 'app_ids'>> & { tag_ids: number[]; related_apps: any[] } = { ...form.value, tag_ids: tagIds, related_apps: relatedApps };
+
+    /*
+     * 密码的三态交给后端处理：
+     *   勾了「移除密码」-> 发空串（明确清除）
+     *   输入了新密码    -> 原样发出（后端存哈希）
+     *   留空且没勾选    -> 字段整个不发（保持原密码）
+     */
+    if (editingId.value) {
+      if (removeArticlePassword.value) payload.password = '';
+      else if (!payload.password) delete payload.password;
+    }
+
     if (markdownMode.value) {
       payload.content_markdown = contentMarkdown.value;
       payload.content_html = md.render(contentMarkdown.value || '');
@@ -1240,14 +1368,37 @@ const openCompare = () => {
 }
 .article-dialog.is-editor-fullscreen .markdown-col {
   display: flex;
+  /* 关键：用列方向，编辑/预览框才能在垂直方向被 flex 撑满 */
+  flex-direction: column;
+}
+/*
+ * 双栏等高规则里给 wrapper 写死了 height:320px，全屏时必须让位给 flex，
+ * 否则全屏下编辑框还是只有 320px 高，看着像全屏没生效。
+ */
+.article-dialog.is-editor-fullscreen .markdown-editor-wrapper,
+.article-dialog.is-editor-fullscreen .markdown-preview-wrapper {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .article-dialog.is-editor-fullscreen .markdown-editor :deep(.el-textarea__inner) {
   height: 100%;
   min-height: 0;
 }
+.article-dialog.is-editor-fullscreen .quill-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .article-dialog.is-editor-fullscreen .quill-editor :deep(.ql-container) {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+.article-dialog.is-editor-fullscreen .quill-editor :deep(.ql-editor) {
+  height: 100%;
+  overflow-y: auto;
 }
 </style>
 
@@ -1281,8 +1432,8 @@ const openCompare = () => {
 .markdown-editor :deep(.el-textarea__inner) { border: none; border-radius: 0; padding: 12px; font-family: monospace; font-size: 14px; line-height: 1.5; resize: none; min-height: 320px; background-color: var(--el-bg-color); color: var(--el-text-color-primary); }
 .md-preview { flex: 1; padding: 12px !important; overflow: auto; font-size: 14px; background-color: transparent !important; min-height: 320px; }
 
-.dialog-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.autosave-tip { color: var(--el-text-color-secondary); font-size: 12px; }
+.dialog-footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.autosave-tip { margin-right: auto; color: var(--el-text-color-secondary); font-size: 12px; }
 .footer-actions { display: flex; gap: 8px; }
 .version-compare-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .compare-container { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -1293,5 +1444,253 @@ const openCompare = () => {
 @media (max-width: 768px) {
   .pagination { justify-content: center; }
   .compare-container { grid-template-columns: 1fr; }
+}
+
+/* ------------------------------------------------------------------
+ * 列表区：分类 / 标签 / 文章列表
+ * ------------------------------------------------------------------ */
+.section-card {
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background-color: var(--el-bg-color-overlay);
+}
+
+/* 分类 + 标签：一行放得下就并排，放不下自动堆叠（两栏等高） */
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.meta-grid .section-card {
+  margin-bottom: 0;
+}
+
+@media (max-width: 720px) {
+  .meta-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-left {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.section-count {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.meta-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  transition: background-color 0.2s ease;
+}
+
+.meta-item:hover {
+  background-color: var(--el-fill-color-light);
+}
+
+.meta-name {
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+
+.meta-chip-text {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
+.meta-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tag-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.empty-hint {
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--el-text-color-placeholder);
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.filter-search { width: 240px; max-width: 100%; }
+.filter-select { width: 140px; }
+
+.title-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.title-text {
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.title-sub {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.muted-text {
+  font-size: 13px;
+  color: var(--el-text-color-placeholder);
+}
+
+.action-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.table-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 0;
+  font-size: 13px;
+  color: var(--el-text-color-placeholder);
+}
+
+/* ------------------------------------------------------------------
+ * 编辑器弹窗：正文工具条 + Markdown 双栏
+ * 放在样式表最后，覆盖前面 `height:100%` / `min-height:320px` 造成的两栏不等高
+ * ------------------------------------------------------------------ */
+.editor-tools-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  margin-right: 4px;
+}
+
+.editor-mode-switch {
+  margin-right: 4px;
+}
+
+.markdown-col {
+  height: auto;
+}
+
+.markdown-editor-wrapper,
+.markdown-preview-wrapper {
+  height: 320px;
+  overflow: hidden;
+}
+
+.markdown-editor,
+.markdown-editor :deep(.el-textarea),
+.markdown-editor :deep(.el-textarea__inner) {
+  height: 100%;
+  min-height: 0;
+}
+
+.markdown-editor :deep(.el-textarea__inner) {
+  overflow-y: auto;
+}
+
+.markdown-preview-wrapper .md-preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Markdown 预览配色跟随主题（原样式是 GitHub 浅色） */
+.md-preview :deep(h1),
+.md-preview :deep(h2),
+.md-preview :deep(h3),
+.md-preview :deep(h4),
+.md-preview :deep(h5),
+.md-preview :deep(h6) {
+  color: var(--el-text-color-primary);
+  border-bottom-color: var(--el-border-color-lighter);
+}
+
+.md-preview :deep(p),
+.md-preview :deep(li),
+.md-preview :deep(td) {
+  color: var(--el-text-color-regular);
+}
+
+.md-preview :deep(a) { color: var(--el-color-primary); }
+.md-preview :deep(code) { color: var(--el-text-color-primary); background-color: var(--el-fill-color); }
+.md-preview :deep(pre) { background-color: var(--el-fill-color-light); }
+.md-preview :deep(blockquote) { color: var(--el-text-color-secondary); border-left-color: var(--el-border-color); }
+.md-preview :deep(hr) { background-color: var(--el-border-color-lighter); }
+.md-preview :deep(table tr) { background-color: transparent; border-top-color: var(--el-border-color-lighter); }
+.md-preview :deep(table tr:nth-child(2n)) { background-color: var(--el-fill-color-lighter); }
+.md-preview :deep(table th), .md-preview :deep(table td) { border-color: var(--el-border-color-lighter); }
+
+/* 富文本：文字与工具栏图标跟随主题 */
+.quill-editor :deep(.ql-editor) { color: var(--el-text-color-primary); }
+.quill-editor :deep(.ql-editor.ql-blank::before) { color: var(--el-text-color-placeholder); font-style: normal; }
+.quill-editor :deep(.ql-snow .ql-stroke) { stroke: var(--el-text-color-regular); }
+.quill-editor :deep(.ql-snow .ql-fill),
+.quill-editor :deep(.ql-snow .ql-stroke.ql-fill) { fill: var(--el-text-color-regular); }
+.quill-editor :deep(.ql-snow .ql-picker),
+.quill-editor :deep(.ql-snow .ql-picker-label) { color: var(--el-text-color-regular); }
+.quill-editor :deep(.ql-snow .ql-picker-options) { background-color: var(--el-bg-color-overlay); border-color: var(--el-border-color-lighter); }
+
+@media (max-width: 768px) {
+  .section-card { padding: 14px 12px; }
+  .filter-search { width: 100%; }
+  .filter-select { flex: 1 1 140px; width: auto; }
+  .markdown-editor-wrapper,
+  .markdown-preview-wrapper { height: 260px; }
+  .markdown-editor :deep(.el-textarea__inner),
+  .md-preview { min-height: 0; }
 }
 </style>

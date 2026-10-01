@@ -1,100 +1,87 @@
 <template>
-  <span class="animated-number">{{ display }}</span>
+  <span class="animated-number" :class="{ 'is-bumping': bumping }">{{ Math.round(display).toLocaleString() }}</span>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue';
-
-/**
- * 数字滚动：数值变化时从「当前显示值」平滑滚到新值；
- * epoch 变化时（例如点了「刷新状态」）从头 0 → 目标值重播一次，保证有可见的滚动效果。
+/*
+ * 数字滚动：值变化时从旧值补间到新值，并轻微放大一下，
+ * 用来表现「数据在实时跳动」。纯展示组件，不改变任何业务数据。
  */
-const props = withDefaults(
-  defineProps<{
-    value: number;
-    duration?: number;
-    epoch?: number;
-    formatter?: (n: number) => string;
-  }>(),
-  { duration: 600, epoch: 0 }
-);
+import { onUnmounted, ref, watch } from 'vue';
 
-const fmt = (n: number) => (props.formatter ? props.formatter(n) : Math.round(n).toLocaleString());
+const props = withDefaults(defineProps<{ value?: number; duration?: number }>(), {
+  value: 0,
+  duration: 480
+});
 
-const display = ref('0');
-let raf = 0;
-let timer = 0;
-let startTs = 0;
-let fromVal = 0;
-let toVal = 0;
+const display = ref(props.value || 0);
+const bumping = ref(false);
 
-const stop = () => {
-  if (raf) {
-    cancelAnimationFrame(raf);
-    raf = 0;
-  }
-  if (timer) {
-    clearTimeout(timer);
-    timer = 0;
+let rafId: number | null = null;
+let bumpTimer: number | null = null;
+
+const stopRaf = () => {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
   }
 };
 
-const run = (from: number, to: number, duration: number) => {
-  stop();
-  fromVal = from;
-  toVal = to;
-  startTs = 0;
-  if (duration <= 0 || fromVal === toVal) {
-    display.value = fmt(toVal);
-    return;
-  }
-  const step = (ts: number) => {
-    if (!startTs) startTs = ts;
-    const p = Math.min(1, (ts - startTs) / duration);
-    const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
-    display.value = fmt(fromVal + (toVal - fromVal) * eased);
-    if (p < 1) {
-      raf = requestAnimationFrame(step);
-    } else {
-      display.value = fmt(toVal);
-      raf = 0;
+const animate = (from: number, to: number) => {
+  stopRaf();
+  const start = performance.now();
+  const step = (now: number) => {
+    const progress = Math.min(1, (now - start) / props.duration);
+    // easeOutCubic：先快后慢，读起来更像计数器在追数字
+    const eased = 1 - Math.pow(1 - progress, 3);
+    display.value = from + (to - from) * eased;
+    if (progress < 1) rafId = requestAnimationFrame(step);
+    else {
+      display.value = to;
+      rafId = null;
     }
   };
-  raf = requestAnimationFrame(step);
-  // 兜底：后台标签页 rAF 会被节流/暂停，超时后直接落到目标值
-  timer = window.setTimeout(() => {
-    if (raf) {
-      cancelAnimationFrame(raf);
-      raf = 0;
-    }
-    display.value = fmt(toVal);
-    timer = 0;
-  }, duration + 300);
+  rafId = requestAnimationFrame(step);
 };
-
-/** 从当前显示的文本里反解出数字，作为下一次滚动的起点 */
-const currentValue = () => {
-  const n = Number(String(display.value).replace(/[^\d.-]/g, ''));
-  return Number.isFinite(n) ? n : 0;
-};
-
-onMounted(() => run(0, props.value || 0, props.duration * 1.4));
 
 watch(
   () => props.value,
-  (v) => run(currentValue(), v || 0, props.duration)
+  (next, prev) => {
+    const target = Number(next) || 0;
+    const from = Number(prev) || 0;
+    if (target === from) return;
+
+    animate(display.value, target);
+
+    // 放大一下再回位，避免数字悄悄变了看不出来
+    bumping.value = false;
+    if (bumpTimer !== null) window.clearTimeout(bumpTimer);
+    requestAnimationFrame(() => {
+      bumping.value = true;
+      bumpTimer = window.setTimeout(() => {
+        bumping.value = false;
+        bumpTimer = null;
+      }, 520);
+    });
+  },
+  { immediate: true }
 );
 
-watch(
-  () => props.epoch,
-  () => run(0, props.value || 0, props.duration * 1.4)
-);
-
-onUnmounted(stop);
+onUnmounted(() => {
+  stopRaf();
+  if (bumpTimer !== null) window.clearTimeout(bumpTimer);
+});
 </script>
 
 <style scoped>
 .animated-number {
+  display: inline-block;
   font-variant-numeric: tabular-nums;
+  transform-origin: left center;
+  transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.24s ease;
+}
+
+.animated-number.is-bumping {
+  transform: scale(1.06);
 }
 </style>

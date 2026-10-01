@@ -7,39 +7,31 @@
     </el-page-header>
 
     <div class="filter-toolbar mb-4">
-      <el-select
+      <!--
+        用 el-select-v2（虚拟滚动）：地区 500+、设备 3000+ 个选项，
+        普通 el-select 会把所有选项都渲染成 DOM，一次要卡住主线程 2 秒左右。
+      -->
+      <el-select-v2
         v-model="filterLocation"
         placeholder="筛选地区"
         class="filter-select"
         clearable
         filterable
+        :options="locationSelectOptions"
         @change="onSearch"
         @clear="onSearch"
-      >
-        <el-option
-          v-for="item in locationOptions"
-          :key="item.name"
-          :label="item.name + ' (' + item.count + ')'"
-          :value="item.name"
-        />
-      </el-select>
+      />
       
-      <el-select
+      <el-select-v2
         v-model="filterDevice"
         placeholder="筛选设备"
         class="filter-select"
         clearable
         filterable
+        :options="deviceSelectOptions"
         @change="onSearch"
         @clear="onSearch"
-      >
-        <el-option
-          v-for="item in deviceOptions"
-          :key="item.name"
-          :label="item.name + ' (' + item.count + ')'"
-          :value="item.name"
-        />
-      </el-select>
+      />
 
       <el-input
         v-model="filterPath"
@@ -91,25 +83,35 @@
       </div>
       <div v-show="activeTrendTab === 'activity'" class="trend-panel">
         <!-- 窄屏用卡片列表，避免列被挤压/截断 -->
-        <div v-if="isMobile" class="activity-cards" v-loading="loading">
-          <div
-            v-for="item in activityItems"
-            :key="item.id"
-            class="activity-card is-clickable"
-            @click="openIpHistory(item)"
-          >
-            <div class="activity-card-top">
-              <span class="activity-time">{{ formatTime(null, null, item.timestamp || '') }}</span>
-              <span class="activity-device">{{ item.device || '未知设备' }}</span>
+        <div v-if="isMobile" v-loading="loading">
+          <!-- 新访客记录是 WS 推来后 unshift 到最前面的，这里让它"冒出来" -->
+          <TransitionGroup name="visitor-in" tag="div" class="activity-cards">
+            <div
+              v-for="item in activityItems"
+              :key="item.id"
+              class="activity-card is-clickable"
+              @click="openIpHistory(item)"
+            >
+              <div class="activity-card-top">
+                <span class="activity-time">{{ formatTime(null, null, item.timestamp || '') }}</span>
+                <span class="activity-device">{{ item.device || '未知设备' }}</span>
+              </div>
+              <div class="activity-path" :title="formatPath(null, null, item.path || '')">
+                {{ formatPath(null, null, item.path || '') }}
+              </div>
+              <div class="activity-meta">
+                <span class="activity-ip">
+                  <span
+                    class="via-proxy-badge"
+                    :class="{ 'is-hidden': !item.via_proxy }"
+                    title="经前置代理访问"
+                  >代</span>
+                  {{ item.ip || '—' }}
+                </span>
+                <span class="activity-location">{{ item.location || '未知地区' }}</span>
+              </div>
             </div>
-            <div class="activity-path" :title="formatPath(null, null, item.path || '')">
-              {{ formatPath(null, null, item.path || '') }}
-            </div>
-            <div class="activity-meta">
-              <span>{{ item.ip || '—' }}</span>
-              <span>{{ item.location || '未知地区' }}</span>
-            </div>
-          </div>
+          </TransitionGroup>
           <p v-if="activityItems.length === 0" class="activity-empty">暂无访问记录</p>
         </div>
 
@@ -121,13 +123,23 @@
               style="width: 100%"
               v-loading="loading"
               class="activity-table"
+              :row-class-name="rowClassName"
               @row-click="openIpHistory"
             >
-            <el-table-column prop="timestamp" label="时间" width="180" show-overflow-tooltip :formatter="formatTime" />
-            <el-table-column prop="ip" label="IP" width="140" show-overflow-tooltip />
-            <el-table-column prop="path" label="访问路径" min-width="220" show-overflow-tooltip :formatter="formatPath" />
-            <el-table-column prop="location" label="地区" width="150" show-overflow-tooltip />
-            <el-table-column prop="device" label="设备" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="timestamp" label="时间" min-width="124" show-overflow-tooltip :formatter="formatTime" />
+            <el-table-column prop="ip" label="IP" min-width="130" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span
+                  class="via-proxy-badge"
+                  :class="{ 'is-hidden': !row.via_proxy }"
+                  title="经前置代理访问"
+                >代</span>
+                <span>{{ row.ip || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="path" label="访问路径" min-width="150" show-overflow-tooltip :formatter="formatPath" />
+            <el-table-column prop="location" label="地区" min-width="130" show-overflow-tooltip />
+            <el-table-column prop="device" label="设备" min-width="140" show-overflow-tooltip />
           </el-table>
         </div>
         <div class="pagination">
@@ -253,6 +265,17 @@
             {{ formatPath(null, null, row.path || '') }}
           </span>
           <span class="ip-history-device">{{ row.device || '未知设备' }}</span>
+          <!--
+            只有经 /api/v0 转发到上游的请求才显示 UA（显示服务端实际发给上游的那个）。
+            其它请求不显示内容，但元素照样占位，避免每行高矮不齐。
+          -->
+          <span
+            class="ip-history-ua"
+            :class="{ 'is-empty': !rowUa(row) }"
+            :title="rowUa(row)?.title || ''"
+          >
+            <template v-if="rowUa(row)">{{ rowUa(row)!.label }} · {{ rowUa(row)!.value }}</template>
+          </span>
         </div>
         <p v-if="!ipHistoryLoading && ipHistory.rows.length === 0" class="activity-empty">
           暂无访问记录
@@ -276,7 +299,15 @@ import {
 } from '../../services/admin';
 import { Download, Delete, Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import * as echarts from 'echarts';
+/*
+ * echarts 体积很大（开发模式未压缩约 2.5MB），静态导入会拖住整个面板的渲染。
+ * 改成用到时再加载：筛选条、表格、统计先出来，图表随后绘制。
+ */
+let echartsLib: typeof import('echarts') | null = null;
+const loadEcharts = async () => {
+  if (!echartsLib) echartsLib = await import('echarts');
+  return echartsLib;
+};
 
 import { onWS } from '../../services/ws';
 
@@ -285,6 +316,9 @@ const embedded = props.embedded === true;
 
 const router = useRouter();
 const items = ref<Visitor[]>([]);
+/** 刚刚通过 WS 追加进来的那一条：窄屏靠 TransitionGroup 冒出来，宽屏表格靠它整行闪一下 */
+const justAddedId = ref<number | null>(null);
+let justAddedTimer: number | null = null;
 const total = ref(0);
 const page = ref(1);
 const pageSize = ref(20);
@@ -355,11 +389,24 @@ const ipHistory = ref<{
   location: string;
   total: number;
   startText: string;
+  upstreamUa: string;
   rows: Visitor[];
-}>({ ip: '', location: '', total: 0, startText: '', rows: [] });
+}>({ ip: '', location: '', total: 0, startText: '', upstreamUa: '', rows: [] });
 const ipHistoryTitle = computed(() =>
   ipHistory.value.ip ? `${ipHistory.value.ip} 的访问记录` : '访问记录'
 );
+
+/**
+ * 这一行要显示的 UA。
+ * 只有经 /api/v0 转发到上游的请求才有意义 —— 上游看到的是服务端统一的 UA；
+ * 其它请求返回 null（不显示内容，但元素照样占位，见 .ip-history-ua 的样式）。
+ */
+const rowUa = (row: Visitor) => {
+  if (!row.via_upstream) return null;
+  const value = ipHistory.value.upstreamUa;
+  if (!value) return null;
+  return { label: '上游 UA', value, title: `转发上游时用的 User-Agent：${value}` };
+};
 
 const openIpHistory = async (row: Partial<Visitor>) => {
   const ip = String(row?.ip || '').trim();
@@ -370,6 +417,7 @@ const openIpHistory = async (row: Partial<Visitor>) => {
     location: String(row?.location || ''),
     total: 0,
     startText: '',
+    upstreamUa: '',
     rows: []
   };
   ipHistoryVisible.value = true;
@@ -382,6 +430,7 @@ const openIpHistory = async (row: Partial<Visitor>) => {
       location: data.location || String(row?.location || ''),
       total: data.total || 0,
       startText: data.first_seen ? `首次 ${formatTime(null, null, data.first_seen)}` : '',
+      upstreamUa: data.upstream_ua || '',
       rows: data.visitors || []
     };
   } catch {
@@ -392,6 +441,14 @@ const openIpHistory = async (row: Partial<Visitor>) => {
 };
 const locationOptions = ref<{name: string, count: number}[]>([]);
 const deviceOptions = ref<{name: string, count: number}[]>([]);
+
+// el-select-v2 需要 { value, label } 结构；这里带着访问次数，便于在下拉里判断
+const locationSelectOptions = computed(() =>
+  locationOptions.value.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` }))
+);
+const deviceSelectOptions = computed(() =>
+  deviceOptions.value.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` }))
+);
 const selectedIds = ref<number[]>([]);
 
 const isMobile = ref(window.innerWidth < 768);
@@ -401,6 +458,9 @@ const trendLabel = computed(() => trendRanges.find(r => r.key === trendRange.val
 const compareLeftLabel = computed(() => compareRanges.find(r => r.key === compareLeftRange.value)?.label || '');
 const compareRightLabel = computed(() => compareRanges.find(r => r.key === compareRightRange.value)?.label || '');
 const activityItems = computed(() => items.value);
+/** el-table 的行类名：给刚新增的那一行加高亮类 */
+const rowClassName = ({ row }: { row: Visitor }) =>
+  justAddedId.value !== null && row?.id === justAddedId.value ? 'row-just-added' : '';
 const compareSameLength = computed(() => {
   const l = compareLeftStats.value.days;
   const r = compareRightStats.value.days;
@@ -479,6 +539,13 @@ onMounted(() => {
       if (page.value === 1 && !hasFilters) {
         items.value.unshift(payload);
         total.value++;
+        // 标记这一条是新增的，让列表播放入场动画（表格视图用行高亮）
+        justAddedId.value = payload?.id ?? null;
+        if (justAddedTimer) window.clearTimeout(justAddedTimer);
+        justAddedTimer = window.setTimeout(() => {
+          justAddedId.value = null;
+          justAddedTimer = null;
+        }, 1600);
         if (items.value.length > pageSize.value) {
           items.value.pop();
         }
@@ -515,9 +582,9 @@ onUnmounted(() => {
   }
 });
 
-let chartInstance: echarts.ECharts | null = null;
+let chartInstance: import('echarts').ECharts | null = null;
 let resizeObserver: ResizeObserver | null = null;
-let compareChartInstance: echarts.ECharts | null = null;
+let compareChartInstance: import('echarts').ECharts | null = null;
 let compareResizeObserver: ResizeObserver | null = null;
 
 const fetchList = async () => {
@@ -596,7 +663,8 @@ const updateChart = async (rangeKey: string) => {
   const range = trendRanges.find(r => r.key === rangeKey);
   const hourly = range?.granularity === 'hour';
   const trend = await fetchTrendByRange(rangeKey);
-  
+  const echarts = await loadEcharts();
+
   if (!chartInstance) {
     chartInstance = echarts.init(chartRef.value);
   }
@@ -727,8 +795,9 @@ const summarizeTrend = (
   };
 };
 
-const updateCompareChart = (leftTrend: Array<{ date: string; count: number }>, rightTrend: Array<{ date: string; count: number }>) => {
+const updateCompareChart = async (leftTrend: Array<{ date: string; count: number }>, rightTrend: Array<{ date: string; count: number }>) => {
   if (!compareChartRef.value) return;
+  const echarts = await loadEcharts();
   if (!compareChartInstance) {
     compareChartInstance = echarts.init(compareChartRef.value);
   }
@@ -842,7 +911,7 @@ const loadCompare = async () => {
   compareRightTrend.value = rightTrend;
   compareLeftStats.value = summarizeTrend(leftTrend, leftDays, leftRange?.offset || 0);
   compareRightStats.value = summarizeTrend(rightTrend, rightDays, rightRange?.offset || 0);
-  updateCompareChart(leftTrend, rightTrend);
+  await updateCompareChart(leftTrend, rightTrend);
 };
 
 watch(activeTrendTab, async (val) => {
@@ -891,14 +960,10 @@ const exportCsv = async () => {
 .mb-4 { margin-bottom: 20px; }
 .pagination { margin-top: 20px; display: flex; justify-content: flex-end; }
 
-/* 中等宽度下允许横向滚动，避免列被压扁/内容被截断 */
+/* 表格本身不设最小宽度：列自适应容器，最右侧列始终完整可见 */
 .activity-table-wrap {
   width: 100%;
-  overflow-x: auto;
-}
-
-.activity-table-wrap :deep(.el-table) {
-  min-width: 760px;
+  overflow-x: visible;
 }
 
 /* 窄屏卡片列表 */
@@ -907,6 +972,54 @@ const exportCsv = async () => {
   flex-direction: column;
   gap: 8px;
   min-height: 80px;
+}
+
+/*
+ * 新访客的入场动画（窄屏卡片列表）：
+ * WS 收到 visitors:new 后会 unshift 到最前面，这里让它"冒出来"，
+ * 同时下面的卡片平滑下移（visitor-in-move）。
+ */
+.visitor-in-enter-active {
+  animation: visitorPop 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.visitor-in-move {
+  transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 列表本身是定长截断的，末尾被挤掉的那条直接移除，不做离场动画 */
+.visitor-in-leave-active {
+  display: none;
+}
+
+@keyframes visitorPop {
+  0% {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.96);
+    box-shadow: 0 0 0 2px var(--el-color-primary);
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* 宽屏表格没有 TransitionGroup，用"整行闪一下高亮"表示这条是刚来的 */
+:deep(.row-just-added td) {
+  animation: visitorRowFlash 1.5s ease-out;
+}
+
+@keyframes visitorRowFlash {
+  0% {
+    background-color: color-mix(in srgb, var(--el-color-primary) 26%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 
 .activity-card {
@@ -991,6 +1104,32 @@ const exportCsv = async () => {
   color: var(--el-text-color-placeholder);
 }
 
+/*
+ * 上游 UA：单独占一行、最多两行，超出用省略号（完整内容在 title 里）。
+ * min-height 固定成两行的高度：没有 UA 的行（非上游请求）靠它占位，
+ * 这样列表里每一行的高度一致，不会一高一矮。
+ */
+.ip-history-ua {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--el-border-color-lighter);
+  font-size: 12px;
+  line-height: 1.5;
+  min-height: 3em;
+  color: var(--el-text-color-secondary);
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 占位但不画出来（连虚线和文字一起隐藏） */
+.ip-history-ua.is-empty {
+  visibility: hidden;
+}
+
 @media (max-width: 560px) {
   .ip-history-row {
     grid-template-columns: minmax(0, 1fr);
@@ -1033,9 +1172,42 @@ const exportCsv = async () => {
 
 .activity-meta {
   display: flex;
+  /* 左侧 IP、右侧地区：窄屏卡片上这样排更像一行摘要 */
+  justify-content: space-between;
   gap: 12px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+
+/*
+ * 「代」= 这次访问是经前置反代（如 beta-next.icu）进来的。
+ *
+ * 徽标固定排在 IP 前面，并且**一直在 DOM 里占着宽度**（没有标记时只是隐藏）：
+ * 早先用 v-if 会让带标记的行把 IP 挤到右边，同一列里 IP 左边缘对不齐。
+ */
+.via-proxy-badge {
+  display: inline-block;
+  /* 徽标现在排在 IP 前面，间隔放在它右边 */
+  margin-right: 4px;
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--el-color-warning) 45%, transparent);
+  border-radius: 5px;
+  background-color: color-mix(in srgb, var(--el-color-warning) 16%, transparent);
+  color: var(--el-color-warning);
+  font-size: 10px;
+  line-height: 14px;
+  vertical-align: 1px;
+  cursor: help;
+}
+
+/* 占位但不画出来，保证同一列的 IP 起始位置一致 */
+.via-proxy-badge.is-hidden {
+  visibility: hidden;
+}
+
+.activity-location {
+  flex: 0 0 auto;
+  text-align: right;
 }
 
 .activity-empty {

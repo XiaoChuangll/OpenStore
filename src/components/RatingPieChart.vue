@@ -69,6 +69,7 @@ import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 import * as echarts from 'echarts';
 import { hmApi } from '../services/hm-api';
+import { getTooltipLayer } from '../utils/chart-tooltip-layer';
 
 interface RatingRow {
   index: number;
@@ -177,8 +178,8 @@ const initChart = async (data: any) => {
     tooltip: {
       trigger: 'item',
       // 卡片为了折叠动画设了 overflow: hidden，tooltip 挂在容器里会被裁掉，
-      // 挂到 body 上才能正常浮在卡片之上
-      appendTo: 'body',
+      // 统一挂到 fixed 图层上才能正常浮在卡片之上，又不影响页面滚动高度
+      appendTo: getTooltipLayer(),
       backgroundColor: 'rgba(20, 24, 33, 0.94)',
       borderColor: 'rgba(255, 255, 255, 0.14)',
       borderWidth: 1,

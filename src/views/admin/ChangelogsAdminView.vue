@@ -9,32 +9,29 @@
     <el-card class="mb-4">
       <div class="card-header"><h3>日志列表</h3><el-button type="primary" size="small" @click="openCreate">新增日志</el-button></div>
       <el-table :data="items" stripe>
-        <el-table-column prop="version" label="版本" :width="isMobile ? 100 : 150" />
-        <el-table-column prop="release_date" label="发布日期" :width="isMobile ? 160 : 180">
+        <el-table-column prop="version" label="版本" min-width="96" />
+        <el-table-column prop="release_date" label="发布日期" min-width="140">
           <template #default="{ row }">
             {{ formatTime(row.release_date) }}
           </template>
         </el-table-column>
-        
-        <el-table-column v-if="isMobile" label="操作" min-width="140">
-          <template #default="{ row }">
-            <div style="display: flex; gap: 8px;">
-              <el-button size="small" @click="editRow(row)">编辑</el-button>
-              <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
-            </div>
-          </template>
-        </el-table-column>
-        
-        <el-table-column v-if="!isMobile" prop="created_at" label="创建时间" width="180">
+
+        <el-table-column v-if="!isMobile" prop="created_at" label="创建时间" min-width="140">
           <template #default="{ row }">
             {{ formatTime(row.created_at) }}
           </template>
         </el-table-column>
-        
-        <el-table-column v-if="!isMobile" label="操作">
+
+        <el-table-column label="操作" :min-width="isMobile ? 96 : 104" align="right">
           <template #default="{ row }">
-            <el-button size="small" @click="editRow(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
+            <div class="action-cell">
+              <el-tooltip content="编辑" placement="top" :show-after="300">
+                <el-button link type="primary" :icon="Edit" @click="editRow(row)" />
+              </el-tooltip>
+              <el-tooltip content="删除" placement="top" :show-after="300">
+                <el-button link type="danger" :icon="Delete" @click="remove(row)" />
+              </el-tooltip>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -111,6 +108,7 @@
 import { ref, onMounted, computed, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRouter } from 'vue-router';
+import { Edit, Delete } from '@element-plus/icons-vue';
 import { getChangelogs, createChangelog, updateChangelog, deleteChangelog } from '../../services/admin';
 import { onWS } from '../../services/ws';
 import type { Changelog } from '../../services/api';

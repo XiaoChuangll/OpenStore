@@ -1,5 +1,9 @@
 <template>
-  <main class="home-view" @touchstart="handleTouchStart" @touchend="handleTouchEnd">
+  <!--
+    首页/系统只通过顶部的页签按钮切换：
+    之前这里绑了左右滑动切页签，浏览列表时经常误触发，已经移除。
+  -->
+  <main class="home-view">
     <Teleport to="#header-teleport-target">
       <Transition name="fade-slide">
         <div v-if="isActiveHome && layoutStore.showCustomTitle" class="device-tabs header-device-tabs">
@@ -79,14 +83,22 @@
             </template>
 
             <template v-if="card.key === 'music'">
-              <div class="music-card-content" @click.stop="goMusic">
-                <div class="music-actions">
-                  <div class="music-action-btn">每日推荐</div>
-                  <div class="music-action-btn">雷达歌单</div>
-                  <div class="music-action-btn">推荐歌单</div>
-                  <div class="music-action-btn">排行榜单</div>
+              <div class="music-card-content" @click.stop="goMusic()">
+                <div class="music-card-copy">
+                  <p class="music-card-desc">每日推荐、歌单与排行榜，边听边逛应用市场</p>
+                  <div class="music-actions">
+                    <button
+                      v-for="entry in MUSIC_ENTRIES"
+                      :key="entry.label"
+                      type="button"
+                      class="music-action-btn"
+                      @click.stop="goMusic(entry.view)"
+                    >
+                      {{ entry.label }}
+                    </button>
+                  </div>
                 </div>
-                <img src="/music.png" class="music-card-img" alt="Music" />
+                <img src="/music.png" class="music-card-img" alt="" aria-hidden="true" />
               </div>
             </template>
 
@@ -172,28 +184,14 @@
       </el-row>
 
       <template v-if="homeTab === 'home'">
-        <SystemStatusCard />
-        <OverviewCard />
-
-        <TopicSpotlight />
-
-        <RankOverview />
-
-        <el-row :gutter="20" class="mt-4 charts-row">
-          <el-col :span="8" :xs="24">
-            <RatingPieChart />
-          </el-col>
-          <el-col :span="8" :xs="24">
-            <TargetSdkPieChart />
-          </el-col>
-          <el-col :span="8" :xs="24">
-            <MinSdkPieChart />
-          </el-col>
-        </el-row>
-
-        <div class="mt-4">
-          <AppListCard />
-        </div>
+        <!-- 板块顺序 / 显示与否由后台「首页配置 → 首页」的卡片列表决定 -->
+        <component
+          v-for="card in homeCards"
+          :is="HOME_SECTIONS[card.key]"
+          :key="card.key"
+          :rank-variant="card.rankVariant"
+          :rank-order="card.rankOrder"
+        />
       </template>
     </section>
   </main>
@@ -201,6 +199,7 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, onActivated, onDeactivated } from 'vue';
+import type { Component } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useLayoutStore } from '../stores/layout';
@@ -214,10 +213,8 @@ import SystemStatusCard from '../components/SystemStatusCard.vue';
 import OverviewCard from '../components/OverviewCard.vue';
 import TopicSpotlight from '../components/TopicSpotlight.vue';
 import RankOverview from '../components/RankOverview.vue';
-import RatingPieChart from '../components/RatingPieChart.vue';
-import TargetSdkPieChart from '../components/TargetSdkPieChart.vue';
-import MinSdkPieChart from '../components/MinSdkPieChart.vue';
-import AppListCard from '../components/AppListCard.vue';
+import ChartDistributionRow from '../components/ChartDistributionRow.vue';
+import AppListSection from '../components/AppListSection.vue';
 import {
   getPublicAnnouncements,
   getPublicApps,
@@ -252,6 +249,49 @@ const updateGreeting = () => {
 };
 
 const siteCards = ref<SiteCard[]>([]);
+
+/*
+ * 首页「首页」页签的板块：顺序和显隐都来自后台「首页配置 → 首页」，
+ * key 对应后台里的卡片标识，取不到配置时用下面的默认顺序兜底。
+ */
+const HOME_SECTIONS: Record<string, Component> = {
+  'system-status': SystemStatusCard,
+  overview: OverviewCard,
+  'topic-spotlight': TopicSpotlight,
+  'rank-overview': RankOverview,
+  'chart-distribution': ChartDistributionRow,
+  'app-list': AppListSection,
+};
+const HOME_CARD_FALLBACK = ['system-status', 'overview', 'topic-spotlight', 'rank-overview', 'chart-distribution', 'app-list'];
+const homeCards = ref<{ key: string; rankVariant: 'classic' | 'stacked' | 'both'; rankOrder: 'stacked' | 'classic' }[]>(
+  HOME_CARD_FALLBACK.map((key) => ({ key, rankVariant: 'classic' as const, rankOrder: 'stacked' as const }))
+);
+
+/*
+ * 首页/系统两个页签的卡片配置都是「改了后台要能看到」的小接口，
+ * 但每切一次路由回来都重新拉一遍就太吵了（用户反馈：加载过的又加载一遍）。
+ * 这里给配置加个 20 秒节流：短时间内切回来直接用上次的配置；
+ * 系统页签那几个内容接口（公告/链接/群聊/应用）只在卡片组合真的变了时才重新拉。
+ */
+const SITE_CONFIG_REFRESH_MS = 20_000;
+let homeCardsFetchedAt = 0;
+let homeCardsLoaded = false;
+
+const loadHomeCards = async (force = false) => {
+  if (!force && homeCardsLoaded && Date.now() - homeCardsFetchedAt < SITE_CONFIG_REFRESH_MS) return;
+  try {
+    const cards = await getPublicSiteCards('home');
+    // 接口成功但一张都没启用，说明后台确实全关了，这里保持空列表
+    homeCards.value = cards
+      .filter((card) => HOME_SECTIONS[card.key])
+      .map((card) => ({ key: card.key, rankVariant: rankVariantOf(card), rankOrder: rankOrderOf(card) }));
+  } catch {
+    homeCards.value = HOME_CARD_FALLBACK.map((key) => ({ key, rankVariant: 'classic' as const, rankOrder: 'stacked' as const }));
+  } finally {
+    homeCardsLoaded = true;
+    homeCardsFetchedAt = Date.now();
+  }
+};
 const friendLinks = ref<FriendLink[]>([]);
 const groupChats = ref<GroupChat[]>([]);
 const announcements = ref<Announcement[]>([]);
@@ -265,26 +305,6 @@ const onIconError = (item: AppItem) => {
   failedIcons.value.add(item.id);
 };
 
-const touchStartX = ref(0);
-const touchStartY = ref(0);
-const handleTouchStart = (e: TouchEvent) => {
-  touchStartX.value = e.touches[0].clientX;
-  touchStartY.value = e.touches[0].clientY;
-};
-const handleTouchEnd = (e: TouchEvent) => {
-  const touchEndX = e.changedTouches[0].clientX;
-  const touchEndY = e.changedTouches[0].clientY;
-  const diffX = touchEndX - touchStartX.value;
-  const diffY = touchEndY - touchStartY.value;
-  if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
-    if (diffX < 0) {
-      homeTab.value = 'system';
-    } else {
-      homeTab.value = 'home';
-    }
-  }
-};
-
 const getCardStyle = (card: SiteCard) => {
   let parsed: any = {};
   try {
@@ -295,6 +315,28 @@ const getCardStyle = (card: SiteCard) => {
   const span = parsed.span === 12 ? 12 : 24;
   const accent = typeof parsed.accent === 'string' && parsed.accent.trim() ? parsed.accent.trim() : 'bg-yellow';
   return { span, accent };
+};
+
+/** 榜单排行卡片在前台用哪种样式：后台「首页配置」里选的 */
+const rankVariantOf = (card: SiteCard): 'classic' | 'stacked' | 'both' => {
+  try {
+    const parsed = JSON.parse(card.style || '{}');
+    if (parsed.rankVariant === 'stacked' || parsed.rankVariant === 'both') return parsed.rankVariant;
+  } catch {
+    /* 配置坏了就当默认值 */
+  }
+  return 'classic';
+};
+
+/** 「两个都显示」时谁在上面：默认堆叠用量图在上（沿用原来的顺序） */
+const rankOrderOf = (card: SiteCard): 'stacked' | 'classic' => {
+  try {
+    const parsed = JSON.parse(card.style || '{}');
+    if (parsed.rankOrder === 'classic') return 'classic';
+  } catch {
+    /* 配置坏了就当默认值 */
+  }
+  return 'stacked';
 };
 
 const faviconUrl = (rawUrl: string) => {
@@ -311,23 +353,47 @@ const friendLinkIcon = (item: FriendLink) => {
   return icon || faviconUrl(item.url);
 };
 
-const goMusic = async () => {
+/** 音乐卡片上的四个入口：view 是进入音乐页后要打开的板块 */
+const MUSIC_ENTRIES: Array<{ label: string; view: 'home' | 'radar' | 'recommend' | 'rank' }> = [
+  { label: '每日推荐', view: 'home' },
+  { label: '雷达歌单', view: 'radar' },
+  { label: '推荐歌单', view: 'recommend' },
+  { label: '排行榜单', view: 'rank' },
+];
+
+const goMusic = async (view: 'home' | 'radar' | 'recommend' | 'rank' = 'home') => {
   try {
-    await router.push('/music');
+    await router.push({ path: '/music', query: { view } });
   } catch {
     ElMessage.warning('跳转失败');
   }
 };
 
-const loadSiteCards = async () => {
+let siteCardsFetchedAt = 0;
+let siteCardsLoaded = false;
+/** 上次已经拉过内容的卡片组合，用来判断要不要重新请求那批内容接口 */
+let loadedContentKeys = '';
+
+const loadSiteCards = async (force = false) => {
+  if (!force && siteCardsLoaded && Date.now() - siteCardsFetchedAt < SITE_CONFIG_REFRESH_MS) return;
   try {
-    siteCards.value = await getPublicSiteCards();
+    // 「系统」页签的信息卡片（公告 / 音乐 / 应用 / 链接 / 群聊）
+    siteCards.value = await getPublicSiteCards('system');
   } catch {
     siteCards.value = [];
+    siteCardsLoaded = true;
+    siteCardsFetchedAt = Date.now();
     return;
   }
 
   const enabledKeys = new Set(siteCards.value.map((c) => c.key));
+  const contentKeys = [...enabledKeys].filter((key) => ['friend_links', 'group_chats', 'announcements', 'apps'].includes(key)).sort().join('|');
+  siteCardsLoaded = true;
+  siteCardsFetchedAt = Date.now();
+
+  // 卡片组合没变（只是切了个路由回来），内容就沿用上次的，不再重复请求
+  if (contentKeys === loadedContentKeys) return;
+  loadedContentKeys = contentKeys;
 
   const tasks: Array<Promise<void>> = [];
   if (enabledKeys.has('friend_links')) {
@@ -383,6 +449,7 @@ let observer: IntersectionObserver | null = null;
 onMounted(() => {
   isActiveHome.value = true;
   loadSiteCards();
+  loadHomeCards();
   updateGreeting();
 
   observer = new IntersectionObserver(
@@ -404,6 +471,9 @@ onMounted(() => {
 onActivated(() => {
   // Ensure header toggle only appears when HomeView is active
   isActiveHome.value = true;
+  // 从后台改完卡片顺序回来时，重新取一次配置
+  loadSiteCards();
+  loadHomeCards();
   if (!observer && toolbarRef.value) {
     observer = new IntersectionObserver(
       ([entry]) => {
@@ -801,106 +871,122 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
+/* 音乐卡片：标题沿用公共卡片头，正文做成「一句话说明 + 四个入口 + 插画」 */
 .music-card-wrapper :deep(.el-card__header) {
   border-bottom: none !important;
-  padding-bottom: 0 !important;
+  padding-bottom: 4px;
+}
+
+.music-card-wrapper :deep(.el-card__body) {
+  /* 左下角一层很淡的红色晕染，和标题旁的红色标记条呼应 */
+  background-image: radial-gradient(
+    130% 150% at 0% 115%,
+    color-mix(in srgb, var(--el-color-danger) 12%, transparent),
+    transparent 58%
+  );
 }
 
 .music-card-wrapper :deep(.card-title) {
   font-size: 18px;
 }
 
-.music-card-wrapper .hidden-btn {
-  display: none;
-}
-
 .music-card-content {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  height: 100%;
-  position: relative;
-  min-height: 90px;
-  z-index: 10;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 96px;
   cursor: pointer;
+}
+
+.music-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.music-card-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
 }
 
 .music-actions {
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
-  z-index: 2;
+  gap: 10px;
 }
 
 .music-action-btn {
-  padding: 6px 16px;
-  background: var(--el-fill-color);
-  border-radius: 20px;
-  font-size: 13px;
-  color: var(--el-text-color-regular);
-  cursor: pointer;
-  transition: all 0.3s;
-  white-space: nowrap;
+  padding: 6px 14px;
   border: 1px solid var(--el-border-color-lighter);
+  border-radius: 999px;
+  background-color: var(--el-bg-color);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--el-text-color-regular);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.16s ease, background-color 0.16s ease, border-color 0.16s ease,
+    transform 0.16s ease;
 }
 
 .music-action-btn:hover {
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
-  border-color: var(--el-color-primary-light-5);
+  color: var(--el-color-danger);
+  border-color: color-mix(in srgb, var(--el-color-danger) 45%, transparent);
+  background-color: color-mix(in srgb, var(--el-color-danger) 10%, transparent);
+  transform: translateY(-1px);
 }
 
+/*
+ * 插画固定在卡片内部（原来是绝对定位 + 负偏移，超出了卡片的 overflow:hidden 被裁掉）；
+ * 尺寸随卡片走，窄屏先缩插画、再让说明文字换行。
+ */
 .music-card-img {
-  height: 120px;
-  width: auto;
+  flex: 0 0 auto;
+  width: 104px;
+  height: 104px;
   object-fit: contain;
-  position: absolute;
-  right: -10px;
-  bottom: -10px;
-  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-  z-index: 20;
-  transform-origin: top center;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.14));
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.music-card-img:hover {
-  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.2)) brightness(1.1);
-  transform: scale(1.1);
+.music-card-wrapper:hover .music-card-img {
+  transform: translateY(-3px) scale(1.06);
 }
 
-/* Mobile adaptation for Music Card */
 @media (max-width: 768px) {
-  .music-card-wrapper .hidden-btn {
-    display: inline-flex;
-  }
   .music-card-content {
-    min-height: 100px;
-    padding-right: 88px;
+    min-height: 0;
+    gap: 12px;
   }
-  .music-actions {
-    flex-wrap: wrap;
-    overflow-x: visible;
-    gap: 8px;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE/Edge */
-  }
-  .music-actions::-webkit-scrollbar {
-    display: none; /* Chrome/Safari */
-  }
-  .music-action-btn {
-    flex: 0 0 auto;
-    padding: 6px 12px;
-    font-size: 12px;
-    margin-bottom: 6px;
-  }
+
   .music-card-img {
-    height: 80px;
-    right: 0;
-    bottom: 0;
-    opacity: 0.9;
-    z-index: 0;
-    pointer-events: none;
+    width: 76px;
+    height: 76px;
+  }
+
+  .music-card-desc {
+    font-size: 12.5px;
+  }
+
+  .music-actions {
+    gap: 8px;
+  }
+
+  .music-action-btn {
+    padding: 5px 11px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  .music-card-img {
+    width: 58px;
+    height: 58px;
   }
 }
 </style>

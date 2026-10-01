@@ -3,8 +3,8 @@
     <template #header>
       <div class="card-header">
         <div class="header-left">
-          <span :class="{ 'title-link': route.path !== '/rank/growth' }" @click="goToRank">应用下载增长对比</span>
-          <el-select v-model="pageSize" size="small" style="width: 80px; margin-left: 10px;" @change="fetchData">
+          <span class="card-title" :class="{ 'title-link': route.path !== '/rank/growth' }" @click="goToRank">应用下载增长对比</span>
+          <el-select v-model="pageSize" size="small" :style="{ width: selectWidthOf(PAGE_SIZE_LABELS) }" @change="fetchData">
             <el-option label="10条" :value="10" />
             <el-option label="20条" :value="20" />
             <el-option label="30条" :value="30" />
@@ -12,49 +12,51 @@
           </el-select>
         </div>
         <div class="controls">
-          <el-select v-model="timeRange" size="small" class="time-select" @change="fetchData">
+          <el-select v-model="timeRange" size="small" class="time-select" :style="{ width: selectWidthOf(TIME_LABELS) }" @change="fetchData">
             <el-option label="最近1天" :value="1" />
             <el-option label="最近7天" :value="7" />
             <el-option label="最近30天" :value="30" />
           </el-select>
-          <el-select v-model="metricType" size="small" class="metric-select" @change="updateChart">
+          <el-select v-model="metricType" size="small" class="metric-select" :style="{ width: selectWidthOf(METRIC_LABELS) }" @change="updateChart">
             <el-option label="下载增长量" value="increase" />
             <el-option label="增长前下载量" value="prior" />
             <el-option label="增长后下载量" value="current" />
           </el-select>
+          <!-- 图表 / 排名条 切换，选择记在本地，默认图表 -->
+          <el-tooltip :content="viewMode === 'list' ? '切换为图表' : '切换为排名条'" placement="top">
+            <el-button
+              size="small"
+              class="view-toggle"
+              :icon="viewMode === 'list' ? TrendCharts : List"
+              @click="toggleView"
+            />
+          </el-tooltip>
         </div>
       </div>
     </template>
-    <div ref="chartRef" style="width: 100%; height: 300px;"></div>
-  </el-card>
-  <el-card
-    v-if="route.path === '/rank/growth'"
-    class="chart-card"
-    shadow="hover"
-  >
-    <template #header>
-      <div class="card-header">
-        <div class="header-left">
-          <span>应用下载增长对比 · 矩阵图</span>
-        </div>
-      </div>
-    </template>
-    <div ref="matrixChartRef" style="width: 100%; height: 260px;"></div>
+    <div v-if="viewMode === 'chart'" ref="chartRef" class="chart-box"></div>
+    <RankBarList v-else :rows="listRows" :tone="listTone" @select="openApp" />
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import * as echarts from 'echarts';
+import { TrendCharts, List } from '@element-plus/icons-vue';
+import RankBarList from './RankBarList.vue';
 import { hmApi } from '../services/hm-api';
+import { selectWidthOf } from '../utils/select-width';
+
+/** 下拉框宽度按「最长的那条选项」算，避免选中长文案时被截断 / 短文案时留白过多 */
+const PAGE_SIZE_LABELS = ['10条', '20条', '30条', '50条'];
+const TIME_LABELS = ['最近1天', '最近7天', '最近30天'];
+const METRIC_LABELS = ['下载增长量', '增长前下载量', '增长后下载量'];
 
 const router = useRouter();
 const route = useRoute();
 const chartRef = ref<HTMLElement | null>(null);
 let chartInstance: echarts.ECharts | null = null;
-const matrixChartRef = ref<HTMLElement | null>(null);
-let matrixChartInstance: echarts.ECharts | null = null;
 
 const timeRange = ref(30);
 const pageSize = ref(30);
@@ -62,57 +64,65 @@ const metricType = ref('increase');
 const chartData = ref<any[]>([]);
 const excludedPkgs = new Set<string>(['com.leisu.yuan']);
 
+/* 展示方式：chart（每次进页面都从图表开始）/ list（横向排名条） */
+const viewMode = ref<'list' | 'chart'>('chart');
+const toggleView = () => {
+  viewMode.value = viewMode.value === 'list' ? 'chart' : 'list';
+  if (viewMode.value === 'chart') initChart();
+};
+
+/** 排名条用的当前指标（跟图表上方那个下拉同一份数据） */
+const listMetric = computed(() => {
+  if (metricType.value === 'prior') return { key: 'prior' as const, color: '#fac858', tone: 'warning' as const };
+  if (metricType.value === 'current') return { key: 'current' as const, color: '#5470c6', tone: 'primary' as const };
+  return { key: 'increase' as const, color: '#91CC75', tone: 'success' as const };
+});
+
+const metricValueOf = (item: any) => {
+  if (listMetric.value.key === 'prior') return item.prior_download_count || 0;
+  if (listMetric.value.key === 'current') return item.current_download_count || item.download_count || 0;
+  return item.download_increment || item.increase || 0;
+};
+
+const formatCount = (value: number) => {
+  const n = Number(value) || 0;
+  if (Math.abs(n) >= 1e8) return `${(n / 1e8).toFixed(1)}亿`;
+  if (Math.abs(n) >= 1e4) return `${(n / 1e4).toFixed(1)}万`;
+  return n.toLocaleString('zh-CN');
+};
+
+const listTone = computed(() => listMetric.value.tone);
+
+const listRows = computed(() =>
+  chartData.value
+    .map((item: any) => ({
+      key: item.pkg_name || item.name || item.app?.name,
+      name: item.name || item.app?.name || '未知应用',
+      icon: item.icon_url,
+      value: metricValueOf(item) as number,
+      // 小字用"增长量"做参照：看图时最关心的就是这批应用涨了多少
+      sub:
+        listMetric.value.key === 'increase'
+          ? `共 ${formatCount(item.current_download_count || item.download_count || 0)}`
+          : `+${formatCount(item.download_increment || item.increase || 0)}`,
+      app_id: item.app_id
+    }))
+    .sort((a, b) => b.value - a.value)
+);
+
+const openApp = (row: { app_id?: string }) => {
+  if (row?.app_id) router.push({ name: 'app-dashboard', query: { app_id: row.app_id } });
+};
+
 const goToRank = () => {
   if (route.path !== '/rank/growth') {
     router.push('/rank/growth');
   }
 };
 
-const formatNumber = (value: number) => {
-  if (!Number.isFinite(value)) return '0';
-  return value.toLocaleString();
-};
-
-const initMatrixChart = (names: string[], values: number[], seriesName: string) => {
-  if (!matrixChartRef.value) return;
-  if (!chartData.value.length) return;
-
-  if (!matrixChartInstance) {
-    matrixChartInstance = echarts.init(matrixChartRef.value);
-  }
-
-  const data = names.map((name, index) => ({
-    name,
-    value: values[index] || 0
-  }));
-
-  const option = {
-    tooltip: {
-      formatter: (info: any) => {
-        const value = info.value || 0;
-        return `${info.name}<br/>${seriesName}：${formatNumber(value)}`;
-      }
-    },
-    series: [
-      {
-        name: '增长榜矩阵',
-        type: 'treemap',
-        roam: false,
-        nodeClick: false,
-        data,
-        label: {
-          show: true,
-          formatter: '{b}'
-        }
-      }
-    ]
-  };
-
-  matrixChartInstance.setOption(option);
-};
-
 const initChart = () => {
-  if (!chartRef.value) return;
+  // 切到排名条时图表容器被销毁，切回来要重建实例
+  if (viewMode.value !== 'chart' || !chartRef.value) return;
   
   // Initialize chart if not exists
   if (!chartInstance) {
@@ -226,8 +236,6 @@ const initChart = () => {
 
   chartInstance.setOption(option, true); // Use true to not merge with previous options
 
-  initMatrixChart(names, values, seriesName);
-
   chartInstance.on('click', (params) => {
     const item = chartData.value[params.dataIndex];
     if (item && item.app_id) {
@@ -261,7 +269,9 @@ const fetchData = async () => {
       const listResponse = await hmApi.get<any>('/apps/list/1', {
         page_size: 30,
         sort: 'download_count',
-        desc: true
+        desc: true,
+        // 兜底列表要按下载量排序/展示，必须完整信息
+        detail: true
       });
       // Adapt list data to growth data structure
       apps = (listResponse.data?.data || [])
@@ -288,7 +298,9 @@ const fetchData = async () => {
              search_key: 'pkg_name',
              search_value: item.pkg_name,
              search_exact: true,
-             page_size: 1
+             page_size: 1,
+             // 这里只是为了拿图标/ app_id，用简略信息就够了（完整信息一条要 4.5KB，这里最多 30 条）
+             detail: false
            });
            const detail = detailRes.data?.data?.[0];
            if (detail) {
@@ -313,11 +325,24 @@ const fetchData = async () => {
 };
 
 const handleResize = () => {
-  chartInstance?.resize();
-  matrixChartInstance?.resize();
+  if (viewMode.value === 'chart') chartInstance?.resize();
 };
 
 let resizeObserver: ResizeObserver | null = null;
+
+/*
+ * 图表容器由 v-if 控制：切到排名条时容器被销毁，实例必须跟着 dispose，
+ * 否则 echarts 会抱着一块不存在的 canvas；切回来再重建。
+ */
+watch(viewMode, async (mode) => {
+  if (mode === 'chart') {
+    await nextTick();
+    initChart();
+  } else {
+    chartInstance?.dispose();
+    chartInstance = null;
+  }
+});
 
 onMounted(() => {
   fetchData();
@@ -332,20 +357,6 @@ onMounted(() => {
     resizeObserver.observe(chartRef.value);
   }
   
-  if (matrixChartRef.value) {
-    const matrixObserver = new ResizeObserver(() => {
-      matrixChartInstance?.resize();
-    });
-    matrixObserver.observe(matrixChartRef.value);
-    
-    // Store in the same variable or array if you want to disconnect it properly
-    // Let's use a simple approach by re-using or storing multiple
-    if (!resizeObserver) resizeObserver = matrixObserver;
-    else {
-      // Just track both elements with the same observer
-      resizeObserver.observe(matrixChartRef.value);
-    }
-  }
 });
 
 onUnmounted(() => {
@@ -355,7 +366,6 @@ onUnmounted(() => {
     resizeObserver = null;
   }
   chartInstance?.dispose();
-  matrixChartInstance?.dispose();
 });
 </script>
 
@@ -367,46 +377,63 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   height: 32px;
 }
 .header-left {
   display: flex;
   align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.card-title {
+  white-space: nowrap;
 }
 .controls {
   display: flex;
   align-items: center;
-}
-.time-select {
-  width: 120px;
+  gap: 8px;
 }
 .metric-select {
-  width: 120px;
   margin-left: 10px;
+}
+.view-toggle {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+.chart-box {
+  width: 100%;
+  height: 300px;
 }
 
 @media (max-width: 768px) {
+  /*
+    这张卡有 3 个筛选框（条数 / 时间 / 指标），手机上塞不进标题那一行，
+    所以整组换到第二行 —— 关键是"整组"，不能拆散成"跟着标题一个、剩下两个掉下去"。
+    只有 1 个筛选框的卡片（总下载榜 / 非华为榜）就是标题 + 下拉同行。
+  */
   .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
     height: auto;
+    row-gap: 8px;
   }
-  
+
   .header-left {
-    flex-wrap: wrap;
+    flex: 1 1 auto;
+    gap: 8px;
   }
-  
+
   .controls {
-    width: 100%;
+    flex: 1 1 100%;
+    margin-left: 0;
+    gap: 8px;
     flex-wrap: wrap;
-    gap: 10px;
   }
-  
+
   .time-select,
   .metric-select {
     margin-left: 0;
-    width: 100%;
   }
 }
 

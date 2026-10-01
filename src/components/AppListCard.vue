@@ -287,7 +287,9 @@ const fetchApps = async () => {
     const params: any = {
       page_size: pageSize.value,
       sort: 'download_count',
-      desc: true
+      desc: true,
+      // 列表要展示开发者/分类/下载量/评分/上架时间，必须完整信息
+      detail: true
     };
 
     if (searchQuery.value) {
@@ -404,8 +406,10 @@ onUnmounted(() => {
 }
 .card-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  /* 放不下时整块换行（搜索栏自己有 100% 规则），别把左边的标题挤变形 */
+  flex-wrap: wrap;
+  gap: 10px 12px;
 }
 .header-left {
   display: flex;
@@ -420,25 +424,37 @@ onUnmounted(() => {
   font-size: 14px;
 }
 .exact-switch {
-  margin-right: 12px;
+  margin-right: 0;
 }
+
+/* 桌面端：「精确搜索」靠到筛选框那一边（撑开中间空白），别和标题挤在左边 */
+@media (min-width: 769px) {
+  .exact-switch {
+    margin-left: auto;
+  }
+}
+
 .search-bar {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  flex: 1 1 auto;
+  /* 不抢中间那段空白：让 .exact-switch 的 auto 外边距把「精确搜索」顶到筛选框旁边 */
+  flex: 0 1 auto;
   min-width: 0;
 }
 
 .search-scope {
-  width: 120px;
+  width: 110px;
   flex: 0 0 auto;
 }
 
+/* 搜索框别长到把左边内容顶出去：跟着剩余空间缩，最宽 260px */
 .search-input {
   width: auto;
-  min-width: 0;
-  flex: 1 1 240px;
+  min-width: 150px;
+  flex: 0 1 260px;
+  max-width: 260px;
 }
 .clickable-tag {
   cursor: pointer;
@@ -560,6 +576,7 @@ onUnmounted(() => {
   .search-input {
     flex: 1 1 140px;
     width: auto;
+    max-width: none;
   }
 }
 

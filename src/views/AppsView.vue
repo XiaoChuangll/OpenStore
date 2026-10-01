@@ -172,17 +172,18 @@ defineOptions({
 });
 
 import { ref, watch, computed, onBeforeUnmount } from 'vue';
-import { 
-  Search, Menu, Cellphone, Monitor, Van, Platform, Reading, Connection,
-  Tools, MapLocation, Coffee, School, House, Suitcase, Lollipop, Wallet,
-  Document, Camera, UserFilled, Basketball, ShoppingCart, DataAnalysis,
-  Location, ChatDotRound, FirstAidKit, Trophy, Ticket, Food, Timer,
-  Headset, Brush, Picture, VideoCamera, MagicStick, VideoPlay, Service,
-  CircleClose, ArrowLeft, ArrowRight
-} from '@element-plus/icons-vue';
+import { Search, Menu, Connection, CircleClose, ArrowLeft, ArrowRight } from '@element-plus/icons-vue';
+// 分类图标集中在 utils 里，和「分类增长排行」共用同一份
+import { CATEGORY_ICON_MAP } from '../utils/category-icons';
 import { useRouter, useRoute } from 'vue-router';
 import { getCategories, searchApps, getDevices, DEVICE_MAP, getAppsByCategory } from '../services/next-api';
 import AppCard from '../components/AppCard.vue';
+// 设备页签图标：设计给的 24×24 图形，统一做成 currentColor 的组件
+import PhoneDeviceIcon from '../components/PhoneDeviceIcon.vue';
+import TvDeviceIcon from '../components/TvDeviceIcon.vue';
+import TabletDeviceIcon from '../components/TabletDeviceIcon.vue';
+import WatchDeviceIcon from '../components/WatchDeviceIcon.vue';
+import PcDeviceIcon from '../components/PcDeviceIcon.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -223,17 +224,18 @@ const deviceStats = ref<Record<string, number | string>>({
   phone: '-',
   tv: '-',
   tablet: '-',
-  car: '-',
+  // 上游设备码 7 = 手表（不是车机）
+  watch: '-',
   pc: '-'
 });
 
 const devices = [
   { key: 'all', label: '全部', icon: Menu },
-  { key: 'phone', label: '手机', icon: Cellphone },
-  { key: 'tv', label: '智慧屏', icon: Monitor },
-  { key: 'tablet', label: '平板', icon: Reading },
-  { key: 'car', label: '车机', icon: Van },
-  { key: 'pc', label: 'PC', icon: Platform }
+  { key: 'phone', label: '手机', icon: PhoneDeviceIcon },
+  { key: 'tv', label: '智慧屏', icon: TvDeviceIcon },
+  { key: 'tablet', label: '平板', icon: TabletDeviceIcon },
+  { key: 'watch', label: '手表', icon: WatchDeviceIcon },
+  { key: 'pc', label: '电脑', icon: PcDeviceIcon }
 ];
 
 const DEVICE_KEYS = new Set(devices.map((device) => device.key));
@@ -245,47 +247,6 @@ const colors = [
   '#9333ea', '#ea580c'
 ];
 
-const CATEGORY_ICON_MAP: Record<string, any> = {
-  '工具': Tools,
-  '旅游': MapLocation,
-  '休闲益智': Coffee,
-  '教育': School,
-  '生活服务': House,
-  '商务': Suitcase,
-  '儿童': Lollipop,
-  '金融理财': Wallet,
-  '新闻': Document,
-  '拍摄美化': Camera,
-  '角色扮演': UserFilled,
-  '运动健康': Basketball,
-  '动作射击': MagicStick,
-  '购物': ShoppingCart,
-  '经营策略': DataAnalysis,
-  '出行导航': Location,
-  '社交': ChatDotRound,
-  '汽车': Van,
-  '医疗': FirstAidKit,
-  '体育竞速': Trophy,
-  '棋牌桌游': Ticket,
-  '资讯': Document,
-  '美食': Food,
-  '效率': Timer,
-  '休闲娱乐': VideoPlay,
-  '音乐': Headset,
-  '艺术与设计': Brush,
-  '主题': Picture,
-  '阅读与工具书': Reading,
-  '影视与直播': VideoCamera,
-  '实用工具': Tools,
-  '体育': Basketball,
-  '房产与装修': House,
-  '便捷生活': Service,
-  '旅游住宿': MapLocation,
-  '新闻阅读': Reading,
-  '购物比价': ShoppingCart,
-  '影音娛樂': VideoPlay,
-  '社交通讯': ChatDotRound
-};
 
 const mapCategoryList = (list: any[]) => {
   return list.map((item: any, index: number) => ({
@@ -310,6 +271,25 @@ const loadCategoriesForDevice = async (deviceKey: string) => {
   }
 
   return mapCategoryList(list);
+};
+
+/**
+ * 找到该分类对应的别名组（后台 overview 里带下来的 aliases）。
+ * 直接打开 /apps?category=xxx 时本地还没有快照，就先拉一次分类表再取。
+ */
+const resolveCategoryAliases = async (name: string, deviceKey: string): Promise<string[]> => {
+  const cached = categorySnapshots.get(deviceKey);
+  const hit = cached?.find((item: any) => item.name === name)?.aliases;
+  if (Array.isArray(hit) && hit.length) return hit;
+
+  try {
+    const list = await loadCategoriesForDevice(deviceKey);
+    categorySnapshots.set(deviceKey, list);
+    const found = list.find((item: any) => item.name === name)?.aliases;
+    return Array.isArray(found) && found.length ? found : [name];
+  } catch {
+    return [name];
+  }
 };
 
 const startSkeletonProgress = () => {
@@ -408,9 +388,27 @@ const fetchCategories = async () => {
     const mappedCategories = await loadCategoriesForDevice(deviceKey);
 
     if (requestId === categoriesRequestId) {
+      /*
+       * 只有分类内容真的变了才换 key（换 key 会播一次翻页动画）。
+       * 之前每次进页面都重新拉一遍、无脑换 key，于是每次进来分类区都自己「翻」一下，
+       * 看着很怪；内容一样时就地更新，不播动画。
+       */
+      const previous = categorySnapshots.get(deviceKey) || [];
+      const changed =
+        previous.length !== mappedCategories.length ||
+        previous.some((item, index) => {
+          const next = mappedCategories[index];
+          return (
+            !next ||
+            item?.name !== next.name ||
+            item?.count !== next.count ||
+            item?.color !== next.color
+          );
+        });
+
       categorySnapshots.set(deviceKey, mappedCategories);
       categories.value = mappedCategories;
-      categoryPageVersion.value += 1;
+      if (changed) categoryPageVersion.value += 1;
       void prewarmCategorySnapshots();
     }
   } catch (error) {
@@ -454,7 +452,9 @@ const fetchApps = async () => {
       const deviceKey = route.query.device as string | undefined;
       const deviceId = deviceKey && DEVICE_KEYS.has(deviceKey) ? DEVICE_MAP[deviceKey] : undefined;
       if (cat) {
-        res = await getAppsByCategory(cat, currentPage.value, pageSize.value, deviceId);
+        // 分类卡片上的数量是整个别名组的合计，这里要用同一组别名查，数字才对得上
+        const aliases = await resolveCategoryAliases(cat, deviceKey && DEVICE_KEYS.has(deviceKey) ? deviceKey : 'all');
+        res = await getAppsByCategory(cat, currentPage.value, pageSize.value, deviceId, aliases);
       }
     }
 
@@ -519,7 +519,23 @@ const handleCategoryClick = (category: any) => {
 
 const handleBack = () => {
   searchQuery.value = '';
-  router.push({ query: {} }); // Clear query to go back to home view
+
+  /*
+   * 从站内别处点进某个分类（首页「分类榜」的条目、应用详情里的分类等）时，
+   * 顶部返回应该回到来的那个页面，而不是一律回分类首页。
+   *
+   * 只有「来路不是应用页自己」才走 history 后退：应用页里换分类 / 搜索会产生
+   * 一串 /apps?... 历史，那种情况下还是按原样一步回到分类首页，
+   * 免得返回按钮变成"一步步退回刚才搜过的词"。
+   */
+  const from = (window.history.state as { back?: string | null } | null)?.back || '';
+  if (from && from.split('?')[0] !== '/apps') {
+    router.back();
+    return;
+  }
+
+  // 应用页内部进来的：回到分类首页，保留当前设备（否则会掉回「全部」）
+  router.push({ query: activeDevice.value === 'all' ? {} : { device: activeDevice.value } });
 };
 
 const handleAppClick = async (app: any) => {
@@ -555,10 +571,23 @@ watch(
   { immediate: true }
 );
 
-watch(activeDevice, () => {
+watch(activeDevice, (key) => {
   if (viewMode.value === 'home') {
     fetchCategories();
   }
+
+  /*
+   * 把当前设备写进地址栏（?device=xxx）：
+   * 之前只在组件内存里记着，点进应用详情再返回 / 刷新页面 / 复制链接时都会掉回「全部」。
+   * 这里用 replace 不进历史，避免每切一次设备多一条后退记录。
+   */
+  if (viewMode.value !== 'home') return;
+  const nextDevice = key === 'all' ? '' : String(key);
+  if (String(route.query.device || '') === nextDevice) return;
+  const nextQuery: Record<string, any> = { ...route.query };
+  if (nextDevice) nextQuery.device = nextDevice;
+  else delete nextQuery.device;
+  router.replace({ query: nextQuery });
 });
 
 watch(showHomeSkeleton, (visible) => {
@@ -930,8 +959,14 @@ onBeforeUnmount(() => {
   padding-bottom: 24px;
 }
 
+/*
+ * 这里以前写死过 min-height（810px / 680px / 520px），本意是让页码条在翻页时别跳。
+ * 但卡片行高 90px、行距 16px、每页 20 个：4 列满页才 540px，3 列 753px，2 列 1072px——
+ * 三个常数和实际布局全都对不上，4 列时满页都会白空 270px，不满页更夸张。
+ * 与其留一大片空白换页码条不动，不如让页码条贴着内容走。
+ */
 .apps-grid-container {
-  min-height: 810px;
+  min-height: 0;
 }
 
 .category-card:hover {
@@ -1119,12 +1154,6 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (max-width: 1024px) {
-  .apps-grid-container {
-    min-height: 680px;
-  }
-}
-
 @media (max-width: 768px) {
   .categories-grid-skeleton .category-card {
     min-height: 64px;
@@ -1154,10 +1183,6 @@ onBeforeUnmount(() => {
     width: 34px;
     height: 34px;
     margin-top: 12px;
-  }
-
-  .apps-grid-container {
-    min-height: 520px;
   }
 
   .skeleton-card {

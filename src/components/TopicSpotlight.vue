@@ -22,15 +22,6 @@
           />
         </span>
       </h3>
-      <el-button
-        text
-        size="small"
-        class="spotlight-refresh"
-        :loading="loading"
-        @click="handleRefresh"
-      >
-        换一个
-      </el-button>
     </div>
 
     <div
@@ -43,7 +34,12 @@
       @keydown.enter.prevent="openTopic"
       @keydown.space.prevent="openTopic"
     >
-      <transition name="spotlight-swap" mode="out-in">
+      <!--
+        不用 mode="out-in"：那会让旧海报先完全淡出、新海报才开始进，
+        中间约 0.6 秒卡片是空的（就是"轮换时能看见四周的空白区域"）。
+        这里让两张同时在，靠绝对定位叠在一起交叉淡入淡出。
+      -->
+      <transition name="spotlight-swap">
         <div :key="current?.key || 'empty'" class="spotlight-slide">
           <div class="spotlight-banner">
             <span v-if="current?.badge" class="spotlight-badge">{{ current.badge }}</span>
@@ -114,7 +110,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ArrowRight, Picture } from '@element-plus/icons-vue';
-import { getTopics, getTopicDetail, getNewAppsByDateRange, type FullSubstanceInfo } from '../services/api';
+import { getTopics, getTopicDetail, getNewAppsByDateRange, getAppUpdates, type FullSubstanceInfo } from '../services/api';
 
 /**
  * 首页的「精选专题」：随机挑一个专题，用专题详情页那套头图展示。
@@ -123,10 +119,16 @@ import { getTopics, getTopicDetail, getNewAppsByDateRange, type FullSubstanceInf
  */
 const SAMPLE_SIZE = 4;
 const BLUR_LIMIT = 8;
-// 海报里最多用多少个不同图标（太少会来回重复同几个，太多没必要）
-const MAX_ICONS = 28;
-// 本周上新只按海报需要的数量取，不用拉一整页
-const WEEKLY_FETCH_SIZE = 30;
+/*
+ * 海报里最多用多少个不同图标。
+ * 太少会来回重复同几个（比如本周 236 个上新只画 28 个），太多也没必要 ——
+ * 60 个足够两行滚动看不出重复。
+ */
+const MAX_ICONS = 60;
+// 本周上新按海报用量取（要凑够 MAX_ICONS 个不同图标，所以至少取这么多条）
+const WEEKLY_FETCH_SIZE = 60;
+// 今日更新同样按海报用量取（更新榜按 release_date 倒序，当天的都在最前面）
+const DAILY_FETCH_SIZE = 40;
 // 超过 6 个图标就上下来回滚动（本周上新这种只有 7 个应用的专题也能滚起来）
 const STATIC_LIMIT = 6;
 const MARQUEE_COPIES = 3;
@@ -136,7 +138,7 @@ const loading = ref(false);
 const topic = ref<FullSubstanceInfo | null>(null);
 
 interface SpotlightSlide {
-  key: 'weekly' | 'topic';
+  key: 'weekly' | 'daily' | 'topic';
   badge?: string;
   title: string;
   subtitle: string;
@@ -156,6 +158,11 @@ const weeklyIcons = ref<string[]>([]);
 const weeklyCount = ref(0);
 const weeklyRange = ref('');
 
+/* 今日更新海报：数据来自更新页同一条链路（release_date 倒序），拿回来再按 UTC+8 的"今天"筛 */
+const dailyIcons = ref<string[]>([]);
+const dailyCount = ref(0);
+const dailyLabel = ref('');
+
 const getWeekStartUtc8 = () => {
   const nowLocal = new Date(Date.now() + UTC8_OFFSET_MS);
   const start = new Date(nowLocal);
@@ -169,6 +176,26 @@ const toDateParam = (date: Date) =>
   `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
 
 const formatShortDate = (date: Date) => `${date.getUTCMonth() + 1}月${date.getUTCDate()}日`;
+
+/** 时间戳 → 北京时间（UTC+8）的 YYYY-MM-DD，用来判断"是不是今天更新的" */
+const toUtc8DateKey = (rawTs: unknown) => {
+  if (!rawTs && rawTs !== 0) return '';
+  let ms: number;
+  if (typeof rawTs === 'number') ms = rawTs;
+  else if (typeof rawTs === 'string' && /^\d+$/.test(rawTs)) ms = parseInt(rawTs, 10);
+  else ms = new Date(rawTs as string).getTime();
+  if (!ms || Number.isNaN(ms)) return '';
+  if (ms < 10000000000) ms *= 1000;
+  const d = new Date(ms + UTC8_OFFSET_MS);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+};
+
+const dedupeIcons = (items: any[]) =>
+  items
+    .map((app) => app?.icon_url)
+    .filter((url: unknown): url is string => typeof url === 'string' && url.length > 0)
+    .filter((url: string, index: number, list: string[]) => list.indexOf(url) === index)
+    .slice(0, MAX_ICONS);
 
 const slides = computed<SpotlightSlide[]>(() => {
   const list: SpotlightSlide[] = [];
@@ -184,6 +211,20 @@ const slides = computed<SpotlightSlide[]>(() => {
       metaText: weeklyRange.value,
       cta: '查看上新',
       go: () => router.push('/updates')
+    });
+  }
+
+  if (dailyIcons.value.length) {
+    list.push({
+      key: 'daily',
+      badge: '今日更新',
+      title: '今日更新',
+      subtitle: `今天发布新版本的鸿蒙应用（${dailyLabel.value}）`,
+      icons: dailyIcons.value,
+      count: dailyCount.value,
+      metaText: dailyLabel.value,
+      cta: '查看更新',
+      go: () => router.push({ path: '/updates', query: { tab: 'update', filter: 'today' } })
     });
   }
 
@@ -238,9 +279,17 @@ const copies = computed(() => (marquee.value ? MARQUEE_COPIES : 1));
 /**
  * 滚动速度按「每个图标多少秒」算，而不是固定总时长 ——
  * 这样图标多的海报和图标少的海报滚起来速度一致（图标 46px + 间距 10px）。
+ *
+ * 上限要按「图标池有多大」留够：池子加大到 60 之后，一行就是 60 个图标，
+ * 42 秒的循环只有 0.7 秒/个、150 秒也只有 2.5 秒/个，都偏快
+ * （用户反馈"图标滚动有点快"）。
+ * 现在按 4.2 秒/个算、上限 260 秒：60 个图标 ≈ 4.2 秒/个，
+ * 和最初 28 个图标时的手感一致，慢悠悠地飘。
  */
-const MARQUEE_SECONDS_PER_ICON = 4.6;
-const rowDuration = (row: string[]) => Math.max(10, Math.round(row.length * MARQUEE_SECONDS_PER_ICON));
+const MARQUEE_SECONDS_PER_ICON = 4.2;
+const MARQUEE_MAX_DURATION = 260;
+const rowDuration = (row: string[]) =>
+  Math.min(MARQUEE_MAX_DURATION, Math.max(10, Math.round(row.length * MARQUEE_SECONDS_PER_ICON)));
 
 const formatDate = (value?: string) => {
   if (!value) return '';
@@ -308,17 +357,47 @@ const loadWeekly = async () => {
   }
 };
 
+/**
+ * 今日更新海报：复用更新页「今日更新」那条链路（release_date 倒序）。
+ * 上游没有按 release_date 过滤的日期参数（date_from/date_to 过滤的是 listed_at），
+ * 所以这里取回第一页再按 UTC+8 的"今天"自己筛；当天的更新基本都在最前面。
+ */
+const loadDaily = async () => {
+  try {
+    const { data } = await getAppUpdates(1, DAILY_FETCH_SIZE);
+    const todayKey = toUtc8DateKey(Date.now());
+    const todayApps = (data || []).filter(
+      (app: any) => toUtc8DateKey(app?.release_date || app?.update_time || app?.created_at) === todayKey
+    );
+
+    const icons = dedupeIcons(todayApps);
+    if (!icons.length) return;
+
+    const today = new Date(Date.now() + UTC8_OFFSET_MS);
+    dailyIcons.value = icons;
+    dailyCount.value = todayApps.length;
+    dailyLabel.value = `${formatShortDate(today)}`;
+  } catch (error) {
+    console.error('Failed to load today updates', error);
+  }
+};
+
 const goSlide = (index: number) => {
   activeIndex.value = index;
   scheduleNext();
 };
 
-/** 「换一个」：换掉精选专题那张海报，并切到它 */
-const handleRefresh = async () => {
-  await loadSpotlight();
-  const index = slides.value.findIndex((slide) => slide.key === 'topic');
-  if (index >= 0) activeIndex.value = index;
-  scheduleNext();
+/**
+ * 一轮海报播完后的自动刷新：专题换一个 + 本周上新 / 今日更新重新取数。
+ * 由 scheduleNext 在绕回第一张之前 await，保证"刷新完成才切下一轮"，
+ * 不会出现切过去还是旧内容、或者中间空一拍。
+ */
+const refreshAll = async () => {
+  try {
+    await Promise.all([loadSpotlight(), loadWeekly(), loadDaily()]);
+  } catch (error) {
+    console.error('Failed to refresh spotlight data', error);
+  }
 };
 
 // 海报轮播：每张海报停留时间不同（本周上新看久一点），鼠标悬停时暂停
@@ -326,21 +405,31 @@ const DWELL_WEEKLY = 12000;
 const DWELL_TOPIC = 7000;
 let carouselTimer: number | null = null;
 
-const dwellOf = (slide: SpotlightSlide | null) => (slide?.key === 'weekly' ? DWELL_WEEKLY : DWELL_TOPIC);
+/* 本周上新 / 今日更新都是数据型海报，看久一点；专题短一些 */
+const dwellOf = (slide: SpotlightSlide | null) =>
+  slide?.key === 'weekly' || slide?.key === 'daily' ? DWELL_WEEKLY : DWELL_TOPIC;
 
 /** 按当前海报的停留时间排下一次切换（手动切换后会重新计时） */
 const scheduleNext = () => {
   if (carouselTimer) window.clearTimeout(carouselTimer);
-  carouselTimer = window.setTimeout(() => {
+  carouselTimer = window.setTimeout(async () => {
     if (!paused.value && slides.value.length > 1) {
-      activeIndex.value = (activeIndex.value + 1) % slides.value.length;
+      const nextIndex = (activeIndex.value + 1) % slides.value.length;
+      /*
+       * 绕回第一张 = 一轮播完了：先把数据刷新完再切过去。
+       * （#换一个 按钮已去掉，改成这里自动刷新；刷新期间仍然停在最后一张海报上，
+       *   所以不会出现空白或"切过去还是旧内容"。）
+       */
+      if (nextIndex === 0) await refreshAll();
+      // 刷新后海报数量可能变了（比如今天没有更新），夹一下免得越界
+      activeIndex.value = Math.min(Math.max(nextIndex, 0), Math.max(slides.value.length - 1, 0));
     }
     scheduleNext();
   }, dwellOf(current.value));
 };
 
 onMounted(async () => {
-  await Promise.all([loadWeekly(), loadSpotlight()]);
+  await Promise.all([loadWeekly(), loadDaily(), loadSpotlight()]);
   activeIndex.value = 0;
   scheduleNext();
 });
@@ -368,10 +457,6 @@ onUnmounted(() => {
   font-size: 16px;
   font-weight: 600;
   color: var(--el-text-color-primary);
-}
-
-.spotlight-refresh {
-  color: var(--el-text-color-secondary);
 }
 
 /* 轮播圆点 */
@@ -404,6 +489,8 @@ onUnmounted(() => {
 }
 
 .spotlight-card {
+  /* 交叉淡入淡出时，正在离场的那张要绝对定位叠在上面，需要这里当定位参照 */
+  position: relative;
   overflow: hidden;
   border: 1px solid var(--el-border-color);
   border-radius: 12px;
@@ -420,17 +507,26 @@ onUnmounted(() => {
 /* 海报切换动画 */
 .spotlight-swap-enter-active,
 .spotlight-swap-leave-active {
-  transition: opacity 0.32s ease-out, transform 0.32s ease-out;
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.34s ease-out;
+}
+
+/*
+ * 「推出推入」而不是叠加淡入淡出：
+ *   旧图往左平移 100% 出画，新图从右边 100% 平移进来。
+ * 两张都各占一半、拼起来始终铺满卡片 —— 既不会像 mode="out-in" 那样中间空一拍，
+ * 也不会像叠加淡化那样两张重影糊在一起；平移幅度是整张宽度，边缘不露底色。
+ */
+.spotlight-swap-leave-active {
+  position: absolute;
+  inset: 0;
 }
 
 .spotlight-swap-enter-from {
-  opacity: 0;
-  transform: translateX(18px);
+  transform: translateX(100%);
 }
 
 .spotlight-swap-leave-to {
-  opacity: 0;
-  transform: translateX(-18px);
+  transform: translateX(-100%);
 }
 
 /* 本周上新角标 */

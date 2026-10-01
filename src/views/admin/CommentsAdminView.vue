@@ -35,47 +35,50 @@
 
       <el-table :data="items" v-loading="loading" stripe @selection-change="onSelectionChange" @cell-click="onCellClick">
         <el-table-column type="selection" width="48" />
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="nickname" label="昵称" width="120">
+        <el-table-column v-if="!isCompact" prop="id" label="ID" min-width="64" />
+        <el-table-column prop="nickname" label="昵称 / 邮箱" min-width="120">
           <template #default="{ row }">
-            <div class="single-line">{{ row.nickname }}</div>
+            <div class="stack-cell">
+              <span class="single-line">{{ row.nickname || '匿名' }}</span>
+              <span class="cell-sub single-line">{{ row.email || '未填邮箱' }}</span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="邮箱" width="160">
-          <template #default="{ row }">
-            <div class="single-line">{{ row.email || '-' }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="内容" min-width="200">
+        <el-table-column label="内容" min-width="140">
           <template #default="{ row }">
             <div class="comment-content single-line">{{ row.content }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="所属文章" min-width="150">
+        <el-table-column v-if="!isCompact" label="所属文章" min-width="130">
           <template #default="{ row }">
             <div class="single-line" v-if="row.blog_title">{{ row.blog_title }}</div>
             <div class="single-line text-muted" v-else>ID: {{ row.blog_id }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="90">
+        <el-table-column prop="status" label="状态" min-width="84">
           <template #default="{ row }">
             <el-tag :type="statusTagType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="ip_address" label="IP" width="130">
+        <el-table-column v-if="!isCompact" prop="ip_address" label="IP" min-width="100">
           <template #default="{ row }">
             <div class="single-line">{{ row.ip_address || '-' }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="时间" width="170">
+        <el-table-column prop="created_at" label="时间" min-width="126">
           <template #default="{ row }">
-            {{ formatTime(row.created_at) }}
+            <div class="stack-cell">
+              <span class="single-line">{{ formatTime(row.created_at) }}</span>
+              <span v-if="isCompact" class="cell-sub single-line">{{ row.ip_address || '未知 IP' }}</span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140">
+        <el-table-column label="操作" min-width="130">
           <template #default="{ row }">
-            <el-button size="small" @click.stop="editRow(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click.stop="remove(row)">删除</el-button>
+            <div class="action-cell">
+              <el-button size="small" @click.stop="editRow(row)">编辑</el-button>
+              <el-button size="small" type="danger" @click.stop="remove(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -154,7 +157,12 @@ const pageSize = ref(20);
 const loading = ref(false);
 const selectedIds = ref<number[]>([]);
 const isMobile = ref(window.innerWidth < 768);
-const updateIsMobile = () => { isMobile.value = window.innerWidth < 768; };
+/** 中屏（列放不下时）把「所属文章 / IP / ID」并进相邻格子 */
+const isCompact = ref(window.innerWidth < 1200);
+const updateIsMobile = () => {
+  isMobile.value = window.innerWidth < 768;
+  isCompact.value = window.innerWidth < 1200;
+};
 
 const statusFilter = ref('');
 const blogFilter = ref<number | undefined>(undefined);
@@ -321,7 +329,19 @@ onUnmounted(() => {
 .mt-3 { margin-top: 12px; }
 .pagination-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: nowrap; }
 .single-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.comment-content { max-width: 300px; }
+.stack-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cell-sub {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
+.comment-content { max-width: 100%; }
 .text-muted { color: var(--el-text-color-secondary); }
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .mobile-pagination-container {

@@ -1,120 +1,336 @@
 <template>
-  <div class="app-dashboard-view" v-loading="loading">
-    <div class="app-detail-container" v-if="appDetail">
-      <div class="app-header">
-        <div class="app-header-left">
-          <el-image :src="appDetail.icon_url" class="app-icon" fit="cover">
-            <template #error>
-              <div class="image-slot">
-                <el-icon><Picture /></el-icon>
-              </div>
+  <div class="app-detail-view" v-loading="loading">
+    <div class="detail-shell" v-if="appDetail">
+      <!-- 头部：图标 + 名称 + 关键指标 + 操作 -->
+      <header class="hero-card">
+        <el-image :src="appDetail.icon_url" class="hero-icon" fit="cover">
+          <template #error>
+            <div class="image-slot">
+              <el-icon><Picture /></el-icon>
+            </div>
+          </template>
+        </el-image>
+
+        <div class="hero-main">
+          <div class="hero-head">
+            <h1 class="hero-name">{{ appDetail.name }}</h1>
+            <span v-if="appDetail.kind_name" class="hero-tag">{{ appDetail.kind_name }}</span>
+          </div>
+          <p class="hero-sub" :title="appDetail.pkg_name">
+            {{ appDetail.developer_name || '未知开发者' }}
+            <span class="hero-dot">·</span>
+            <span class="hero-pkg">{{ appDetail.pkg_name || '—' }}</span>
+          </p>
+
+          <!-- 关键指标：评分 / 下载量 / 大小 / 版本 -->
+          <div class="hero-stats">
+            <div class="stat">
+              <span class="stat-value">{{ appDetail.average_rating || appDetail.rating_score || '—' }}</span>
+              <span class="stat-label">评分</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value" :title="rawDownloadCount">{{ downloadText }}</span>
+              <span class="stat-label">下载量</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">{{ appDetail.size_str || formatSize(appDetail.size) }}</span>
+              <span class="stat-label">大小</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">{{ appDetail.version || appDetail.app_version || '—' }}</span>
+              <span class="stat-label">版本</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-actions">
+          <el-button type="primary" round @click="handleInstall">获取</el-button>
+          <el-tooltip content="分享本页" placement="bottom" :show-after="200">
+            <el-button round @click="copyLink" aria-label="分享">
+              <el-icon><HarmonyShareIcon /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+      </header>
+
+      <!-- 正文：左侧介绍，右侧详细信息 -->
+      <div class="detail-body">
+        <section ref="introPanelRef" class="panel intro-panel">
+          <h2 class="panel-title">应用介绍</h2>
+          <!-- 桌面端：介绍比右侧「技术信息」底部还长时收住，给展开 / 收起 -->
+          <div
+            ref="introBodyRef"
+            class="intro-body"
+            :class="{ 'is-clamped': isIntroClamped }"
+            :style="introClampStyle"
+          >
+            <p class="panel-text">{{ appDetail.description || appDetail.intro || '暂无介绍' }}</p>
+
+            <template v-if="newFeatures">
+              <h2 class="panel-title is-spaced">新版本特性</h2>
+              <p class="panel-text">{{ newFeatures }}</p>
             </template>
-          </el-image>
-          <div class="app-title-block">
-            <h1 class="app-name">{{ appDetail.name }}</h1>
-            <div class="app-subtitle">
-              {{ appDetail.developer_name || '—' }} · {{ appDetail.pkg_name || '—' }}
-            </div>
-            <div class="app-actions">
-              <el-button type="primary" round @click="handleInstall">
-                获取
-              </el-button>
-              <el-button round @click="copyLink">
-                <el-icon><HarmonyShareIcon /></el-icon>
-              </el-button>
-            </div>
           </div>
-        </div>
-        <div class="app-header-right">
-          <el-button @click="$router.back()" circle>
-            <el-icon><Close /></el-icon>
-          </el-button>
-        </div>
-      </div>
 
-
-
-      <div class="description-section">
-        <h3 class="section-title">应用介绍</h3>
-        <p class="description-text">{{ appDetail.description || appDetail.intro || '暂无介绍' }}</p>
-      </div>
-      
-      <!-- New Features -->
-      <div class="description-section" v-if="appDetail.new_features || appDetail.upgrade_msg">
-        <h3 class="section-title">新版本特性</h3>
-        <p class="description-text">{{ appDetail.new_features || appDetail.upgrade_msg }}</p>
-      </div>
-
-      <div class="meta-grid">
-        <div class="meta-item">
-          <div class="meta-label">分类</div>
-          <div class="meta-value">{{ appDetail.kind_name || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">评分</div>
-          <div class="meta-value">{{ appDetail.average_rating || appDetail.rating_score || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">下载量</div>
-          <div class="meta-value">{{ appDetail.download_count_str || appDetail.down_count_desc || appDetail.down_count || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">大小</div>
-          <div class="meta-value">{{ appDetail.size_str || formatSize(appDetail.size) }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">版本</div>
-          <div class="meta-value">{{ appDetail.version || appDetail.app_version || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">更新时间</div>
-          <div class="meta-value">{{ formatDate(appDetail.updated_at || appDetail.update_time) }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">包名</div>
-          <div class="meta-value pkg-name" :title="appDetail.pkg_name">{{ appDetail.pkg_name || '—' }}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">开发者</div>
-          <div class="meta-value">{{ appDetail.developer_name || '—' }}</div>
-        </div>
-      </div>
-      
-      <!-- Privacy Policy -->
-      <div class="meta-grid" v-if="appDetail.privacy_url">
-        <div class="meta-item full-width privacy-item">
-          <div class="meta-label">隐私政策</div>
-          <div class="meta-value">
-            <a :href="appDetail.privacy_url" target="_blank" style="text-decoration: none;">
-              <el-button round size="small">
-                查看隐私政策
-                <i class="fas fa-external-link-alt el-icon--right"></i>
-              </el-button>
-            </a>
+          <div v-if="introOverflows" ref="introToggleRowRef" class="intro-toggle-row">
+            <button type="button" class="intro-toggle" @click="toggleIntro">
+              <span>{{ introExpanded ? '收起' : '展开' }}</span>
+              <el-icon :size="12" class="intro-toggle-icon" :class="{ 'is-open': introExpanded }">
+                <ArrowDown />
+              </el-icon>
+            </button>
           </div>
-        </div>
-      </div>
+        </section>
 
+        <aside ref="sideRef" class="side">
+          <!-- 区域一：应用信息 -->
+          <section class="panel">
+            <h2 class="panel-title">应用信息</h2>
+            <dl class="info-list">
+              <div class="info-row">
+                <dt>分类</dt>
+                <dd>{{ appDetail.kind_name || '—' }}</dd>
+              </div>
+              <div class="info-row">
+                <dt>开发者</dt>
+                <dd :title="appDetail.developer_name">{{ appDetail.developer_name || '—' }}</dd>
+              </div>
+              <div v-if="appDetail.listed_at" class="info-row">
+                <dt>上架时间</dt>
+                <dd>{{ formatDate(appDetail.listed_at) }}</dd>
+              </div>
+              <div class="info-row">
+                <dt>更新时间</dt>
+                <dd>{{ updatedAtText }}</dd>
+              </div>
+              <div v-if="ratingCount" class="info-row">
+                <dt>评分人数</dt>
+                <dd>{{ ratingCount.toLocaleString('zh-CN') }} 人</dd>
+              </div>
+            </dl>
+
+            <div v-if="appDetail.privacy_url" class="privacy-row">
+              <span class="privacy-label">隐私政策</span>
+              <el-button size="small" round tag="a" :href="appDetail.privacy_url" target="_blank" rel="noopener">
+                查看
+              </el-button>
+            </div>
+          </section>
+
+          <!-- 区域二：技术信息 -->
+          <section class="panel">
+            <h2 class="panel-title">技术信息</h2>
+            <dl class="info-list">
+              <div v-if="deviceItems.length" class="info-row is-stacked">
+                <dt>支持设备</dt>
+                <dd class="device-chips">
+                  <span
+                    v-for="item in deviceItems"
+                    :key="item.key"
+                    class="chip is-icon-only"
+                    :title="item.label"
+                    :aria-label="item.label"
+                  >
+                    <el-icon><component :is="item.icon" /></el-icon>
+                  </span>
+                </dd>
+              </div>
+              <div v-if="sdkPills.length" class="info-row is-stacked">
+                <dt>API 级别</dt>
+                <dd class="device-chips">
+                  <span v-for="pill in sdkPills" :key="pill" class="chip">{{ pill }}</span>
+                </dd>
+              </div>
+              <div class="info-row">
+                <dt>应用 ID</dt>
+                <dd class="is-mono" :title="appDetail.app_id">{{ appDetail.app_id || '—' }}</dd>
+              </div>
+              <div class="info-row">
+                <dt>包名</dt>
+                <dd class="is-mono" :title="appDetail.pkg_name">{{ appDetail.pkg_name || '—' }}</dd>
+              </div>
+            </dl>
+          </section>
+        </aside>
+      </div>
     </div>
-    
+
     <el-empty v-else-if="!loading" description="未找到应用信息" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { computed, nextTick, onActivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Picture, Close } from '@element-plus/icons-vue';
+import { ArrowDown, Picture } from '@element-plus/icons-vue';
 import HarmonyShareIcon from '../components/HarmonyShareIcon.vue';
+import PhoneDeviceIcon from '../components/PhoneDeviceIcon.vue';
+import TvDeviceIcon from '../components/TvDeviceIcon.vue';
+import TabletDeviceIcon from '../components/TabletDeviceIcon.vue';
+import WatchDeviceIcon from '../components/WatchDeviceIcon.vue';
+import PcDeviceIcon from '../components/PcDeviceIcon.vue';
 import { ElMessage } from 'element-plus';
 import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
+import { buildAppShareMeta, clearPageShareMeta, setPageShareMeta, shareCurrentPage } from '../utils/page-share';
 
 const route = useRoute();
 const router = useRouter();
 const layoutStore = useLayoutStore();
 const loading = ref(false);
 const appDetail = ref<any>(null);
+
+/** 新版本说明：上游字段名不固定，兜一下 */
+const newFeatures = computed(() => appDetail.value?.new_features || appDetail.value?.upgrade_msg || '');
+
+/** 设备码 → 名称 + 图标（与应用页设备页签同一套图标；7 = 手表） */
+const DEVICE_CODE_META: Record<string, { key: string; label: string; icon: any }> = {
+  '0': { key: 'phone', label: '手机', icon: PhoneDeviceIcon },
+  '3': { key: 'tv', label: '智慧屏', icon: TvDeviceIcon },
+  '4': { key: 'tablet', label: '平板', icon: TabletDeviceIcon },
+  '7': { key: 'watch', label: '手表', icon: WatchDeviceIcon },
+  '15': { key: 'pc', label: '电脑', icon: PcDeviceIcon }
+};
+
+/** 支持的设备：main_device_codes -> 手机 / 平板 / 手表 … */
+const deviceItems = computed(() => {
+  const raw = appDetail.value?.main_device_codes ?? appDetail.value?.device_codes ?? appDetail.value?.device_code_list;
+  const list = Array.isArray(raw) ? raw : typeof raw === 'string' && raw ? raw.split(',') : [];
+  const items = list.map((code: any) => DEVICE_CODE_META[String(Number(code))]).filter(Boolean);
+  return items.filter((item, index) => items.findIndex((x) => x.key === item!.key) === index);
+});
+
+/** 评分人数 */
+const ratingCount = computed(() => {
+  const raw = appDetail.value?.total_star_rating_count ?? appDetail.value?.info_rate_count;
+  const num = Number(raw);
+  return Number.isFinite(num) && num > 0 ? num : 0;
+});
+
+/*
+ * 桌面端「应用介绍」限高：右栏（应用信息 + 技术信息）到底有多少，介绍就显示多少，
+ * 超出的部分收起来给个展开 / 收起。手机端是单列，不做限高。
+ */
+const introPanelRef = ref<HTMLElement | null>(null);
+const introBodyRef = ref<HTMLElement | null>(null);
+const introToggleRowRef = ref<HTMLElement | null>(null);
+const sideRef = ref<HTMLElement | null>(null);
+/** 介绍正文允许的高度（px），由右栏底部决定 */
+const introAvailableHeight = ref(0);
+/** 介绍正文的完整高度（px），展开时作为动画目标高度 */
+const introContentHeight = ref(0);
+/** 正文是否高过右栏底部（只有超过才给展开按钮） */
+const introOverflows = ref(false);
+const introExpanded = ref(false);
+
+/** 与 .detail-body 的断点保持一致：≥901px 才是左右两栏 */
+const INTRO_CLAMP_MIN_WIDTH = 901;
+/** 再挤也要留出这么多介绍高度，否则小屏笔记本上只剩两行 */
+const INTRO_MIN_HEIGHT = 180;
+/** 展开 / 收起那一行的高度（首帧按钮还没渲染时先按这个留位，保证和右栏平齐） */
+const INTRO_TOGGLE_ROW_FALLBACK = 33;
+/** 手机端单列：介绍最多显示这么高（再长就收起），取屏高的 45%，并限制在 240–360px */
+const INTRO_MOBILE_MIN_HEIGHT = 240;
+const INTRO_MOBILE_MAX_HEIGHT = 360;
+const INTRO_MOBILE_HEIGHT_RATIO = 0.45;
+
+const isIntroClamped = computed(() => introOverflows.value && !introExpanded.value);
+/*
+ * 展开 / 收起都写具体像素高度（不用 none），这样 max-height 才能过渡出动画；
+ * 不超长时干脆不限高。
+ */
+const introClampStyle = computed(() => {
+  if (!introOverflows.value) return {};
+  const target = introExpanded.value ? introContentHeight.value : introAvailableHeight.value;
+  return { maxHeight: `${target}px` };
+});
+
+let introObserver: ResizeObserver | null = null;
+let introMeasureRaf = 0;
+
+const measureIntro = () => {
+  introMeasureRaf = 0;
+  const panel = introPanelRef.value;
+  const body = introBodyRef.value;
+  const side = sideRef.value;
+  if (!panel || !body || !side) return;
+
+  // 展开 / 收起那一行的高度：已经渲染就量，没渲染就按固定值留位（否则第一次量会多出 30px）
+  const toggleRow = introToggleRowRef.value;
+  const toggleRowHeight = toggleRow ? toggleRow.offsetHeight + 6 : INTRO_TOGGLE_ROW_FALLBACK;
+
+  let available: number;
+  if (window.innerWidth >= INTRO_CLAMP_MIN_WIDTH) {
+    // 桌面端两栏：介绍高度跟着右侧「技术信息」的底部走
+    const overhead = panel.offsetHeight - body.offsetHeight - (toggleRow ? toggleRow.offsetHeight + 6 : 0);
+    available = Math.max(INTRO_MIN_HEIGHT, side.offsetHeight - overhead - toggleRowHeight);
+  } else {
+    // 手机端单列：右侧信息在下面，改按屏高的比例收住
+    const ratio = window.innerHeight * INTRO_MOBILE_HEIGHT_RATIO;
+    available = Math.round(Math.min(INTRO_MOBILE_MAX_HEIGHT, Math.max(INTRO_MOBILE_MIN_HEIGHT, ratio)));
+  }
+
+  introAvailableHeight.value = available;
+  introContentHeight.value = body.scrollHeight;
+  const overflows = body.scrollHeight > available + 2;
+  if (overflows !== introOverflows.value) introOverflows.value = overflows;
+  if (!overflows) introExpanded.value = false;
+};
+
+/** 多次触发合并到一帧，避免 ResizeObserver 里改高度又触发自己 */
+const scheduleIntroMeasure = () => {
+  if (introMeasureRaf) return;
+  introMeasureRaf = window.requestAnimationFrame(measureIntro);
+};
+
+const toggleIntro = () => {
+  introExpanded.value = !introExpanded.value;
+  nextTick(scheduleIntroMeasure);
+};
+
+/*
+ * 应用更新时间：上游的 updated_at / rating_created_at 都是「我们这边同步数据的时刻」，
+ * 真正代表版本发布/更新的是 release_date（毫秒时间戳），拿它换算才对得上应用市场里的更新时间。
+ */
+const updatedAtText = computed(() => {
+  const detail = appDetail.value || {};
+  const release = detail.release_date ?? detail.releaseDate;
+  if (release) return formatDate(release);
+  return formatDate(detail.update_time || detail.updated_at);
+});
+
+/** API 级别：拆成两枚胶囊「最小 21」「目标 24」 */
+const sdkPills = computed(() => {
+  const detail = appDetail.value || {};
+  const min = detail.minsdk ?? detail.min_sdk ?? detail.min_hmos_api_level;
+  const target = detail.target_sdk ?? detail.targetSdk;
+  const parts: string[] = [];
+  if (min !== undefined && min !== null && min !== '') parts.push(`最小 ${min}`);
+  if (target !== undefined && target !== null && target !== '') parts.push(`目标 ${target}`);
+  return parts;
+});
+
+/** 下载量原始值（用于 hover 提示） */
+const rawDownloadCount = computed(() => {
+  const raw = appDetail.value?.download_count ?? appDetail.value?.down_count;
+  return raw === undefined || raw === null ? '' : String(raw);
+});
+
+/** 下载量按 亿 / 万 压缩显示：73033350 -> 7,303万 */
+const downloadText = computed(() => {
+  const detail = appDetail.value;
+  if (!detail) return '—';
+  const str = detail.download_count_str || detail.down_count_desc;
+  // 上游有时把纯数字塞进 *_str 字段，那种情况统一走下面的压缩格式化
+  if (str && !/^\d+$/.test(String(str).trim())) return String(str);
+  const raw = detail.download_count ?? detail.down_count;
+  if (raw === undefined || raw === null || raw === '') return '—';
+  const num = Number(raw);
+  if (!Number.isFinite(num)) return String(raw);
+  if (num > 100000000) return (num / 100000000).toFixed(1) + '亿';
+  if (num > 10000) return (num / 10000).toFixed(1) + '万';
+  return num.toLocaleString('zh-CN');
+});
 
 const formatSize = (bytes: number | string) => {
   if (!bytes) return '—';
@@ -128,17 +344,24 @@ const formatSize = (bytes: number | string) => {
 
 const formatDate = (date: string | number) => {
   if (!date) return '—';
-  return new Date(date).toLocaleString();
+  // 上游的 release_date 是毫秒时间戳（偶尔是秒），也有的字段是 "2025/6/24 21:05:07" 这种字符串
+  let value: string | number = date;
+  if (typeof date === 'string' && /^\d+$/.test(date.trim())) value = Number(date);
+  if (typeof value === 'number') {
+    const ms = value < 1e12 ? value * 1000 : value;
+    const parsed = new Date(ms);
+    return Number.isNaN(parsed.getTime()) ? String(date) : parsed.toLocaleString('zh-CN', { hour12: false });
+  }
+  // 可能是 ISO（2025-09-01T17:56:43+08:00），也可能是 "2025/6/24 21:05:07"
+  const raw = String(value);
+  const iso = new Date(raw);
+  if (Number.isFinite(iso.getTime())) return iso.toLocaleString('zh-CN', { hour12: false });
+  const fallback = new Date(raw.replace(/-/g, '/'));
+  return Number.isFinite(fallback.getTime()) ? fallback.toLocaleString('zh-CN', { hour12: false }) : raw;
 };
 
-const copyLink = () => {
-  const url = window.location.href;
-  navigator.clipboard.writeText(url).then(() => {
-    ElMessage.success('链接已复制');
-  }).catch(() => {
-    ElMessage.error('复制失败');
-  });
-};
+/** 分享本页：带应用图标 + 名称 / 开发者 / 简介，系统分享面板不支持时退回复制 */
+const copyLink = () => shareCurrentPage('已复制应用分享信息');
 
 const handleInstall = () => {
   if (!appDetail.value) return;
@@ -170,193 +393,561 @@ const fetchDetail = async () => {
       const title = appDetail.value.name || '应用详情';
       layoutStore.setPageInfo(title, true, () => router.back());
       document.title = `OpenStore | ${title}`;
+      // 分享卡片带上这个应用自己的图标和文字
+      setPageShareMeta(buildAppShareMeta(appDetail.value));
     }
   } catch (error) {
     console.error('Failed to fetch app detail:', error);
     ElMessage.error('获取应用详情失败');
   } finally {
     loading.value = false;
+    // 正文渲染出来之后再量一次高度，决定要不要收起
+    nextTick(scheduleIntroMeasure);
   }
 };
 
 onMounted(() => {
   fetchDetail();
+  window.addEventListener('resize', scheduleIntroMeasure);
+  if (typeof ResizeObserver !== 'undefined') {
+    introObserver = new ResizeObserver(scheduleIntroMeasure);
+  }
+  nextTick(() => {
+    // 右栏高度决定介绍能显示多高，它一变就重新量
+    if (introObserver && sideRef.value) introObserver.observe(sideRef.value);
+    scheduleIntroMeasure();
+  });
+});
+
+// 文本与右栏高度变化后重算（切回缓存的页面时也要再量一次）
+watch(appDetail, () => nextTick(scheduleIntroMeasure));
+// 按钮行第一次出现 / 消失后，行高才量得准，再补一次测量
+watch(introOverflows, () => nextTick(scheduleIntroMeasure));
+onActivated(() => nextTick(scheduleIntroMeasure));
+
+onUnmounted(() => {
+  window.removeEventListener('resize', scheduleIntroMeasure);
+  if (introMeasureRaf) window.cancelAnimationFrame(introMeasureRaf);
+  introObserver?.disconnect();
+  introObserver = null;
+  clearPageShareMeta();
 });
 </script>
 
 <style scoped>
-.app-dashboard-view {
-  padding: 20px;
-  max-width: 1000px; /* Narrower for readability like detail pages */
+.app-detail-view {
+  padding: 16px 20px 32px;
+  max-width: 1120px;
   margin: 0 auto;
   min-height: 80vh;
 }
 
-.app-detail-container {
-  background: var(--el-bg-color);
-  border-radius: 16px;
-  padding: 32px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-}
-
-.app-header {
+/* ---------- 头部：图标 + 名称 + 指标 + 操作 ---------- */
+.hero-card {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 32px;
+  gap: 20px;
+  padding: 24px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
+  box-shadow: var(--el-box-shadow-light);
 }
 
-.app-header-left {
+.hero-icon {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  border-radius: 22px;
+  border: 1px solid var(--el-border-color-extra-light);
+}
+
+.hero-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hero-head {
   display: flex;
-  gap: 24px;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.app-icon {
-  width: 120px;
-  height: 120px;
-  border-radius: 24px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  flex-shrink: 0;
+.hero-name {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
 }
 
-.app-title-block {
+.hero-tag {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background-color: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.hero-sub {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hero-dot {
+  flex: 0 0 auto;
+}
+
+.hero-pkg {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+}
+
+/* 四个关键指标：分隔线用边框，窄屏自动折行 */
+.hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 26px;
+  margin-top: 16px;
+}
+
+.stat {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  gap: 2px;
+  min-width: 0;
 }
 
-.app-name {
-  font-size: 32px;
-  font-weight: 700;
-  margin: 0 0 8px 0;
-  color: var(--el-text-color-primary);
-}
-
-.app-subtitle {
+.stat-value {
   font-size: 16px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 20px;
-}
-
-.app-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.screenshots-section {
-  margin-bottom: 32px;
-  overflow: hidden;
-}
-
-.screenshots-scroll {
-  display: flex;
-  gap: 16px;
-  overflow-x: auto;
-  padding-bottom: 12px;
-  /* Hide scrollbar for cleaner look but allow scroll */
-  scrollbar-width: thin;
-}
-
-.screenshot-item {
-  width: 200px; /* Phone screenshot ratio approx */
-  height: 355px; /* 9:16 aspect ratio roughly */
-  border-radius: 12px;
-  flex-shrink: 0;
-  border: 1px solid var(--el-border-color-lighter);
-}
-
-.description-section {
-  margin-bottom: 32px;
-}
-
-.section-title {
-  font-size: 20px;
   font-weight: 600;
-  margin-bottom: 12px;
+  color: var(--el-text-color-primary);
+  font-variant-numeric: tabular-nums;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.hero-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- 正文：左介绍 + 右信息 ---------- */
+.detail-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+/* 右侧两栏区块：应用信息 / 技术信息 */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.panel {
+  padding: 20px 24px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.panel-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
   color: var(--el-text-color-primary);
 }
 
-.description-text {
-  font-size: 16px;
-  line-height: 1.6;
+.panel-title.is-spaced {
+  margin-top: 24px;
+}
+
+.panel-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.75;
   color: var(--el-text-color-regular);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-.meta-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 20px;
-  margin-top: 32px;
-  padding-top: 32px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-
-.meta-item {
+/* 「应用介绍」限高：右栏到底就不再多显示，底部渐隐 + 展开 / 收起 */
+.intro-panel {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
-.meta-item.full-width {
-  grid-column: 1 / -1;
+.intro-body {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  /* 展开 / 收起的高度过渡 */
+  transition: max-height 0.32s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-.meta-item.privacy-item {
-  flex-direction: row;
+/* 底部渐隐：收起时淡入，展开时淡出 */
+.intro-body::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 72px;
+  background: linear-gradient(to bottom, transparent, var(--el-bg-color) 82%);
+  opacity: 0;
+  transition: opacity 0.24s ease;
+  pointer-events: none;
+}
+
+.intro-body.is-clamped::after {
+  opacity: 1;
+}
+
+.intro-toggle-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+/* 展开 / 收起：小胶囊，不用 el-button，免得它的默认样式在深色下脏 */
+.intro-toggle {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 5px;
+  padding: 4px 14px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 999px;
+  background-color: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
+  font-size: 12.5px;
+  line-height: 1.6;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
 }
 
-.meta-label {
+.intro-toggle:hover {
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light-5);
+  background-color: var(--el-color-primary-light-9);
+}
+
+.intro-toggle:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-5);
+  outline-offset: 2px;
+}
+
+.intro-toggle-icon {
+  transition: transform 0.2s ease;
+}
+
+.intro-toggle-icon.is-open {
+  transform: rotate(180deg);
+}
+
+/* 右侧信息表：标签左、值右，长包名省略号不换行 */
+.info-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.info-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--el-border-color-extra-light);
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-row dt {
+  flex: 0 0 auto;
   font-size: 13px;
   color: var(--el-text-color-secondary);
 }
 
-.meta-value {
-  font-size: 15px;
-  color: var(--el-text-color-primary);
+.info-row dd {
+  margin: 0;
+  min-width: 0;
+  font-size: 13.5px;
   font-weight: 500;
-  word-break: break-all;
+  color: var(--el-text-color-primary);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.pkg-name {
-  font-family: monospace;
+.info-row dd.is-mono {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-weight: 400;
 }
 
-/* Mobile Responsive */
+/* 支持设备：标签竖排更省宽度，值在右侧一列排开 */
+.info-row.is-stacked {
+  align-items: flex-start;
+}
+
+.device-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 只有图标的设备组之间留宽一点 */
+.device-chips:has(.is-icon-only) {
+  gap: 10px;
+}
+
+/* 支持设备 / API 级别用的胶囊 */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background-color: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.chip :deep(svg) {
+  width: 1em;
+  height: 1em;
+}
+
+/* 支持设备：不要胶囊底，只留图标本身（名称走 title/aria-label） */
+.chip.is-icon-only {
+  width: auto;
+  height: auto;
+  padding: 0;
+  background: transparent;
+  justify-content: center;
+}
+
+/* el-icon 的 svg 尺寸跟着 font-size 走 */
+.chip.is-icon-only :deep(.el-icon) {
+  font-size: 19px;
+}
+
+/* 「获取」与「分享」两个胶囊保持同样大小 */
+.hero-actions :deep(.el-button) {
+  width: 88px;
+  height: 32px;
+  padding: 0;
+}
+
+.privacy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--el-border-color-extra-light);
+}
+
+.privacy-label {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+.image-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--el-text-color-placeholder);
+  background-color: var(--el-fill-color-light);
+  font-size: 22px;
+}
+
+/* ---------- 自适应 ---------- */
+@media (max-width: 1000px) {
+  .detail-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
-  .app-dashboard-view {
-    padding: 10px;
-  }
-  
-  .app-detail-container {
-    padding: 20px;
+  .app-detail-view {
+    padding: 12px 12px 24px;
   }
 
-  .app-header {
-    flex-direction: column-reverse;
-    gap: 16px;
-  }
-  
-  .app-header-right {
-    align-self: flex-end;
-  }
-  
-  .app-header-left {
-    flex-direction: column;
+  .hero-card {
+    /* 手机上：图标与名称并排，副标题 / 四个指标 / 操作按钮各占整行 */
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    text-align: center;
+    gap: 10px 14px;
+    padding: 16px;
+  }
+
+  .hero-icon {
+    grid-area: 1 / 1 / 2 / 2;
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+  }
+
+  .hero-main {
+    display: contents;
+  }
+
+  .hero-head {
+    grid-area: 1 / 2 / 2 / 3;
+  }
+
+  .hero-sub {
+    grid-area: 2 / 1 / 3 / -1;
+  }
+
+  .hero-name {
+    font-size: 19px;
+  }
+
+  .hero-tag {
+    font-size: 11px;
+    padding: 1px 8px;
+  }
+
+  .hero-sub {
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    margin-top: 0;
+    font-size: 12px;
+  }
+
+  /* 手机上包名不再强行省略，折行完整显示 */
+  .hero-pkg {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .hero-stats {
+    /* 手机上也要一行四个：等宽四列，值过长就省略（hover/长按有完整值） */
+    grid-area: 3 / 1 / 4 / -1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-top: 2px;
+    gap: 8px;
+  }
+
+  .stat-value {
+    font-size: 14px;
+    max-width: 100%;
+  }
+
+  .stat-label {
+    font-size: 11px;
+  }
+
+  .hero-actions {
+    grid-area: 4 / 1 / 5 / -1;
     width: 100%;
+    justify-content: flex-start;
+    gap: 10px;
   }
-  
-  .app-actions {
-    justify-content: center;
+
+  /* 「获取」占满剩余宽度，两个图标按钮跟在后面 */
+  .hero-actions :deep(.el-button) {
+    flex: 1 1 0;
+    width: auto;
   }
-  
-  .meta-grid {
-    grid-template-columns: 1fr 1fr;
+
+  .detail-body {
+    margin-top: 12px;
+    gap: 12px;
+  }
+
+  .panel {
+    padding: 14px 16px;
+    border-radius: 14px;
+  }
+
+  .panel-title {
+    font-size: 15px;
+  }
+
+  .panel-text {
+    font-size: 13.5px;
+    line-height: 1.7;
+  }
+
+  .info-row {
+    padding: 8px 0;
+  }
+
+  .info-row dd {
+    font-size: 13px;
   }
 }
+
+/* 更窄的手机：四个指标还是排一行，只把字号和内边距收紧，避免数值被省略 */
+@media (max-width: 420px) {
+  .hero-card {
+    padding: 14px 12px;
+  }
+
+  .hero-stats {
+    gap: 6px;
+  }
+
+  .stat-value {
+    font-size: 13px;
+  }
+
+  .stat-label {
+    font-size: 10.5px;
+  }
+}
+
+/* 极窄（≤340px）：四个指标仍在一行，数值允许折成两行，保证完整显示 */
+@media (max-width: 340px) {
+  /* 数值折成两行时，四个标签仍对齐在同一基线上 */
+  .hero-stats {
+    align-items: end;
+  }
+
+  .stat-value {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+  }
+}
+
 </style>

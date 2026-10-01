@@ -105,11 +105,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { getTopicDetail, type FullSubstanceInfo } from '../services/api';
 import AppCard from '../components/AppCard.vue';
 import { useLayoutStore } from '../stores/layout';
+import { clearPageShareMeta, setPageShareMeta } from '../utils/page-share';
 import { Calendar, Collection, Picture, User } from '@element-plus/icons-vue';
 
 const route = useRoute();
@@ -217,20 +218,18 @@ const fetchDetail = async () => {
     layoutStore.setPageInfo('', true, () => router.back());
     document.title = `OpenStore | ${title}`;
 
-    const metaDescription = (data.subtitle || parsedComment.value.description) || '';
-    if (metaDescription) {
-      let el = document.querySelector('meta[name="description"]');
-      if (!el) {
-        el = document.createElement('meta');
-        el.setAttribute('name', 'description');
-        document.head.appendChild(el);
-      }
-      try {
-        el.setAttribute('content', metaDescription.slice(0, 160));
-      } catch (e) {
-        console.warn('Failed to set description', e);
-      }
-    }
+    /*
+      分享卡片：专题本身没有封面图，用专题里第一个应用的图标当资源图片，
+      文案用「标题 + 副标题 / 介绍」。
+    */
+    const firstIcon = (data.apps || []).map((a: any) => a?.icon_url).find((u: unknown) => typeof u === 'string' && u);
+    setPageShareMeta({
+      title,
+      description: data.subtitle || description.value || '',
+      image: typeof firstIcon === 'string' ? firstIcon : '',
+    });
+
+    // meta / 分享描述由上面的 setPageShareMeta 统一写，这里不再单独改
   } catch (err: any) {
     console.error(err);
     error.value = '无法加载专题详情，请稍后再试';
@@ -250,6 +249,10 @@ const goToApp = (app: any) => {
 
 onMounted(() => {
   fetchDetail();
+});
+
+onUnmounted(() => {
+  clearPageShareMeta();
 });
 </script>
 

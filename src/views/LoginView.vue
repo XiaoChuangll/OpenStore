@@ -83,6 +83,7 @@
                   v-model="form.username"
                   type="text"
                   autocomplete="username"
+                  aria-label="用户名"
                   placeholder="请输入用户名"
                   :disabled="loading || success"
                   @focus="onFocus('username')"
@@ -103,6 +104,7 @@
                   v-model="form.password"
                   :type="showPassword ? 'text' : 'password'"
                   autocomplete="current-password"
+                  aria-label="密码"
                   placeholder="请输入密码"
                   :disabled="loading || success"
                   @focus="onFocus('password')"
@@ -1316,6 +1318,22 @@ kbd {
 
   .panel-inner {
     max-width: 100%;
+  }
+
+  /*
+    移动端：输入框本身有图标 + placeholder，字段标签和底部键盘提示都是多余的，
+    去掉后表单更紧凑（标签文字改用 aria-label，读屏仍能念出来）。
+  */
+  .field-label {
+    display: none;
+  }
+
+  .panel-foot {
+    display: none;
+  }
+
+  .login-form {
+    gap: 14px;
   }
 }
 

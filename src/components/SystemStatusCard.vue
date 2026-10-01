@@ -76,7 +76,7 @@
             <div class="stat-label">已插入应用数量</div>
             <div class="stat-value">
               <el-tag effect="dark" round size="large" type="success" class="stat-tag">
-                {{ formatNumber(syncStatus.insertedCount) }}
+                <AnimatedNumber :value="syncStatus.insertedCount" />
               </el-tag>
             </div>
           </div>
@@ -86,7 +86,7 @@
             <div class="stat-label">共处理应用数量</div>
             <div class="stat-value">
               <el-tag effect="dark" round size="large" class="stat-tag">
-                {{ formatNumber(syncStatus.processedCount) }}
+                <AnimatedNumber :value="syncStatus.processedCount" />
               </el-tag>
             </div>
           </div>
@@ -96,7 +96,7 @@
             <div class="stat-label">已失败应用数量</div>
             <div class="stat-value">
               <el-tag effect="dark" round size="large" type="danger" class="stat-tag">
-                {{ formatNumber(syncStatus.failedCount) }}
+                <AnimatedNumber :value="syncStatus.failedCount" />
               </el-tag>
             </div>
           </div>
@@ -106,7 +106,7 @@
             <div class="stat-label">已跳过应用数量</div>
             <div class="stat-value">
               <el-tag effect="dark" round size="large" type="warning" class="stat-tag">
-                {{ formatNumber(syncStatus.skippedCount) }}
+                <AnimatedNumber :value="syncStatus.skippedCount" />
               </el-tag>
             </div>
           </div>
@@ -163,6 +163,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { Connection, Loading, CircleCheck, Refresh } from '@element-plus/icons-vue';
 import { hmApi } from '../services/hm-api';
+import AnimatedNumber from './AnimatedNumber.vue';
 
 const router = useRouter();
 
@@ -558,6 +559,25 @@ onUnmounted(() => {
   margin-left: 10px;
   color: var(--el-text-color-regular);
 }
+
+/*
+  窄屏 / 移动端：这行「已处理/总数 [已用<剩余]」会把进度条挤短 ——
+  隐藏里面的文字没用，Element Plus 的 .el-progress__text 还留着 50px 的 min-width。
+  这里直接把整块文字去掉，并收掉左右内边距，让进度条占满内容宽度。
+*/
+@media (max-width: 1024px) {
+  .sync-progress {
+    padding: 0;
+  }
+
+  .sync-progress :deep(.el-progress__text) {
+    display: none !important;
+  }
+
+  .progress-text {
+    display: none !important;
+  }
+}
 .online-tag {
   border: none;
 }
@@ -593,10 +613,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
-  .progress-text {
-    display: none !important;
-  }
-
   /* 三个状态块并排一行：收掉 el-row 的负边距和 el-col 的内边距，给文字腾地方 */
   .status-row {
     margin-left: 0 !important;

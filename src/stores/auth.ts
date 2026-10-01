@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
+import { connectWS, disconnectWS } from '../services/ws';
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('token'));
@@ -30,11 +31,21 @@ export const useAuthStore = defineStore('auth', () => {
     if (tokenExpMs.value && tokenExpMs.value <= Date.now()) {
       token.value = null;
       localStorage.removeItem('token');
+      disconnectWS();
       return false;
     }
     return true;
   };
-  const setToken = (t: string) => { token.value = t; localStorage.setItem('token', t); };
-  const logout = () => { token.value = null; localStorage.removeItem('token'); };
+  // 登录后（含 token 刷新）才建立 /ws 实时连接，退出时断开
+  const setToken = (t: string) => {
+    token.value = t;
+    localStorage.setItem('token', t);
+    connectWS();
+  };
+  const logout = () => {
+    token.value = null;
+    localStorage.removeItem('token');
+    disconnectWS();
+  };
   return { token, username, tokenExpMs, isLoggedIn, setToken, logout };
 });

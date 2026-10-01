@@ -195,7 +195,9 @@ const runSearch = async () => {
       desc: true,
       search_key: 'name',
       search_value: value,
-      search_exact: false
+      search_exact: false,
+      // 列表只展示图标 + 名称 + 包名，简略信息就够
+      detail: false
     });
     if (seq !== searchSeq) return;
     results.value = (body?.data?.data || []) as SearchResult[];

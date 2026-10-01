@@ -22,7 +22,7 @@
       </el-table-column>
       <el-table-column prop="name" label="名称" />
       <el-table-column v-if="!isMobile" prop="url" label="URL" show-overflow-tooltip />
-      <el-table-column v-if="!isMobile" prop="weight" label="排序权重" width="120" />
+      <el-table-column v-if="!isMobile" prop="weight" label="排序权重" min-width="110" />
       <el-table-column label="状态" :width="isMobile ? 80 : 120">
         <template #default="{ row }">
           <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '禁用' }}</el-tag>
@@ -30,8 +30,10 @@
       </el-table-column>
       <el-table-column label="操作" :width="isMobile ? 140 : 220">
         <template #default="{ row }">
-          <el-button size="small" @click="editRow(row)">编辑</el-button>
-          <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
+          <div class="action-cell">
+            <el-button size="small" @click="editRow(row)">编辑</el-button>
+            <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>

@@ -8,7 +8,7 @@
 
     <el-table :data="apis" style="width: 100%" stripe v-loading="loading">
       <el-table-column prop="name" label="名称" :width="isMobile ? '' : 150" :min-width="isMobile ? 120 : ''" />
-      <el-table-column v-if="!isMobile" prop="url" label="API URL" min-width="250">
+      <el-table-column v-if="!isMobile" prop="url" label="API URL" min-width="150">
         <template #default="{ row }">
           <a :href="row.url" target="_blank" class="link">{{ row.url }}</a>
         </template>
@@ -34,11 +34,19 @@
           />
         </template>
       </el-table-column>
-      <el-table-column v-if="!isMobile" label="操作" width="200" fixed="right">
+      <el-table-column label="操作" :min-width="isMobile ? 104 : 132" align="right">
         <template #default="{ row }">
-          <el-button size="small" @click="checkApi(row)" :loading="row.checking" class="action-btn">{{ row.checking ? '' : '检测' }}</el-button>
-          <el-button size="small" type="primary" @click="openDialog(row)" class="action-btn">编辑</el-button>
-          <el-button size="small" type="danger" @click="handleDelete(row)" class="action-btn">删除</el-button>
+          <div class="action-cell">
+            <el-tooltip content="检测延迟" placement="top" :show-after="300">
+              <el-button link type="info" :icon="CircleCheck" :loading="row.checking" @click="checkApi(row)" />
+            </el-tooltip>
+            <el-tooltip content="编辑" placement="top" :show-after="300">
+              <el-button link type="primary" :icon="Edit" @click="openDialog(row)" />
+            </el-tooltip>
+            <el-tooltip content="删除" placement="top" :show-after="300">
+              <el-button link type="danger" :icon="Delete" @click="handleDelete(row)" />
+            </el-tooltip>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -86,7 +94,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus } from '@element-plus/icons-vue';
+import { Plus, Edit, Delete, CircleCheck } from '@element-plus/icons-vue';
 import {
   getAdminMusicApis,
   createMusicApi,
@@ -302,5 +310,11 @@ const importMonitors = async () => {
 .text-success { color: #67c23a; }
 .text-warning { color: #e6a23c; }
 .text-danger { color: #f56c6c; }
-.action-btn { width: 50px; padding: 5px 0; text-align: center; }
+.action-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  white-space: nowrap;
+}
 </style>

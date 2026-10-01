@@ -183,7 +183,9 @@ export const deleteAnnouncementCategory = async (id: number) => {
   await api.delete(`/announcement-categories/${id}`);
 };
 
-export const getAnnouncements = async (params: { status?: string; page?: number; pageSize?: number } = {}) => {
+export const getAnnouncements = async (
+  params: { status?: string; search?: string; category_id?: number | null; page?: number; pageSize?: number } = {}
+) => {
   const { data } = await api.get('/announcements', { params });
   return data as { items: Announcement[]; total: number; page: number; pageSize: number };
 };
@@ -223,6 +225,8 @@ export interface Blog {
   seo_description?: string | null;
   seo_keywords?: string | null;
   password?: string | null;
+  /** 后台列表只返回这个标记，不再返回明文密码或哈希 */
+  has_password?: number | boolean | null;
   allow_comments?: number | null;
   scheduled_at?: string | null;
   published_at?: string | null;
@@ -278,7 +282,16 @@ export const deleteBlogTag = async (id: number) => {
   await api.delete(`/blog-tags/${id}`);
 };
 
-export const getBlogs = async (params: { status?: string; page?: number; pageSize?: number; category_id?: number; tag_id?: number } = {}) => {
+export const getBlogs = async (
+  params: {
+    status?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+    category_id?: number;
+    tag_id?: number;
+  } = {}
+) => {
   const { data } = await api.get('/blogs', { params });
   return data as { items: Blog[]; total: number; page: number; pageSize: number };
 };
@@ -435,9 +448,21 @@ export interface SystemLog {
   created_at: string;
 }
 
-export const getSystemLogs = async (page = 1, pageSize = 20) => {
-  const { data } = await api.get('/logs', { params: { page, pageSize } });
-  return data as { items: SystemLog[]; total: number; page: number; pageSize: number };
+export const getSystemLogs = async (
+  page = 1,
+  pageSize = 20,
+  filters: { search?: string; action?: string; actor?: string } = {}
+) => {
+  const { data } = await api.get('/logs', { params: { page, pageSize, ...filters } });
+  return data as {
+    items: SystemLog[];
+    total: number;
+    page: number;
+    pageSize: number;
+    actions?: Array<{ action: string; count: number }>;
+    actors?: Array<{ actor: string; count: number }>;
+    today_count?: number;
+  };
 };
 
 export const deleteSystemLogs = async (ids: number[], clearAll = false) => {
@@ -488,6 +513,17 @@ export interface Visitor {
   device: string;
   path?: string;
   timestamp: string;
+  /**
+   * 访客请求带的原始 User-Agent 原文（device 是从它解析出来的展示名）。
+   * 注意：服务端转发上游时不用它，上游看到的是统一的 UPSTREAM_USER_AGENT。
+   * null / undefined = 这条记录是加字段之前的老数据，没有记录过；
+   * 空串 = 记录过，但这次请求确实没带 User-Agent。
+   */
+  ua?: string | null;
+  /** 1 = 这次请求经 /api/v0 转发到了上游（那一行的 UA 要显示上游 UA，不是访客的） */
+  via_upstream?: number | null;
+  /** 1 = 经已知前置反代（如 beta-next.icu）进来的访问 */
+  via_proxy?: number | null;
 }
 
 export interface VisitorStats {
@@ -523,6 +559,8 @@ export interface VisitorIpHistory {
   first_seen: string;
   last_seen: string;
   location: string;
+  /** 转发上游时用的 UA（用于展示 via_upstream 那几行） */
+  upstream_ua?: string;
   visitors: Visitor[];
 }
 
@@ -567,6 +605,83 @@ export const exportVisitors = async () => {
   link.remove();
 };
 
+/* ------------------------------ 数据库管理 ------------------------------ */
+
+export interface DatabaseTableInfo {
+  name: string;
+  rows: number;
+  columns: number;
+  indexes: number;
+}
+
+export interface DatabaseOverview {
+  file: { path: string; sizeBytes: number; mtime: string | null; walBytes?: number; shmBytes?: number };
+  sqlite: { version: string };
+  pragmas: {
+    pageSize: number;
+    pageCount: number;
+    freelistCount: number;
+    journalMode: string;
+    autoVacuum: number;
+    encoding: string;
+  };
+  freeBytes: number;
+  counts: { tables: number; indexes: number; views: number; triggers: number; totalRows: number };
+  tables: DatabaseTableInfo[];
+}
+
+export const getDatabaseOverview = async () => {
+  const { data } = await api.get('/database/overview');
+  return data as DatabaseOverview;
+};
+
+export interface DatabaseTableData {
+  table: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  columns: Array<{ name: string; type: string; pk: boolean }>;
+  rows: Array<Record<string, unknown>>;
+}
+
+export const getDatabaseTable = async (
+  name: string,
+  params: { page?: number; pageSize?: number; orderBy?: string; order?: 'asc' | 'desc'; q?: string } = {}
+) => {
+  const { data } = await api.get(`/database/tables/${encodeURIComponent(name)}`, { params });
+  return data as DatabaseTableData;
+};
+
+export const runDatabaseMaintenance = async (action: string) => {
+  const { data } = await api.post('/database/maintenance', { action });
+  return data as { action: string; label: string; durationMs: number; rows: Array<Record<string, unknown>> };
+};
+
+export const runDatabaseQuery = async (sql: string) => {
+  const { data } = await api.post('/database/query', { sql });
+  return data as {
+    durationMs: number;
+    rowCount: number;
+    truncated: boolean;
+    columns: string[];
+    rows: Array<Record<string, unknown>>;
+  };
+};
+
+/** 下载数据库快照（后端用 VACUUM INTO 生成一致副本，含 WAL 里尚未合并的数据） */
+export const downloadDatabaseBackup = async () => {
+  const response = await api.get('/database/backup', { responseType: 'blob' });
+  const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `visitors-${stamp}.db`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
 export interface MusicApi {
   id: number;
   name: string;
@@ -605,6 +720,7 @@ export const checkMusicApi = async (id?: number) => {
 // Site Cards
 export interface SiteCard {
   id: number;
+  page: string;
   key: string;
   title: string;
   enabled: number;
@@ -622,8 +738,20 @@ export const updateSiteCard = async (id: number, payload: Partial<SiteCard>) => 
   await api.put(`/site-cards/${id}`, payload);
 };
 
-export const getPublicSiteCards = async () => {
-  const { data } = await axios.get('/api/public/site-cards');
+/** 拖拽排序：按传入的 id 顺序重写该页面的权重 */
+export const reorderSiteCards = async (ids: number[]) => {
+  const { data } = await api.put('/site-cards/order', { ids });
+  return data.items as SiteCard[];
+};
+
+/** 把某个页面的卡片恢复成默认顺序 / 标题 / 显隐 / 样式 */
+export const resetSiteCards = async (page: string) => {
+  const { data } = await api.post('/site-cards/reset', { page });
+  return data.items as SiteCard[];
+};
+
+export const getPublicSiteCards = async (page?: string) => {
+  const { data } = await axios.get('/api/public/site-cards', { params: page ? { page } : undefined });
   return data.items as SiteCard[];
 };
 
@@ -726,6 +854,10 @@ export const updateSystemSettings = async (settings: Record<string, string>) => 
 
 export interface AdminOverviewStats {
   visitorCount: number;
+  /** 独立 IP 数（和访客日志页同一份聚合结果） */
+  uniqueIpCount: number;
+  /** 覆盖地区数（同上） */
+  locationKinds: number;
   appCount: number;
   feedbackCount: number;
   commentCount: number;
@@ -825,6 +957,37 @@ export interface TopologyData {
 export const getTopology = async (windowSeconds = 300) => {
   const { data } = await api.get('/topology', { params: { window: windowSeconds } });
   return data as TopologyData;
+};
+
+// ---- 全接口性能检测 ----
+export interface PerfCheckResult {
+  path: string;
+  status: number;
+  ms: number;
+  bytes: number;
+  ok: boolean;
+  /** 400 且提示缺参数：这类接口不开参数本来就没法访问，不算失败 */
+  needsParam?: boolean;
+  skipped?: boolean;
+  error?: string;
+}
+
+export interface PerfCheckReport {
+  total: number;
+  failed: number;
+  needsParams: number;
+  slow: number;
+  avgMs: number;
+  maxMs: number;
+  durationMs: number;
+  checkedAt: string;
+  results: PerfCheckResult[];
+}
+
+/** 把服务端全部 GET 接口顺序跑一遍，返回耗时报告（一次十几秒，给足超时） */
+export const runPerfCheck = async () => {
+  const { data } = await api.post('/perf-check', {}, { timeout: 90_000 });
+  return data as PerfCheckReport;
 };
 
 export interface VisitorInsights {

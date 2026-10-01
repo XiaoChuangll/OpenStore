@@ -4,7 +4,7 @@
       <div class="card-header">
         <span>市场概览</span>
         <span class="installation-volume" v-if="marketInfo.app_count?.max_download_count">
-          鸿蒙装机量: {{ marketInfo.app_count.max_download_count.toLocaleString() }}
+          鸿蒙装机量: <AnimatedNumber :value="marketInfo.app_count.max_download_count" />
         </span>
       </div>
     </template>
@@ -15,7 +15,7 @@
           <div class="stat-value">
             <el-skeleton-item v-if="loading" variant="text" style="width: 84px; height: 36px" />
             <el-tag v-else effect="dark" round size="large" class="stat-tag">
-              {{ marketInfo.app_count?.total || 0 }}
+              <AnimatedNumber :value="marketInfo.app_count?.total || 0" />
             </el-tag>
           </div>
         </div>
@@ -26,7 +26,7 @@
           <div class="stat-value">
             <el-skeleton-item v-if="loading" variant="text" style="width: 84px; height: 36px" />
             <el-tag v-else effect="dark" round type="success" size="large" class="stat-tag">
-              {{ marketInfo.app_count?.atomic_services || 0 }}
+              <AnimatedNumber :value="marketInfo.app_count?.atomic_services || 0" />
             </el-tag>
           </div>
         </div>
@@ -37,7 +37,7 @@
           <div class="stat-value">
             <el-skeleton-item v-if="loading" variant="text" style="width: 84px; height: 36px" />
             <el-tag v-else effect="dark" round type="warning" size="large" class="stat-tag">
-              {{ marketInfo.developer_count || 0 }}
+              <AnimatedNumber :value="marketInfo.developer_count || 0" />
             </el-tag>
           </div>
         </div>
@@ -48,7 +48,7 @@
           <div class="stat-value">
             <el-skeleton-item v-if="loading" variant="text" style="width: 84px; height: 36px" />
             <el-tag v-else effect="dark" round type="danger" size="large" class="stat-tag">
-              {{ marketInfo.substance_count || 0 }}
+              <AnimatedNumber :value="marketInfo.substance_count || 0" />
             </el-tag>
           </div>
         </div>
@@ -60,6 +60,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { hmApi } from '../services/hm-api';
+import AnimatedNumber from './AnimatedNumber.vue';
 
 interface AppCount {
   apps: number;

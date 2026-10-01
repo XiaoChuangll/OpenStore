@@ -102,13 +102,21 @@
       <div class="update-group">
         <h3 class="group-title">
           <div class="group-title-left">
-            <Transition :name="transitionName" mode="out-in">
-              <span :key="`${titlePrefix}__${titleSuffix}`" class="title-combo">
-                <span class="title-prefix">{{ titlePrefix }}</span>
-                <span class="title-suffix" v-if="titlePrefix">{{ titleSuffix }}</span>
-              </span>
-            </Transition>
-            <span v-if="totalCount" class="group-count">{{ totalCount }} 个</span>
+            <!-- 只让「本周 / 上周 / 更早 / 今日 …」这类前缀翻滚；
+                 「上新 / 更新」是这一页的性质，固定不动，不跟着切页签一起滚 -->
+            <span class="title-combo">
+              <Transition :name="transitionName" mode="out-in">
+                <span :key="titlePrefix" class="title-prefix">{{ titlePrefix }}</span>
+              </Transition>
+              <span v-if="titleSuffix" class="title-suffix">{{ titleSuffix }}</span>
+            </span>
+            <span class="group-count">
+              <!-- 加载中是三个点、加载完是数字，两者用同一个固定宽度的胶囊，切换时不会忽大忽小 -->
+              <Transition name="count-swap" mode="out-in">
+                <span v-if="countReady" :key="`n${totalCount}`" class="count-value">{{ totalCount }} 个</span>
+                <span v-else key="dots" class="count-dots" role="status" aria-label="统计中">···</span>
+              </Transition>
+            </span>
           </div>
         </h3>
         <div class="apps-grid-container">
@@ -169,13 +177,19 @@
       <div class="update-group">
         <h3 class="group-title group-title-row">
           <div class="group-title-left">
-            <Transition :name="transitionName" mode="out-in">
-              <span :key="`${titlePrefix}__${titleSuffix}`" class="title-combo">
-                <span class="title-prefix">{{ titlePrefix }}</span>
-                <span class="title-suffix" v-if="titlePrefix">{{ titleSuffix }}</span>
-              </span>
-            </Transition>
-            <span v-if="totalCount" class="group-count">{{ totalCount }} 个</span>
+            <!-- 同上面「今日上新」那份：前缀滚动，上新/更新固定 -->
+            <span class="title-combo">
+              <Transition :name="transitionName" mode="out-in">
+                <span :key="titlePrefix" class="title-prefix">{{ titlePrefix }}</span>
+              </Transition>
+              <span v-if="titleSuffix" class="title-suffix">{{ titleSuffix }}</span>
+            </span>
+            <span class="group-count">
+              <Transition name="count-swap" mode="out-in">
+                <span v-if="countReady" :key="`n${totalCount}`" class="count-value">{{ totalCount }} 个</span>
+                <span v-else key="dots" class="count-dots" role="status" aria-label="统计中">···</span>
+              </Transition>
+            </span>
           </div>
           <div class="group-title-right">
             <div
@@ -283,7 +297,7 @@
 import { ref, onMounted, watch, computed, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, ArrowRight, Search, CircleClose, Close } from '@element-plus/icons-vue';
-import { getAppUpdates, getNewApps } from '../services/api';
+import { getAppUpdates, getNewApps, getNewAppsByDateRange } from '../services/api';
 import AppCard from '../components/AppCard.vue';
 import { hmApi } from '../services/hm-api';
 
@@ -302,6 +316,12 @@ const page = ref(1);
 const pageSize = ref(20);
 const hasMore = ref(false);
 const totalCount = ref(0);
+/**
+ * 数量是否已经是准确值。
+ * 切筛选时先要拉一次接口才知道真实总数，这段时间显示三个点，
+ * 避免先把"已加载条数"亮出来、过一会儿又跳成真实值（用户反馈：数字先不准再变准）。
+ */
+const countReady = ref(false);
 const transitionName = ref('flip-up');
 const UTC8_OFFSET_MS = 8 * 60 * 60 * 1000;
 
@@ -563,6 +583,41 @@ const getFilterRange = () => {
   return { todayStart, thisWeekStart, lastWeekStart };
 };
 
+/** Date（已按 UTC+8 偏移过）→ YYYY-MM-DD */
+const toUtc8DateStr = (date: Date) =>
+  `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+
+/**
+ * 「上新」筛选的真实总数。
+ *
+ * 以前分组标题上的数量是"已加载条数"：第一页只拉了 50 条，标题就写 50 个，
+ * 必须一直点下一页、把这一周的数据全load进来，数字才慢慢涨到真实值（用户反馈的问题）。
+ * 这里直接问接口要 total —— 上游的 date_from / date_to 过滤的正是 listed_at（上新时间），
+ * 和我们前台用来分组的字段一致，所以一次请求就能拿到准确条数。
+ */
+const fetchNewFilterTotal = async (): Promise<number | null> => {
+  try {
+    const { thisWeekStart, lastWeekStart } = getFilterRange();
+    let from: string | undefined;
+    let to: string | undefined;
+    if (updateFilter.value === 'thisWeek') {
+      from = toUtc8DateStr(thisWeekStart);
+    } else if (updateFilter.value === 'lastWeek') {
+      from = toUtc8DateStr(lastWeekStart);
+      // to 用本周一：接口是"日期字符串比较"，这样正好把本周的数据排除掉
+      to = toUtc8DateStr(thisWeekStart);
+    } else {
+      to = toUtc8DateStr(lastWeekStart);
+    }
+    const { total } = await getNewAppsByDateRange(from, to, 1, 1);
+    const n = Number(total);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch (error) {
+    console.error('Failed to fetch new-apps total', error);
+    return null;
+  }
+};
+
 const toMs = (rawTs: any) => {
   let dateVal: number;
   if (typeof rawTs === 'number') dateVal = rawTs;
@@ -625,7 +680,15 @@ const filterApps = (sourceList: any[]) => {
 
 const loadApps = async () => {
   const seq = (loadSeq.value += 1);
-  loading.value = true;
+  countReady.value = false;
+  /*
+   * 骨架屏延迟 160ms 再出现。
+   * 切回已经加载过的筛选时，列表其实来自缓存、不会发请求，
+   * 立刻亮骨架会让人以为"又重新加载了一遍"（用户反馈）。
+   */
+  const loadingTimer = window.setTimeout(() => {
+    if (seq === loadSeq.value) loading.value = true;
+  }, 160);
   
   try {
     normalizeFilterForTab();
@@ -725,6 +788,12 @@ const loadApps = async () => {
 
         const allForFilter = filterApps(allOlderApps.value);
         totalCount.value = allForFilter.length;
+        // 「更早」也要用接口的准确总数（以前只在本周/上周那条分支里取了，
+        // 这一档一直显示"已加载条数"，所以数字不对）
+        const exactOlderTotal = await fetchNewFilterTotal();
+        if (seq !== loadSeq.value) return;
+        if (exactOlderTotal !== null) totalCount.value = exactOlderTotal;
+        countReady.value = true;
         apps.value = allForFilter.slice(start, end);
         hasMore.value = end < totalCount.value || olderAppsHasMore.value;
       } else {
@@ -761,6 +830,11 @@ const loadApps = async () => {
 
         const allForFilter = filterApps(allNewApps.value);
         totalCount.value = allForFilter.length;
+        // 数量用接口的准确总数覆盖（上面这个只是"已加载条数"）
+        const exactTotal = await fetchNewFilterTotal();
+        if (seq !== loadSeq.value) return;
+        if (exactTotal !== null) totalCount.value = exactTotal;
+        countReady.value = true;
         apps.value = allForFilter.slice(start, end);
 
         const lastMsUtc8 = allNewApps.value.length ? getNewAppTimeMsUtc8(allNewApps.value[allNewApps.value.length - 1]) : 0;
@@ -787,6 +861,7 @@ const loadApps = async () => {
         
         apps.value = list.map((item: any) => item?.info || item);
         totalCount.value = innerData.total_count || innerData.total || 0;
+        countReady.value = true;
         
         if (totalCount.value > 0) {
           hasMore.value = page.value * pageSize.value < totalCount.value;
@@ -842,6 +917,7 @@ const loadApps = async () => {
       
       const allForDate = filterApps(allUpdateApps.value);
       totalCount.value = allForDate.length;
+      countReady.value = true;
       
       const start = (page.value - 1) * pageSize.value;
       const end = start + pageSize.value;
@@ -856,6 +932,7 @@ const loadApps = async () => {
       hasMore.value = false;
     }
   } finally {
+    window.clearTimeout(loadingTimer);
     if (seq === loadSeq.value) {
       loading.value = false;
     }
@@ -1178,13 +1255,66 @@ const switchPrevFilter = () => {
 }
 
 .group-count {
-  padding: 1px 9px;
+  /* 固定一个够放下 5 位数的宽度并居中：加载中的点 / 加载完的数字都占同样大小，
+     避免"胶囊先窄后宽"地跳一下 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  /* 定高 + line-height:1：数字在胶囊里严格垂直居中，不靠行高凑 */
+  height: 20px;
+  box-sizing: border-box;
+  padding: 0 10px;
   border-radius: 999px;
   background: var(--el-fill-color);
   font-size: 12px;
+  line-height: 1;
   font-weight: 500;
   color: var(--el-text-color-secondary);
   font-variant-numeric: tabular-nums;
+  /* 和标题按盒子中线对齐（用 baseline 会被行高带偏） */
+  vertical-align: middle;
+}
+
+/* 数字出现/收起走一个很短的淡入淡出 + 轻微位移，别硬蹦出来 */
+.count-value {
+  display: inline-block;
+  line-height: 1;
+}
+
+.count-swap-enter-active,
+.count-swap-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.count-swap-enter-from {
+  opacity: 0;
+  transform: translateY(3px);
+}
+
+.count-swap-leave-to {
+  opacity: 0;
+  transform: translateY(-3px);
+}
+
+/* 数量还没算准时的占位：三个跳动的点（比先亮一个错数字再改要好） */
+.count-dots {
+  /*
+   * 三个点写成文本、而不是三个 flex 小圆点：
+   * 数字是普通文本、位于胶囊正中，如果加载态换成 flex 子元素，基线/行盒会把它压下去几像素
+   * （实测偏低 3px）。同为文本就天然和数字共用同一套居中。
+   */
+  display: inline-block;
+  line-height: 1;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  color: var(--el-text-color-placeholder);
+  animation: count-dots-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes count-dots-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 }
 
 .group-title::before {

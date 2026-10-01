@@ -7,39 +7,57 @@
     <!-- Main Content -->
     <div class="music-content" v-loading="loading">
       
-      <!-- Search & Header Bar -->
-      <el-card class="mb-4 search-card" shadow="hover" v-if="viewMode === 'home' || viewMode === 'mine'">
-         <div class="header-bar" :class="{ 'mobile-layout': isMobile }">
+      <!-- 音乐页头部：身份 + 主切换 + 搜索 + 线路/账号，合成一块，避免顶部堆两张卡 -->
+      <section class="music-hero" v-if="viewMode === 'home' || viewMode === 'mine'">
+         <div class="hero-head">
+            <div class="hero-identity">
+               <span class="hero-icon">
+                  <img src="/music.png" class="hero-logo" alt="" aria-hidden="true" />
+               </span>
+               <div class="hero-text">
+                  <h2 class="hero-title">{{ greeting }}{{ playerStore.userProfile ? '，' + playerStore.userProfile.nickname : '' }}</h2>
+                  <p class="hero-sub">{{ HERO_SUB }}</p>
+               </div>
+            </div>
+
+            <el-radio-group v-model="mainTab" size="small" class="hero-tabs" @change="handleMainTabChange">
+               <el-radio-button label="home">首页</el-radio-button>
+               <el-radio-button label="mine">歌单</el-radio-button>
+               <el-radio-button label="podcast">播客</el-radio-button>
+            </el-radio-group>
+         </div>
+
+         <div class="hero-bar">
              <!-- API Status (Left) -->
              <div class="api-status-wrapper">
-                <el-dropdown v-if="currentApi" trigger="click" @command="handleSwitchApi">
-                   <el-tag type="success" size="small" effect="plain" class="api-tag cursor-pointer">
-                     <span class="flex-center">
-                       API: {{ currentApi.friendly_name }} ({{ currentApi.latency }}ms)
-                       <el-icon class="ml-1"><ArrowDown /></el-icon>
-                     </span>
-                   </el-tag>
+                <el-dropdown v-if="currentApi" trigger="click" placement="bottom-start" @command="handleSwitchApi">
+                   <button type="button" class="line-chip">
+                     <span class="line-dot"></span>
+                     <span class="line-name">{{ lineLabel(currentApi) }}</span>
+                     <span v-if="currentApi.latency" class="line-latency">{{ currentApi.latency }}ms</span>
+                     <el-icon :size="12" class="line-caret"><ArrowDown /></el-icon>
+                   </button>
                    <template #dropdown>
                       <el-dropdown-menu>
                          <el-dropdown-item v-for="api in availableApis" :key="api.id" :command="api">
-                            {{ api.friendly_name }}
-                            <el-tag v-if="api.latency" size="small" type="info" class="ml-2">{{ api.latency }}ms</el-tag>
+                            <span class="line-item">
+                               <span class="line-name">{{ lineLabel(api) }}</span>
+                               <span v-if="api.latency" class="line-latency">{{ api.latency }}ms</span>
+                            </span>
                          </el-dropdown-item>
-                         <el-dropdown-item v-if="availableApis.length === 0" disabled>无可用节点</el-dropdown-item>
+                         <el-dropdown-item v-if="availableApis.length === 0" disabled>无可用线路</el-dropdown-item>
                       </el-dropdown-menu>
                    </template>
                 </el-dropdown>
 
-                <el-tag v-else-if="checkingApi" type="warning" size="small" effect="plain" class="api-tag">
-                  <span class="flex-center">
-                    <el-icon class="is-loading mr-1"><Loading /></el-icon> 正在寻找...
-                  </span>
-                </el-tag>
-                <el-tag v-else type="danger" size="small" effect="plain" class="api-tag">
-                  <span class="flex-center">
-                    无可用线路
-                  </span>
-                </el-tag>
+                <span v-else-if="checkingApi" class="line-chip is-checking">
+                  <el-icon class="is-loading" :size="12"><Loading /></el-icon>
+                  正在寻找线路
+                </span>
+                <span v-else class="line-chip is-offline">
+                  <span class="line-dot"></span>
+                  无可用线路
+                </span>
              </div>
 
              <!-- Search Box (Center/Bottom) -->
@@ -91,14 +109,14 @@
                   </div>
              </div>
          </div>
-         <div class="search-type-selector mt-3" v-if="searchKeyword || searchResults.length > 0">
-            <el-radio-group v-model="searchType" size="small" @change="handleSearch">
-               <el-radio-button :value="1">单曲</el-radio-button>
-               <el-radio-button :value="10">专辑</el-radio-button>
-               <el-radio-button :value="100">歌手</el-radio-button>
-            </el-radio-group>
-         </div>
-      </el-card>
+        <div class="search-type-selector mt-3" v-if="searchKeyword || searchResults.length > 0">
+           <el-radio-group v-model="searchType" size="small" @change="handleSearch">
+              <el-radio-button :value="1">单曲</el-radio-button>
+              <el-radio-button :value="10">专辑</el-radio-button>
+              <el-radio-button :value="100">歌手</el-radio-button>
+           </el-radio-group>
+        </div>
+      </section>
 
       <!-- Search Results -->
       <div v-if="searchResults.length > 0" class="section mb-4">
@@ -174,22 +192,6 @@
 
       <!-- Discovery Sections (Only show when no search) -->
       <template v-if="searchResults.length === 0">
-
-        <!-- Greet Section (Home/Mine) -->
-      <div class="section mb-4" v-if="viewMode === 'home' || viewMode === 'mine'">
-         <div class="greet-section mb-3">
-            <div class="flex-between-center">
-               <h2 class="greet-title">{{ greeting }}{{ playerStore.userProfile ? '，' + playerStore.userProfile.nickname : '' }}</h2>
-               
-               <el-radio-group v-model="mainTab" size="small" class="custom-switch" @change="handleMainTabChange">
-                  <el-radio-button label="home">首页</el-radio-button>
-                  <el-radio-button label="mine">歌单</el-radio-button>
-                  <el-radio-button label="podcast">播客</el-radio-button>
-               </el-radio-group>
-            </div>
-            <div class="greet-subtitle">由此开启好心情 ~</div>
-         </div>
-      </div>
 
       <Transition :name="transitionName" mode="out-in">
         <div v-if="viewMode === 'home'" key="home">
@@ -591,119 +593,116 @@
        </div>
     </el-dialog>
 
-    <!-- Playlist Detail Dialog -->
-    <el-dialog v-model="showPlaylistDialog" title="歌单" fullscreen class="playlist-dialog" append-to-body>
-      <div class="playlist-table-wrapper">
-        <el-table 
-          ref="playlistTableRef"
-          :data="pagedPlaylistTracks" 
-          stripe 
-          style="width: 100%; height: 100%;" 
-          v-loading="playlistLoading" 
-          @row-click="playSong" 
-          :row-style="{ height: '60px' }"
-          row-key="id"
-        >
-          <el-table-column v-if="isSelectionMode" width="55">
-            <template #header>
-               <el-checkbox 
-                 :model-value="isPageAllSelected" 
-                 :indeterminate="isPageIndeterminate" 
-                 @change="handlePageSelectAll"
-               />
+    <!-- 播单详情 -->
+    <el-dialog v-model="showPlaylistDialog" title="播单" fullscreen class="playlist-dialog" append-to-body>
+      <div class="pl-page">
+        <!-- 歌单信息 + 操作 -->
+        <header class="pl-hero">
+          <el-image
+            class="pl-cover"
+            :src="currentPlaylist?.coverImgUrl || currentPlaylist?.picUrl"
+            fit="cover"
+            :preview-src-list="currentPlaylist?.coverImgUrl || currentPlaylist?.picUrl ? [currentPlaylist.coverImgUrl || currentPlaylist.picUrl] : []"
+            preview-teleported
+          >
+            <template #error><div class="pl-cover-fallback"></div></template>
+          </el-image>
+
+          <div class="pl-info">
+            <h2 class="pl-name" :title="currentPlaylist?.name">{{ currentPlaylist?.name || '歌单' }}</h2>
+            <p class="pl-meta">{{ totalPlaylistTracks }} 首</p>
+          </div>
+
+          <div class="pl-actions">
+            <!-- 刷新：接口对相同地址会缓存两分钟，加时间戳重拉一次，刚改过的歌单立刻能看到 -->
+            <el-button
+              circle
+              text
+              :icon="Refresh"
+              :loading="playlistRefreshing"
+              title="刷新播单"
+              @click.stop="refreshCurrentPlaylist"
+            />
+
+            <template v-if="!isSelectionMode">
+              <el-select v-model="downloadQuality" class="pl-quality">
+                <el-option label="标准" value="standard" />
+                <el-option label="高" value="higher" />
+                <el-option label="极高" value="exhigh" />
+                <el-option label="无损" value="lossless" />
+              </el-select>
+
+              <el-button round @click.stop="toggleSelectionMode">选择下载</el-button>
             </template>
-            <template #default="{ row }">
-               <el-checkbox 
-                 :model-value="isSelected(row)" 
-                 @click.stop
-                 @change="(val: boolean) => toggleRowSelection(row, val)"
-               />
+
+            <template v-else>
+              <el-checkbox
+                :model-value="isPageAllSelected"
+                :indeterminate="isPageIndeterminate"
+                @change="handlePageSelectAll"
+              >
+                本页全选
+              </el-checkbox>
+              <el-button round @click.stop="toggleSelectionMode">取消</el-button>
+              <el-button
+                type="success"
+                round
+                :disabled="selectedTracks.length === 0"
+                @click.stop="executeBatchDownload"
+              >
+                下载 ({{ selectedTracks.length }}<el-icon v-if="batchDownloadLoading" class="is-loading" style="margin-left: 4px;"><Loading /></el-icon>)
+              </el-button>
             </template>
-          </el-table-column>
-          <el-table-column type="index" :width="isMobile ? 40 : 60" :index="(i: number) => (playlistPage - 1) * 10 + i + 1">
-            <template #header>
-              <el-image 
-                v-if="currentPlaylist?.coverImgUrl || currentPlaylist?.picUrl"
-                :src="currentPlaylist.coverImgUrl || currentPlaylist.picUrl" 
-                style="width: 30px; height: 30px; border-radius: 4px; vertical-align: middle; cursor: pointer;" 
-                fit="cover"
-                :preview-src-list="[currentPlaylist.coverImgUrl || currentPlaylist.picUrl]"
-                preview-teleported
+
+            <!-- 翻页跟着操作按钮排在信息条里 -->
+            <div v-if="totalPages > 1" class="pl-pager">
+              <el-button
+                circle
+                text
+                :icon="ArrowLeft"
+                :disabled="playlistPage === 1"
+                @click.stop="playlistPage--"
               />
-            </template>
-          </el-table-column>
-          <el-table-column min-width="200" show-overflow-tooltip>
-            <template #header>
-              <div class="table-header">
-                <div class="table-header-top" style="display: flex; justify-content: space-between; align-items: center;">
-                  <div class="table-header-title" style="flex: 1; min-width: 0; margin-right: 8px;">{{ currentPlaylist?.name || '歌单' }}</div>
-                  <el-button 
-                    v-if="isSelectionMode"
-                    size="small" 
-                    round
-                    @click.stop="toggleSelectionMode"
-                  >
-                    取消
-                  </el-button>
-                </div>
-                <div class="table-header-bar" style="display: flex; align-items: center;">
-                  <span>歌曲</span>
-                  <template v-if="playlistTracks.length > 0">
-                      <el-select
-                        v-if="!isSelectionMode"
-                        v-model="downloadQuality"
-                        size="small"
-                        style="margin-left: 8px; width: 120px;"
-                      >
-                        <el-option label="标准" value="standard" />
-                        <el-option label="高" value="higher" />
-                        <el-option label="极高" value="exhigh" />
-                        <el-option label="无损" value="lossless" />
-                      </el-select>
-                      <el-button 
-                        v-if="!isSelectionMode"
-                        type="primary" 
-                        size="small" 
-                        round
-                        @click.stop="toggleSelectionMode"
-                        style="margin-left: 8px; vertical-align: middle;"
-                      >
-                        下载
-                      </el-button>
-                      <el-button 
-                        v-else
-                        type="success" 
-                        size="small" 
-                        round
-                        :disabled="selectedTracks.length === 0"
-                        @click.stop="executeBatchDownload"
-                        style="margin-left: 8px; vertical-align: middle;"
-                      >
-                        下载 ({{ selectedTracks.length }}<el-icon v-if="batchDownloadLoading" class="is-loading" style="margin-left: 4px;"><Loading /></el-icon>)
-                      </el-button>
-                  </template>
-                  <div class="header-pagination" style="margin-left: auto;">
-                    <el-button 
-                       size="small" 
-                       circle 
-                       text 
-                       :icon="ArrowLeft" 
-                       :disabled="playlistPage === 1" 
-                       @click.stop="playlistPage--" 
-                    />
-                    <span class="page-info">{{ playlistPage }}/{{ Math.ceil(totalPlaylistTracks / 10) || 1 }}</span>
-                    <el-button 
-                       size="small" 
-                       circle 
-                       text 
-                       :icon="ArrowRight" 
-                       :disabled="playlistPage >= (Math.ceil(totalPlaylistTracks / 10) || 1)" 
-                       @click.stop="playlistPage++" 
-                    />
-                  </div>
-                </div>
-              </div>
-            </template>
+              <span class="pl-page-num">{{ playlistPage }} / {{ totalPages }}</span>
+              <el-button
+                circle
+                text
+                :icon="ArrowRight"
+                :disabled="playlistPage >= totalPages"
+                @click.stop="playlistPage++"
+              />
+            </div>
+          </div>
+        </header>
+
+        <!-- 歌曲列表 -->
+        <div class="pl-list">
+          <el-table
+            ref="playlistTableRef"
+            :data="pagedPlaylistTracks"
+            :show-header="false"
+            style="width: 100%;"
+            v-loading="playlistLoading"
+            @row-click="playSong"
+            :row-style="{ height: '60px' }"
+            row-key="id"
+          >
+            <el-table-column v-if="isSelectionMode" width="55">
+              <template #default="{ row }">
+                 <el-checkbox
+                   :model-value="isSelected(row)"
+                   @click.stop
+                   @change="(val: boolean) => toggleRowSelection(row, val)"
+                 />
+              </template>
+            </el-table-column>
+            <el-table-column
+              type="index"
+              class-name="pl-index-cell"
+              :width="isMobile ? 44 : 56"
+              :index="(i: number) => (playlistPage - 1) * 10 + i + 1"
+            />
+            <el-table-column min-width="200" show-overflow-tooltip>
             <template #default="{ row }">
               <div class="song-row-content">
                 <el-image 
@@ -724,8 +723,10 @@
                 <div class="song-row-duration">{{ formatDuration(row.dt || row.duration) }}</div>
               </div>
             </template>
-          </el-table-column>
-        </el-table>
+            </el-table-column>
+          </el-table>
+        </div>
+
       </div>
     </el-dialog>
 
@@ -733,14 +734,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import {
+    ref,
+    onMounted,
+    onUnmounted,
+    onActivated,
+    onDeactivated,
+    nextTick,
+    watch,
+    computed,
+} from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useTitle } from '@vueuse/core';
 import { usePlayerStore } from '../stores/player';
 import { useLayoutStore } from '../stores/layout';
 import { proxyRequest, getMusicApis } from '../services/api';
 import { musicCache } from '../utils/cache'; // Import CacheManager
+import { downloadDirect, proxyUrl } from '../utils/music-source';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { setPageShareMeta } from '../utils/page-share';
 import { Search, Loading, Headset, VideoPlay, Download, ArrowLeft, ArrowRight, Refresh, ArrowDown, Calendar, Star, CaretRight, Delete, VideoPause, Collection, User } from '@element-plus/icons-vue';
 
 defineOptions({
@@ -748,6 +760,7 @@ defineOptions({
 });
 
 const router = useRouter();
+const route = useRoute();
 const playerStore = usePlayerStore();
 const layoutStore = useLayoutStore();
 const pageHeaderRef = ref<HTMLElement | null>(null);
@@ -831,6 +844,15 @@ const currentApi = ref<any>(null);
 const checkingApi = ref(true);
 const loading = ref(false);
 const availableApis = ref<any[]>([]);
+/** 线路编号：对外只说「路线 N」，不暴露上游真实地址 */
+const lineNumbers = ref<Record<string, number>>({});
+
+const lineKey = (api: any) => String(api?.id ?? api?.url ?? '');
+
+const lineLabel = (api: any) => {
+  const n = lineNumbers.value[lineKey(api)];
+  return n ? `路线 ${n}` : '线路';
+};
 
 const qrImg = ref('');
 const loginStatus = ref('');
@@ -961,10 +983,147 @@ watch(showPlaylistDialog, (val) => {
          const title = '歌单';
          layoutStore.setPageInfo(title, true, closePlaylistDialog);
          document.title = `OpenStore | ${title}`;
-    } else {
+    } else if (route.path === '/music') {
+         // 只有还留在音乐页时才把标题还原；已经跳到别的页面，标题交给路由自己管
          restorePageTitle();
     }
 });
+
+/*
+ * 歌单详情是 teleport 到 body 的全屏弹窗，而 MusicView 又被 keep-alive 缓存：
+ * 从歌单里点开歌曲后跳去播放页，弹窗不会自己关，会整个盖住播放页。
+ * 所以只要路由离开音乐页，就把弹窗一并收掉。
+ */
+watch(
+    () => route.path,
+    (path) => {
+        if (path !== '/music' && showPlaylistDialog.value) {
+            showPlaylistDialog.value = false;
+        }
+    }
+);
+
+// 双保险：只要音乐页被切走（含 keep-alive 的失活），歌单 / 播客弹窗一律收掉
+onDeactivated(() => {
+    if (showPlaylistDialog.value) {
+        showPlaylistDialog.value = false;
+    }
+});
+
+/*
+ * 音乐页的分享卡片（浏览器标题 + og 图）跟着页面上那张图走：
+ * - 正在放歌        → 歌名 / 歌手 / 网易云封面
+ * - 首页（没在放歌）→ 私人 FM 卡片那张网易云图 + 图旁边那行字
+ * - 更多歌单        → 第一张歌单的封面 + 歌单名
+ * 只在音乐页生效，否则会被 keep-alive 保活的这个组件串到别的页面去。
+ */
+
+/* 首页那三个「更多」列表：分享时用第一张歌单的封面 */
+const SECTION_TITLES: Record<string, string> = {
+    radar: '雷达歌单',
+    recommend: '推荐歌单',
+    rank: '排行榜',
+};
+
+/** 音乐页顶部的图标（hero 上那张）和它下面那行字：首页分享就用这两个 */
+const HERO_LOGO = '/music.png';
+const HERO_SUB = '每日推荐 · 歌单 · 排行榜，由此开启好心情 ~';
+
+const sectionMode = computed(() => (SECTION_TITLES[viewMode.value] ? viewMode.value : ''));
+
+const firstSectionPlaylist = computed(() => {
+    if (viewMode.value === 'radar') return radarPlaylists.value[0] || null;
+    if (viewMode.value === 'recommend') return recommendPlaylists.value[0] || null;
+    if (viewMode.value === 'rank') return topList.value[0] || null;
+    return null;
+});
+
+const playlistCover = (list: any) => list?.coverImgUrl || list?.picUrl || list?.cover || '';
+
+const syncSongShareMeta = async () => {
+    if (window.location.pathname !== '/music') return;
+
+    /*
+     * 更多歌单：卡片用第一张歌单的封面和它的名字。
+     * 地址上写下 ?view=，分享出去的链接服务端才知道该渲染哪个列表的封面。
+     */
+    if (sectionMode.value) {
+        const mode = sectionMode.value;
+        if (String(route.query.view || '') !== mode) {
+            await router.replace({ path: '/music', query: { ...route.query, view: mode } });
+        }
+        const first = firstSectionPlaylist.value;
+        const title = `OpenStore | ${SECTION_TITLES[mode]}`;
+        setPageShareMeta({
+            title,
+            description: first?.name || '畅听海量音乐，发现你的专属歌单。',
+            image: playlistCover(first) || HERO_LOGO,
+        });
+        await nextTick();
+        document.title = title;
+        return;
+    }
+
+    const track = playerStore.currentTrack;
+    if (track) {
+        // 地址上带住歌曲 id，分享出去的链接才能让服务端渲染出歌曲卡片
+        if (String(route.query.track || '') !== String(track.id)) {
+            await router.replace({ path: '/music', query: { ...route.query, track: String(track.id) } });
+        }
+
+        setPageShareMeta({
+            title: track.name,
+            description: getArtistName(track),
+            image: getCover(track),
+        });
+        /*
+         * 标签页标题保持纯歌名（这个页面原来的行为）。
+         * 注册分享信息会触发 App 里的 applyPageMeta 写成「站点名 | 歌名」，所以等它跑完再覆盖。
+         */
+        await nextTick();
+        document.title = track.name;
+        return;
+    }
+
+    /*
+     * 首页没在放歌：分享图和副标题就用页面上那张音乐图标 + 它下面那行字。
+     * 顺手把地址上残留的歌曲 id 去掉，免得分享出去的链接还是上一首歌的卡片。
+     */
+    if (route.query.track) {
+        const query = { ...route.query };
+        delete query.track;
+        await router.replace({ path: '/music', query });
+    }
+
+    const title = 'OpenStore | 音乐';
+    setPageShareMeta({
+        title,
+        description: HERO_SUB,
+        image: HERO_LOGO,
+    });
+    await nextTick();
+    document.title = title;
+};
+
+watch(() => playerStore.currentTrack?.id, syncSongShareMeta, { immediate: true });
+// 栏目切换 / 第一张歌单加载出来 / FM 换歌时，卡片跟着刷新
+watch(
+    [
+        viewMode,
+        () => radarPlaylists.value[0]?.id,
+        () => recommendPlaylists.value[0]?.id,
+        () => topList.value[0]?.id,
+    ],
+    syncSongShareMeta
+);
+// 从播放页返回音乐页时，把分享卡片再刷回当前歌曲
+onActivated(syncSongShareMeta);
+
+/*
+ * 音乐页刷新后不再把上一首还原回来：这里不是播放页，
+ * 还原了只会平白挂一条暂停的迷你播放器在页面上。
+ * 歌曲只在「正在播放」页刷新时才接着放（见 PlayerView 的 restore*）。
+ */
 
 const openMore = async (mode: 'radar' | 'recommend' | 'rank' | 'mine') => {
     if (!currentApi.value) return;
@@ -1252,6 +1411,45 @@ watch(() => playerStore.viewModeRequest, (val) => {
     }
 });
 
+/*
+ * 首页音乐卡片的四个入口用 /music?view=radar|recommend|rank 指过来。
+ * 音乐接口列表是异步拉取的，openMore 又要求 currentApi 就绪，
+ * 所以先挂起，等 currentApi 到位再执行一次。
+ */
+const pendingViewMode = ref('');
+
+const applyPendingViewMode = () => {
+    const mode = pendingViewMode.value;
+    if (!mode) return;
+
+    // 每日推荐就是默认首页，不依赖音乐接口列表
+    if (mode === 'home') {
+        pendingViewMode.value = '';
+        viewMode.value = 'home';
+        pageTitle.value = '在线播放';
+        layoutStore.setPageInfo('在线播放', true, goBack);
+        return;
+    }
+
+    if (!currentApi.value) return;
+    pendingViewMode.value = '';
+    openMore(mode as 'radar' | 'recommend' | 'rank');
+};
+
+watch(
+    () => route.query.view,
+    (val) => {
+        const mode = String(val || '');
+        if (mode === 'home' || mode === 'radar' || mode === 'recommend' || mode === 'rank') {
+            pendingViewMode.value = mode;
+            applyPendingViewMode();
+        }
+    },
+    { immediate: true }
+);
+
+watch(currentApi, applyPendingViewMode);
+
 // Watch mineSubMode to fetch data
 watch(mineSubMode, (val) => {
     if (viewMode.value === 'mine') {
@@ -1269,6 +1467,14 @@ watch(() => playerStore.userProfile, (newVal) => {
         fetchUserPlaylists();
     }
 }, { immediate: true });
+
+/*
+ * 在播放页收藏 / 取消收藏后回到音乐页：把「我的歌单」重新拉一遍，
+ * 否则列表（含喜欢的音乐那张卡）还是收藏之前的数据，看着像没收藏上。
+ */
+watch(() => playerStore.likeRevision, () => {
+    if (playerStore.userProfile?.userId) fetchUserPlaylists();
+});
 
 const likedPlaylistCover = computed(() => {
     if (userPlaylists.value.length > 0) {
@@ -1349,7 +1555,14 @@ const findBestApi = async () => {
 
       if (valid.length > 0) {
           availableApis.value = valid;
-          
+
+          // 按本次拿到的顺序编号，界面上只出现「路线 N」
+          const numbers: Record<string, number> = {};
+          valid.forEach((api: any, index: number) => {
+              numbers[lineKey(api)] = index + 1;
+          });
+          lineNumbers.value = numbers;
+           
           // Default to the first one (backend already sorts by latency)
           let bestApi = valid[0];
           
@@ -1380,7 +1593,7 @@ const handleSwitchApi = (api: any) => {
     if (!api || api.id === currentApi.value?.id) return;
     currentApi.value = api;
     playerStore.setApiUrl(api.url);
-    ElMessage.success(`已切换至: ${api.friendly_name}`);
+    ElMessage.success(`已切换至 ${lineLabel(api)}`);
     initData();
 };
 
@@ -1675,7 +1888,8 @@ const clearSearch = () => {
 // --- Playback & Detail Logic ---
 const openAlbum = async (album: any) => {
     if (!currentApi.value) return;
-    currentPlaylist.value = { name: album.name, coverImgUrl: album.picUrl, type: 'album' }; // Mock playlist obj
+    // 带上 id：刷新时可以直接重跑这个 loader
+    currentPlaylist.value = { id: album.id, name: album.name, coverImgUrl: album.picUrl, type: 'album' }; // Mock playlist obj
     showPlaylistDialog.value = true;
     playlistLoading.value = true;
     playlistTracks.value = [];
@@ -1697,7 +1911,7 @@ const openAlbum = async (album: any) => {
 
 const openArtist = async (artist: any) => {
     if (!currentApi.value) return;
-    currentPlaylist.value = { name: artist.name, coverImgUrl: artist.picUrl, type: 'artist' };
+    currentPlaylist.value = { id: artist.id, name: artist.name, coverImgUrl: artist.picUrl, type: 'artist' };
     showPlaylistDialog.value = true;
     playlistLoading.value = true;
     playlistTracks.value = [];
@@ -1763,6 +1977,9 @@ const getBitrateByQuality = (quality: 'standard' | 'higher' | 'exhigh' | 'lossle
 };
 
 const isSelected = (row: any) => selectedTracks.value.some(t => t.id === row.id);
+
+/** 播单页总页数（每页 10 首），用于翻页控件 */
+const totalPages = computed(() => Math.ceil(totalPlaylistTracks.value / 10) || 1);
 
 const isPageAllSelected = computed(() => {
     if (pagedPlaylistTracks.value.length === 0) return false;
@@ -1925,18 +2142,27 @@ const downloadSong = async (song: any) => {
             const filename = `${song.name} - ${artist}.${ext}`;
 
             try {
-                const proxyUrl = `/api/music-proxy?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = proxyUrl;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                ElMessage.success(`已加入下载队列: ${filename}`);
-            } catch (error) {
-                console.warn('Download trigger failed', error);
-                window.open(url, '_blank');
+                // 优先浏览器直连下载：流量走「浏览器 ↔ CDN」，不经过服务器。
+                // 实测网易云 CDN 支持 https 且 Access-Control-Allow-Origin: *，所以前端能直接取到文件。
+                await downloadDirect(url, filename);
+                ElMessage.success(`已开始下载: ${filename}`);
+            } catch (directError) {
+                // 直连失败（比如该主机只支持 http，前端取不了）时回退到服务器中转，行为与以前一致
+                console.warn('直连下载失败，回退到服务器中转', directError);
+                try {
+                    const fallbackUrl = proxyUrl(url, filename);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = fallbackUrl;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    ElMessage.success(`已加入下载队列: ${filename}`);
+                } catch (error) {
+                    console.warn('Download trigger failed', error);
+                    window.open(url, '_blank');
+                }
             }
         } else {
             ElMessage.warning('无法获取下载链接,已尝试所有可用接口');
@@ -1971,9 +2197,24 @@ const isVipSong = (song: any) => {
     const fee = song.fee ?? song.privilege?.fee;
     return typeof fee === 'number' && fee !== 0;
 };
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string
+));
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/*
+ * 这个函数的结果会走 v-html，而输入是第三方接口返回的歌名/歌手名，
+ * 所以必须先转义再高亮：以前直接 replace 会把歌名里的 HTML 当标签解析；
+ * 另外搜索词没转义就丢进 RegExp，用户输入 "(" 会直接抛异常把页面弄崩。
+ */
 const highlight = (text: string) => {
-    if (!searchKeyword.value) return text;
-    return text.replace(new RegExp(searchKeyword.value, 'gi'), match => `<span class="text-primary">${match}</span>`);
+    const raw = escapeHtml(String(text ?? ''));
+    const keyword = searchKeyword.value?.trim();
+    if (!keyword) return raw;
+    try {
+        return raw.replace(new RegExp(escapeRegExp(keyword), 'gi'), match => `<span class="text-primary">${match}</span>`);
+    } catch {
+        return raw;
+    }
 };
 const formatCount = (count: number) => {
     if (count > 100000000) return (count / 100000000).toFixed(1) + '亿';
@@ -1981,7 +2222,7 @@ const formatCount = (count: number) => {
     return count;
 };
 
-const openPlaylist = async (list: any) => {
+const openPlaylist = async (list: any, options: { fresh?: boolean } = {}) => {
     if (!currentApi.value) return;
     currentPlaylist.value = list;
     showPlaylistDialog.value = true;
@@ -1994,7 +2235,9 @@ const openPlaylist = async (list: any) => {
         const cookie = getCookie();
         const headers = cookie ? { Cookie: cookie } : {};
         const cookieEncoded = cookie ? encodeURIComponent(cookie) : '';
-        const res = await proxyRequest(`${baseUrl}/playlist/detail?id=${list.id}&cookie=${cookieEncoded}`, 'GET', headers, {});
+        // 刷新时带时间戳，绕开接口两分钟的缓存
+        const stamp = options.fresh ? `&timestamp=${Date.now()}` : '';
+        const res = await proxyRequest(`${baseUrl}/playlist/detail?id=${list.id}&cookie=${cookieEncoded}${stamp}`, 'GET', headers, {});
         if (res.data?.playlist?.tracks) {
             playlistTracks.value = res.data.playlist.tracks.map((t: any) => ({
                 id: t.id,
@@ -2009,6 +2252,38 @@ const openPlaylist = async (list: any) => {
         ElMessage.error('获取歌单详情失败');
     } finally {
         playlistLoading.value = false;
+    }
+};
+
+/*
+ * 刷新当前播单：网易云接口对相同地址有两分钟缓存，
+ * 刚收藏 / 刚改过的歌单可能还是旧数据，这里带时间戳重拉一次。
+ */
+const playlistRefreshing = ref(false);
+
+const refreshCurrentPlaylist = async () => {
+    const list = currentPlaylist.value;
+    if (!list || !currentApi.value || playlistRefreshing.value) return;
+
+    playlistRefreshing.value = true;
+    try {
+        if (list.type === 'podcast' && list.radio) {
+            await openDjRadio(list.radio);
+        } else if (list.type === 'album' && list.id) {
+            await openAlbum(list);
+        } else if (list.type === 'artist' && list.id) {
+            await openArtist(list);
+        } else if (list.name === '每日推荐') {
+            await handleDailyRecommend();
+        } else if (list.id) {
+            await openPlaylist(list, { fresh: true });
+        }
+        ElMessage.success('已刷新');
+    } catch (e) {
+        console.error(e);
+        ElMessage.error('刷新失败');
+    } finally {
+        playlistRefreshing.value = false;
     }
 };
 
@@ -2147,9 +2422,24 @@ onUnmounted(() => {
   margin-bottom: 16px;
 }
 .section-header h3 {
+  position: relative;
   margin: 0;
-  font-size: 18px;
+  padding-left: 12px;
+  font-size: 17px;
   font-weight: 600;
+}
+
+/* 栏目标题前的短色条：与首页卡片标题保持同一套视觉语言 */
+.section-header h3::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 15px;
+  border-radius: 4px;
+  background-color: var(--el-color-primary);
 }
 
 .playlist-grid {
@@ -2627,6 +2917,12 @@ onUnmounted(() => {
 /* FM Card Specifics */
 .fm-card-v2 {
   position: relative;
+  display: flex;
+  /*
+   * 高度下限按最坏情况算：标题两行 + 歌手 + 专辑 + 12px 间距 + 48px 按钮 + 上下内边距。
+   * 卡片被压得比这个还矮时，按钮就会被 overflow:hidden 裁掉。
+   */
+  min-height: 210px;
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
@@ -2668,7 +2964,8 @@ onUnmounted(() => {
 .fm-content {
   position: relative;
   z-index: 2;
-  height: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 16px;
   display: flex;
   align-items: center;
@@ -2713,11 +3010,20 @@ onUnmounted(() => {
   flex-direction: column;
   justify-content: space-between;
   gap: 12px;
-  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  /*
+   * 这里不能用 overflow: hidden —— 它的左边和底边正好贴着下面那排按钮，
+   * 按钮 hover 放大/发亮时会被这条看不见的边切掉一角。
+   * 文字省略交给内层的 .fm-info 处理就够了。
+   */
+  overflow: visible;
 }
 
 .fm-info {
   margin-top: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .fm-title {
@@ -2763,6 +3069,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
+  /* 按钮不参与压缩：空间不够时让文字先省略，而不是把按钮挤出去 */
+  flex-shrink: 0;
 }
 
 .fm-btn-play {
@@ -2776,7 +3084,8 @@ onUnmounted(() => {
 }
 .fm-btn-play:hover {
   background: rgba(255, 255, 255, 0.3);
-  transform: scale(1.05);
+  /* 不用 scale：外层 .fm-info-controls 是 overflow:hidden，放大后的边缘会被切掉 */
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
 }
 
 .fm-btn-sub {
@@ -2793,6 +3102,8 @@ onUnmounted(() => {
 @media (max-width: 768px) {
   .fm-card-v2 {
     height: auto;
+    /* 手机上封面缩到 80，卡片跟着内容走就行 */
+    min-height: 0;
   }
   .fm-content {
     height: auto;
@@ -2861,79 +3172,337 @@ onUnmounted(() => {
   width: 140px;
 }
 
-.playlist-table-wrapper {
-  height: calc(100vh - 80px);
-  padding-bottom: 90px; /* Reserve space for dock */
-  box-sizing: border-box;
-}
-.table-header {
+/* ---------- 播单页 ---------- */
+.pl-page {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 14px;
+  /* 固定高度，内部列表自己滚，信息条始终留在顶部 */
+  height: calc(100vh - 96px);
+  padding-bottom: 12px;
+  box-sizing: border-box;
 }
-.table-header-title {
-  font-size: 14px;
-  font-weight: 500;
+
+/* 歌单信息条：封面 + 名称 + 操作，一次排开 */
+.pl-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
+  background-color: var(--el-bg-color);
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.pl-cover {
+  width: 84px;
+  height: 84px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background-color: var(--el-fill-color-light);
+}
+
+.pl-cover-fallback {
+  width: 100%;
+  height: 100%;
+  background-color: var(--el-fill-color-light);
+}
+
+.pl-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.pl-name {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--el-text-color-primary);
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.table-header-bar {
+
+.pl-meta {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--el-text-color-secondary);
+}
+
+.pl-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pl-quality {
+  /* 和两侧按钮同高（全局控件高度 36px），宽度收到 96px 刚好放下「无损」+ 箭头 */
+  width: 96px;
+}
+
+.pl-list {
+  /* 歌曲列表是可滑动区域：内容超出就在这里面滚，不动整页 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 序号列：两位数（10）不许折行，居中 + 等宽数字 */
+.pl-list :deep(.pl-index-cell .cell) {
+  white-space: nowrap;
+  padding: 0 2px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--el-text-color-secondary);
+}
+
+.pl-pager {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px dashed var(--el-border-color-light);
+}
+
+.pl-page-num {
+  min-width: 38px;
+  text-align: center;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--el-text-color-secondary);
+}
+
+@media (max-width: 768px) {
+  .pl-page {
+    height: calc(100vh - 76px);
+    gap: 10px;
+  }
+
+  .pl-hero {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .pl-cover {
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+  }
+
+  .pl-name {
+    font-size: 16px;
+  }
+
+  /* 窄屏：操作按钮整行铺开，按压目标更大 */
+  .pl-actions {
+    width: 100%;
+  }
+
+  .pl-quality {
+    flex: 1;
+    width: auto;
+  }
+}
+
+/* ---------- 音乐页头部（身份 + 主切换 + 搜索 + 线路/账号） ---------- */
+.music-hero {
+  position: relative;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
+  background-color: var(--el-bg-color);
+  background-image: radial-gradient(
+    120% 150% at 0% 0%,
+    color-mix(in srgb, var(--el-color-primary) 10%, transparent),
+    transparent 62%
+  );
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.hero-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: nowrap;
-}
-.header-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-right: 8px;
-  flex-shrink: 0;
-}
-.header-pagination .page-info {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  min-width: 40px;
-  text-align: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
-/* Header Bar Layout */
-.header-bar {
+.hero-identity {
   display: flex;
   align-items: center;
   gap: 12px;
-  justify-content: space-between;
+  min-width: 0;
 }
-.header-bar.mobile-layout {
-  flex-wrap: wrap;
+
+.hero-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
 }
-.header-bar.mobile-layout .api-status-wrapper {
-  order: 1;
+
+/* 头部图标直接用首页音乐卡片的那张 logo，两处保持一致 */
+.hero-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.28));
 }
-.header-bar.mobile-layout .header-right-actions {
-  order: 2;
-  margin-left: auto;
+
+.hero-text {
+  min-width: 0;
 }
-.header-bar.mobile-layout .search-box {
-  order: 3;
-  width: 100%;
-  flex: 0 0 100%;
+
+.hero-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  color: var(--el-text-color-primary);
 }
-.header-bar .search-box {
-  flex: 1;
-  min-width: 200px;
+
+.hero-sub {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
 }
+
+.hero-tabs {
+  flex-shrink: 0;
+}
+
+.hero-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--el-border-color-light);
+}
+
+.search-box {
+  min-width: 0;
+}
+
 .header-right-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+
 .api-status-wrapper {
   display: flex;
   align-items: center;
+}
+
+/* ---------- 线路选择器：只暴露「路线 N」，不显示上游地址 ---------- */
+.line-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 999px;
+  background-color: var(--el-fill-color-lighter);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+  transition: border-color 0.16s ease, color 0.16s ease, background-color 0.16s ease;
+}
+
+.line-chip:hover {
+  color: var(--el-text-color-primary);
+  border-color: var(--el-border-color);
+  background-color: var(--el-fill-color-light);
+}
+
+.line-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background-color: var(--el-color-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--el-color-success) 18%, transparent);
+}
+
+.line-name {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.line-latency {
+  font-variant-numeric: tabular-nums;
+  color: var(--el-text-color-secondary);
+}
+
+.line-caret {
+  color: var(--el-text-color-placeholder);
+}
+
+.line-chip.is-checking {
+  cursor: default;
+  color: var(--el-text-color-secondary);
+}
+
+.line-chip.is-offline {
+  cursor: default;
+}
+
+.line-chip.is-offline .line-dot {
+  background-color: var(--el-color-danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--el-color-danger) 18%, transparent);
+}
+
+/* 下拉里的每一项：左边线路名，右边延迟 */
+.line-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-width: 116px;
+}
+
+@media (max-width: 768px) {
+  .music-hero {
+    padding: 15px;
+    border-radius: 14px;
+  }
+
+  /* 窄屏：搜索独占一行，线路和账号在下面一行 */
+  .hero-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'search search'
+      'api actions';
+    gap: 10px;
+  }
+
+  .hero-bar .search-box {
+    grid-area: search;
+  }
+
+  .hero-bar .api-status-wrapper {
+    grid-area: api;
+  }
+
+  .hero-bar .header-right-actions {
+    grid-area: actions;
+  }
 }
 
 /* Mobile specific adjustments */

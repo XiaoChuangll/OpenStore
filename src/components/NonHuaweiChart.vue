@@ -3,13 +3,31 @@
     <template #header>
       <div class="card-header">
         <div class="header-left">
-          <span :class="{ 'title-link': route.path !== '/rank/non-huawei' }" @click="goToRank">非华为应用下载榜</span>
-          <el-select v-model="pageSize" size="small" style="width: 80px; margin-left: 10px;" @change="fetchData">
-            <el-option label="10条" :value="10" />
-            <el-option label="20条" :value="20" />
-            <el-option label="30条" :value="30" />
-            <el-option label="50条" :value="50" />
-          </el-select>
+          <span class="card-title" :class="{ 'title-link': route.path !== '/rank/non-huawei' }" @click="goToRank">非华为应用下载榜</span>
+          <!-- 两个筛选框单独成组：窄屏时整组占到第二行，不会被挤变形 -->
+          <div class="header-filters">
+            <!-- 分类筛选：按榜单口径（分类别名组）筛出该分类下的应用 -->
+            <el-select
+              v-if="categoryOptions.length"
+              v-model="category"
+              size="small"
+              clearable
+              filterable
+              placeholder="全部分类"
+              class="category-select"
+              :style="{ width: categorySelectWidth }"
+              @change="fetchData"
+            >
+              <el-option label="全部分类" value="" />
+              <el-option v-for="opt in categoryOptions" :key="opt.name" :label="opt.name" :value="opt.name" />
+            </el-select>
+            <el-select v-model="pageSize" size="small" :style="{ width: selectWidthOf(PAGE_SIZE_LABELS) }" @change="fetchData">
+              <el-option label="10条" :value="10" />
+              <el-option label="20条" :value="20" />
+              <el-option label="30条" :value="30" />
+              <el-option label="50条" :value="50" />
+            </el-select>
+          </div>
         </div>
         <div class="controls">
           <el-tag 
@@ -28,43 +46,145 @@
             type="success"
             size="small"
           >增量</el-tag>
+          <!-- 图表 / 排名条 切换，选择记在本地，默认图表 -->
+          <el-tooltip :content="viewMode === 'list' ? '切换为图表' : '切换为排名条'" placement="top">
+            <el-button
+              size="small"
+              class="view-toggle"
+              :icon="viewMode === 'list' ? TrendCharts : List"
+              @click="toggleView"
+            />
+          </el-tooltip>
         </div>
       </div>
     </template>
-    <div ref="chartRef" style="width: 100%; height: 300px;"></div>
-  </el-card>
-  <el-card
-    v-if="route.path === '/rank/non-huawei'"
-    class="chart-card"
-    shadow="hover"
-  >
-    <template #header>
-      <div class="card-header">
-        <div class="header-left">
-          <span>非华为应用下载榜 · 矩阵图</span>
-        </div>
-      </div>
-    </template>
-    <div ref="matrixChartRef" style="width: 100%; height: 260px;"></div>
+    <div v-if="viewMode === 'chart'" ref="chartRef" class="chart-box"></div>
+    <RankBarList
+      v-else
+      :rows="listRows"
+      :tone="primaryMetric === 'total' ? 'danger' : 'success'"
+      @select="openApp"
+    />
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import * as echarts from 'echarts';
+import { TrendCharts, List } from '@element-plus/icons-vue';
+import RankBarList from './RankBarList.vue';
 import { hmApi } from '../services/hm-api';
+import { getCategoryGrowthRanking, mergeCategoryGrowth, getAppsByCategory } from '../services/next-api';
+import { selectWidthOf } from '../utils/select-width';
+
+/** 下拉框宽度按「最长的那条选项」算 */
+const PAGE_SIZE_LABELS = ['10条', '20条', '30条', '50条'];
 
 const router = useRouter();
 const route = useRoute();
 const chartRef = ref<HTMLElement | null>(null);
 let chartInstance: echarts.ECharts | null = null;
-const matrixChartRef = ref<HTMLElement | null>(null);
-let matrixChartInstance: echarts.ECharts | null = null;
 const showTotal = ref(true);
 const showIncrement = ref(true);
 const pageSize = ref(30);
 const chartData = ref<any[]>([]);
+
+/*
+ * 分类筛选：选项取上游「大分类下载量增速排行」的 kind_name。
+ * 比起走 apps/overview（面板要跑 26 个分类 + 5 个设备的计数查询），这个接口
+ * 上游自带 TTL 缓存、一次拿全，轻得多；筛选也直接用原始 kind_name 精确匹配，
+ * 下拉里的数量和筛出来的结果能对上。
+ *
+ * 代价：这是上游的原始分类（93 条，含繁体/外语/重名的脏条目），不像 /apps
+ * 分类页那套把「休闲益智 = 休闲 + 益智解谜」合并成一组 —— 因此下拉里会看到
+ * 更细的拆分。下面的筛选会把脏条目滤掉、重名的合并掉。
+ *
+ * 判空用 category 本身 —— 清空/选「全部分类」时都当作不限分类。
+ */
+interface CategoryOption {
+  name: string;
+  /** 该分类下的应用数（重名条目已合并） */
+  count?: number;
+  /** 窗口期内的下载增量，用来排序 */
+  increase?: number;
+}
+const categoryOptions = ref<CategoryOption[]>([]);
+const category = ref('');
+const categorySelectWidth = computed(() =>
+  selectWidthOf(['全部分类', ...categoryOptions.value.map((item) => item.name)])
+);
+const activeCategory = computed(
+  () => categoryOptions.value.find((item) => item.name === category.value) || null
+);
+
+/** 分类筛选的选项来源：上游大分类增速榜，按增量降序 */
+const CATEGORY_MIN_APPS = 50;
+const loadCategories = async () => {
+  try {
+    const res: any = await getCategoryGrowthRanking({
+      days: 7,
+      limit: 300,
+      // 上游原始分类里有一堆只有一两个应用的脏条目（繁体、外语、错拆），
+      // 让服务端先按应用数滤一遍，93 条能降到 40 条左右
+      minApps: CATEGORY_MIN_APPS
+    });
+    // 同名不同 kind_id 的合并成一条，数字相加，和按 kind_name 精确查的结果一致
+    categoryOptions.value = mergeCategoryGrowth(res?.data || []).map((item) => ({
+      name: item.kind_name,
+      count: Number(item.app_count) || 0,
+      increase: Number(item.downloads_increase) || 0
+    }));
+  } catch (error) {
+    // 拿不到分类就退化成「只有全部分类」，不影响榜单本身
+    console.warn('Failed to load categories for rank filter:', error);
+    categoryOptions.value = [];
+  }
+};
+
+/* 展示方式：chart（每次进页面都从图表开始）/ list（横向排名条） */
+const viewMode = ref<'list' | 'chart'>('chart');
+const toggleView = () => {
+  viewMode.value = viewMode.value === 'list' ? 'chart' : 'list';
+  if (viewMode.value === 'list') { showTotal.value = true; showIncrement.value = false; }
+  else { showTotal.value = true; showIncrement.value = true; }
+};
+
+/** 排名条模式下由哪个指标排序/画条 */
+const primaryMetric = computed<'total' | 'increment'>(() =>
+  showIncrement.value && !showTotal.value ? 'increment' : 'total'
+);
+const primaryValueOf = (item: any) =>
+  primaryMetric.value === 'total'
+    ? item.current_download_count || item.download_count || 0
+    : item.download_increment || 0;
+
+const formatCount = (value: number) => {
+  const n = Number(value) || 0;
+  if (Math.abs(n) >= 1e8) return `${(n / 1e8).toFixed(1)}亿`;
+  if (Math.abs(n) >= 1e4) return `${(n / 1e4).toFixed(1)}万`;
+  return n.toLocaleString('zh-CN');
+};
+
+const listRows = computed(() =>
+  chartData.value
+    .map((item: any) => ({
+      key: item.pkg_name || item.name,
+      name: item.name,
+      icon: item.icon_url,
+      value: primaryValueOf(item) as number,
+      sub:
+        primaryMetric.value === 'total'
+          ? `+${formatCount(item.download_increment || 0)}`
+          : `共 ${formatCount(item.current_download_count || item.download_count || 0)}`,
+      app_id: item.app_id
+    }))
+    .sort((a, b) => b.value - a.value)
+);
+
+const openApp = (row: { app_id?: string }) => {
+  if (row?.app_id) router.push({ name: 'app-dashboard', query: { app_id: row.app_id } });
+};
 
 const goToRank = () => {
   if (route.path !== '/rank/non-huawei') {
@@ -73,18 +193,28 @@ const goToRank = () => {
 };
 
 const toggleTotal = () => {
-  showTotal.value = !showTotal.value;
-  updateVisibility();
+  if (viewMode.value === 'chart') {
+    showTotal.value = !showTotal.value;
+    updateVisibility();
+  } else {
+    selectMetric('total');
+  }
 };
 
 const toggleIncrement = () => {
-  showIncrement.value = !showIncrement.value;
-  updateVisibility();
+  if (viewMode.value === 'chart') {
+    showIncrement.value = !showIncrement.value;
+    updateVisibility();
+  } else {
+    selectMetric('increment');
+  }
 };
 
-const formatNumber = (value: number) => {
-  if (!Number.isFinite(value)) return '0';
-  return value.toLocaleString();
+/** 排名条模式下两个标签是单选（条形画哪个指标），图表模式下仍是各自开关 */
+const selectMetric = (metric: 'total' | 'increment') => {
+  const next = primaryMetric.value === metric ? (metric === 'total' ? 'increment' : 'total') : metric;
+  showTotal.value = next === 'total';
+  showIncrement.value = next === 'increment';
 };
 
 const updateVisibility = () => {
@@ -139,50 +269,24 @@ const updateVisibility = () => {
   });
 };
 
-const initMatrixChart = (names: string[], downloads: number[], increments: number[]) => {
-  if (!matrixChartRef.value) return;
-  if (!chartData.value.length) return;
-
-  if (!matrixChartInstance) {
-    matrixChartInstance = echarts.init(matrixChartRef.value);
+const initChart = () => {
+  // 切到排名条时图表容器被销毁，再切回来要重新建实例
+  if (viewMode.value !== 'chart' || !chartRef.value) return;
+  // 先把尺寸观察挂上：容器真拿到宽度后要靠它补一次（下面可能直接 return）
+  ensureResizeObserver();
+  /*
+   * 容器还没量出尺寸就先别建实例。
+   * 面板是懒加载的，挂载那一瞬间容器宽度可能还是 0；echarts.init 在 0 尺寸容器上
+   * 会退化成 100×100，之后只要没有 resize 触发（手机上没人会去拉窗口），
+   * 图表就一直是"缩在卡片左边一小条"的样子 —— 移动端就是这么中招的。
+   */
+  if (!chartRef.value.clientWidth || !chartRef.value.clientHeight) return;
+  if (!chartInstance) chartInstance = echarts.init(chartRef.value);
+  if (!chartData.value.length) {
+    chartInstance.clear();
+    return;
   }
-
-  const data = names.map((name, index) => ({
-    name,
-    value: downloads[index] || 0,
-    increment: increments[index] || 0
-  }));
-
-  const option = {
-    tooltip: {
-      formatter: (info: any) => {
-        const item = data[info.dataIndex] || { value: 0, increment: 0 };
-        return `${info.name}<br/>总下载量：${formatNumber(item.value)}<br/>新增下载：${formatNumber(item.increment)}`;
-      }
-    },
-    series: [
-      {
-        name: '非华为榜矩阵',
-        type: 'treemap',
-        roam: false,
-        nodeClick: false,
-        data,
-        label: {
-          show: true,
-          formatter: '{b}'
-        }
-      }
-    ]
-  };
-
-  matrixChartInstance.setOption(option);
-};
-
-const initChart = (data: any[]) => {
-  if (!chartRef.value) return;
-  
-  chartData.value = data;
-  chartInstance = echarts.init(chartRef.value);
+  const data = chartData.value;
   
   const names = data.map(item => item.name);
   const downloads = data.map(item => item.current_download_count || item.download_count);
@@ -313,8 +417,6 @@ const initChart = (data: any[]) => {
   
   chartInstance.setOption(option);
 
-  initMatrixChart(names, downloads, increments);
-
   chartInstance.on('click', (params) => {
     const item = chartData.value[params.dataIndex];
     if (item && item.app_id) {
@@ -325,15 +427,38 @@ const initChart = (data: any[]) => {
 
 const fetchData = async () => {
   try {
-    // 1. Fetch Top 30 Non-Huawei apps by Total Download
-    let apps = [];
-    const listResponse = await hmApi.get<any>('/apps/list/1', {
-      page_size: pageSize.value,
-      sort: 'download_count',
-      desc: true,
-      exclude_huawei: true
-    });
-    apps = listResponse.data?.data || [];
+    // 多要几条再裁：服务端会从结果里删掉被屏蔽的异常应用（上游 total 不变），
+    // 正好要 30 条时会少一两个。详见 TotalDownloadRank 里的同一处注释。
+    const FETCH_EXTRA = 6;
+    const fetchSize = pageSize.value + FETCH_EXTRA;
+    let apps: any[] = [];
+
+    if (activeCategory.value) {
+      /*
+       * 选了分类：按上游原始 kind_name 精确查（下拉就是按这个口径来的，
+       * 所以选项里的数量和筛出来的条数一致）。
+       * 同时带上非华为条件，候选池才是「该分类下的非华为应用」。
+       */
+      const categoryRes: any = await getAppsByCategory(
+        activeCategory.value.name,
+        1,
+        fetchSize,
+        undefined,
+        undefined,
+        { sort: 'download_count', desc: true, excludeHuawei: true }
+      );
+      apps = (categoryRes?.data || []).slice(0, pageSize.value);
+    } else {
+      const listResponse = await hmApi.get<any>('/apps/list/1', {
+        page_size: fetchSize,
+        sort: 'download_count',
+        desc: true,
+        exclude_huawei: true,
+        // 榜单要显示下载量，必须完整信息
+        detail: true
+      });
+      apps = (listResponse.data?.data || []).slice(0, pageSize.value);
+    }
 
     // 2. Fetch Growth data to map increments
     let growthMap = new Map<string, number>();
@@ -389,7 +514,9 @@ const fetchData = async () => {
              search_key: 'pkg_name',
              search_value: item.pkg_name,
              search_exact: true,
-             page_size: 1
+             page_size: 1,
+             // 只补一个图标，取简略信息即可
+             detail: false
            });
            const detail = detailRes.data?.data?.[0];
            if (detail && detail.icon_url) {
@@ -402,38 +529,58 @@ const fetchData = async () => {
       return item;
     }));
 
-    initChart(appsWithIcons);
+    chartData.value = appsWithIcons;
+    initChart();
   } catch (error) {
     console.error('Failed to fetch non-huawei download rank:', error);
   }
 };
 
 const handleResize = () => {
-  chartInstance?.resize();
-  matrixChartInstance?.resize();
+  const el = chartRef.value;
+  if (viewMode.value !== 'chart' || !el) return;
+  if (!el.clientWidth || !el.clientHeight) return;
+  // 之前容器还没尺寸、没能建实例的，这里补建
+  if (!chartInstance) {
+    initChart();
+    return;
+  }
+  chartInstance.resize();
 };
 
 let resizeObserver: ResizeObserver | null = null;
+/** 观察器当前盯着的元素，换了容器（切回图表模式）要重新挂 */
+let observedEl: HTMLElement | null = null;
+
+const ensureResizeObserver = () => {
+  const el = chartRef.value;
+  if (!el || el === observedEl) return;
+  resizeObserver?.disconnect();
+  if (!resizeObserver) resizeObserver = new ResizeObserver(handleResize);
+  resizeObserver.observe(el);
+  observedEl = el;
+};
+
+/**
+ * 图表容器是 v-if 控制的：切到排名条时容器被销毁（实例必须跟着 dispose，
+ * 否则 echarts 会抱着一块已经不存在的 canvas），切回来再重建。
+ */
+watch(viewMode, async (mode) => {
+  if (mode === 'chart') {
+    await nextTick();
+    initChart();
+  } else {
+    chartInstance?.dispose();
+    chartInstance = null;
+  }
+});
 
 onMounted(() => {
   fetchData();
+  // 分类选项单独加载（走 overview 缓存，和 /apps 分类页同一份数据）
+  loadCategories();
   window.addEventListener('resize', handleResize);
-
-  if (chartRef.value) {
-    resizeObserver = new ResizeObserver(() => {
-      chartInstance?.resize();
-    });
-    resizeObserver.observe(chartRef.value);
-  }
-  
-  if (matrixChartRef.value) {
-    if (!resizeObserver) {
-      resizeObserver = new ResizeObserver(() => {
-        matrixChartInstance?.resize();
-      });
-    }
-    resizeObserver.observe(matrixChartRef.value);
-  }
+  ensureResizeObserver();
 });
 
 onUnmounted(() => {
@@ -442,8 +589,8 @@ onUnmounted(() => {
     resizeObserver.disconnect();
     resizeObserver = null;
   }
+  observedEl = null;
   chartInstance?.dispose();
-  matrixChartInstance?.dispose();
 });
 </script>
 
@@ -455,23 +602,85 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   height: 32px;
 }
 .header-left {
   display: flex;
   align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+/* 两个筛选框成组，桌面端排布和以前完全一致 */
+.header-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.card-title {
+  white-space: nowrap;
 }
 @media (max-width: 768px) {
+  /*
+    标题和条数下拉必须待在同一行（原来用 display:contents 拆开，
+    下拉会被单独挤到第二行 —— 就是"筛选框被换行了"）。
+  */
   .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
     height: auto;
+    row-gap: 8px;
+  }
+
+  /*
+   * 窄屏排成两行：
+   *   第 1 行：标题（左） + 总量/增量/切换（右）
+   *   第 2 行：两个筛选框整行
+   * 挤在一行的话两个下拉会被 flex 压窄，「全部分类」「30条」都会被截断。
+   * 用 grid 摆放，所以这里让 .header-left 不再参与布局（display: contents），
+   * 标题 / 筛选组 / 切换按钮直接按网格定位。
+   */
+  .card-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 6px;
+  }
+  .header-left {
+    display: contents;
+  }
+  .card-title {
+    grid-area: 1 / 1 / 2 / 2;
+    min-width: 0;
+    /* 极窄屏（≲330）时标题让位给右侧按钮，省略号收尾而不是压到按钮上 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .controls {
+    grid-area: 1 / 2 / 2 / 3;
+    justify-self: end;
+    margin-left: 0;
+  }
+  .header-filters {
+    grid-area: 2 / 1 / 3 / 3;
+    min-width: 0;
   }
 }
 .controls {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
+}
+.view-toggle {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+.chart-box {
+  width: 100%;
+  height: 300px;
 }
 .cursor-pointer {
   cursor: pointer;

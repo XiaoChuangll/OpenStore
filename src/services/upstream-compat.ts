@@ -11,6 +11,21 @@
  */
 const APPS_LIST_PATH_RE = /^\/apps\/list\/(\d+)$/;
 
+/**
+ * 「排除华为官方应用」在 /apps/query 里没有对应开关，只能用条件等价表达。
+ *
+ * 实测过两种写法（上游总量 95332）：
+ * - 开发者不是华为（下面这条）：95215，和上游 `exclude_huawei=true` 的 95216 只差 1 条；
+ * - 包名里不带 huawei：72934，多排掉两万多条 —— 很多第三方应用的包名里也带 huawei，
+ *   照这个排法会把它们一起误伤。
+ * 所以按「开发者」判定，而不是包名。
+ */
+export const EXCLUDE_HUAWEI_CONDITION = {
+  key: 'developer_name',
+  value: '%华为%',
+  op: 'not_i_like'
+} as const;
+
 export interface TranslatedListCall {
   /** 相对 baseUrl 的请求路径（含查询串） */
   path: string;
@@ -52,6 +67,10 @@ export const translateAppsListCall = (
   }
   if (params?.date_to) {
     conditions.push({ key: 'listed_at', value: String(params.date_to), op: 'lte' });
+  }
+  if (params?.exclude_huawei) {
+    // 以前这个参数在翻译时被丢掉了，「非华为榜」实际拿到的是华为自家应用
+    conditions.push({ ...EXCLUDE_HUAWEI_CONDITION });
   }
 
   const query = new URLSearchParams();

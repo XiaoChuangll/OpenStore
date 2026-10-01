@@ -451,7 +451,9 @@ const fetchByPkgName = async (pkgName: string) => {
     search_key: 'pkg_name',
     search_value: pkgName,
     search_exact: true,
-    page_size: 1
+    page_size: 1,
+    // 解析不到 app_id 时会直接用这条记录回填下载量/包体大小/上架时间，所以要完整信息
+    detail: true
   });
   const data = res?.data || res;
   const item = data?.data?.[0] || data?.apps?.[0] || null;

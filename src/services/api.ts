@@ -74,7 +74,9 @@ export interface Incident {
   title: string;
   content?: string;
   status: 'investigating' | 'identified' | 'monitoring' | 'resolved' | 'scheduled';
-  type: 'incident' | 'maintenance';
+  type: 'incident' | 'maintenance' | 'notice';
+  /** 卡片图标名（Element Plus 图标名，如 WarningFilled / Tools / InfoFilled），留空按类型取默认 */
+  icon?: string | null;
   start_time?: number;
   end_time?: number;
   created_at: number;
@@ -146,7 +148,9 @@ export const getNewApps = async (page = 1, pageSize = 20) => {
     const params = {
       sort: 'listed_at',
       desc: true,
-      page_size: pageSize
+      page_size: pageSize,
+      // 上新列表要显示版本号/下载量/分类/时间徽标，必须取完整信息
+      detail: true
     };
     const response = await fetchAppList(page, params);
     
@@ -180,7 +184,9 @@ export const getNewAppsByDateRange = async (dateFrom: string | undefined, dateTo
     const params: any = {
       sort: 'listed_at',
       desc: true,
-      page_size: pageSize
+      page_size: pageSize,
+      // 目前只有首页「精选专题」的本周上新海报用，只取图标，简略信息足够
+      detail: false
     };
     if (dateFrom) params.date_from = dateFrom;
     if (dateTo) params.date_to = dateTo;
@@ -219,7 +225,8 @@ export const getNewAppsByDate = async (dateStr: string, page = 1, pageSize = 20)
       date_to: dateStr,
       sort: 'listed_at',
       desc: true,
-      page_size: pageSize
+      page_size: pageSize,
+      detail: true
     };
     const response = await fetchAppList(page, params);
     return response.data;
@@ -241,6 +248,8 @@ export const getAppUpdates = async (page = 1, pageSize = 50) => {
       sort: 'release_date',
       desc: true,
       page_size: pageSize,
+      // 更新列表同样要显示版本号/下载量/时间徽标
+      detail: true
     };
     const response = await fetchAppList(page, params);
     

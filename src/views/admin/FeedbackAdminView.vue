@@ -6,82 +6,158 @@
       </template>
     </el-page-header>
 
-    <el-card class="mb-2">
-      <div class="card-header"><h3>限频配置</h3></div>
-      <el-form label-position="top" :inline="isMobile">
-        <el-form-item label="每IP每分钟次数">
-          <el-input-number v-model="rateLimit" :min="0" :max="999" />
-          <el-button type="primary" :loading="savingLimit" @click="saveLimit" style="margin-left: 8px;">保存</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
     <el-card>
-      <div class="table-actions mb-2">
-        <el-button type="primary" :loading="loading" @click="fetchList">刷新</el-button>
-        <el-button type="danger" :disabled="selectedIds.length === 0" @click="batchDelete">批量删除</el-button>
+      <!-- 限频配置并进列表卡片的头部，用表单形态 -->
+      <div class="card-head">
+        <div class="head-left">
+          <span class="head-title">反馈列表</span>
+          <span class="head-count">共 {{ total }} 条</span>
+        </div>
+        <div class="head-right">
+          <el-button size="small" text :icon="Refresh" :loading="loading" @click="fetchList">刷新</el-button>
+          <el-button
+            size="small"
+            type="danger"
+            plain
+            :icon="Delete"
+            :disabled="selectedIds.length === 0"
+            @click="batchDelete"
+          >
+            批量删除{{ selectedIds.length ? ` (${selectedIds.length})` : '' }}
+          </el-button>
+        </div>
       </div>
-      <el-table :data="items" v-loading="loading" stripe @selection-change="onSelectionChange" @cell-click="onCellClick">
-        <el-table-column type="selection" width="48" />
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="type" label="类型" width="120">
+
+      <div class="limit-strip">
+        <el-form class="limit-form" label-position="left" @submit.prevent>
+          <el-form-item label="提交限频" class="limit-form-item">
+            <el-input-number
+              v-model="rateLimit"
+              :min="0"
+              :max="999"
+              size="small"
+              controls-position="right"
+              class="limit-input"
+            />
+            <span class="limit-unit">次 / IP / 分钟</span>
+            <el-button size="small" type="primary" plain :loading="savingLimit" @click="saveLimit">保存</el-button>
+            <el-tooltip content="0 表示不限制提交频率" placement="top">
+              <span class="limit-hint">0 = 不限制</span>
+            </el-tooltip>
+          </el-form-item>
+        </el-form>
+      </div>
+      <!-- 宽屏：完整表格；中屏：隐藏哈希/角色/环境，信息并入相邻格子 -->
+      <el-table
+        v-if="!isMobile"
+        :data="items"
+        v-loading="loading"
+        @selection-change="onSelectionChange"
+        @cell-click="onCellClick"
+      >
+        <el-table-column type="selection" width="44" />
+        <el-table-column v-if="!isCompact" prop="id" label="ID" min-width="56" />
+
+        <el-table-column label="类型" min-width="104">
           <template #default="{ row }">
-            <span class="single-line">{{ typeLabel(row.type) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="hash" label="哈希" min-width="260">
-          <template #default="{ row }">
-            <div class="single-line">{{ row.hash }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="title" label="标题/概要" min-width="220">
-          <template #default="{ row }">
-            <div class="single-line">{{ row.title }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="详情" min-width="260">
-          <template #default="{ row }">
-            <div class="detail">
-              <div class="desc single-line">{{ row.description }}</div>
+            <div class="stack-cell">
+              <el-tag size="small" effect="light">{{ typeLabel(row.type) }}</el-tag>
+              <span class="cell-sub">{{ row.user_role || 'guest' }}</span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="进度" width="120">
+
+        <el-table-column label="标题 / 详情" min-width="150">
           <template #default="{ row }">
-            {{ statusLabel(row.status) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="user_role" label="角色" width="100" />
-        <el-table-column prop="created_at" label="时间" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="IP" width="140">
-          <template #default="{ row }">
-            <div class="env">
-              <span class="env-item">{{ row.ip }}</span>
-              <span class="env-item contact" v-if="row.email">{{ row.email }}</span>
+            <div class="stack-cell">
+              <span class="title-text">{{ row.title || '未填写标题' }}</span>
+              <span class="cell-sub single-line" :title="row.description || ''">
+                {{ row.description || '（无详细描述）' }}
+              </span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="环境" min-width="260">
+
+        <el-table-column prop="status" label="进度" min-width="80">
           <template #default="{ row }">
-            <div class="env">
-              <span class="env-item" v-if="row.device_type">设备: {{ row.device_type }}</span>
-              <span class="env-item" v-if="row.os">系统: {{ row.os }}</span>
-              <span class="env-item" v-if="row.browser">浏览器: {{ row.browser }}</span>
-              <span class="env-item" v-if="row.network">网络: {{ row.network }}</span>
+            <el-tag :type="statusTagType(row.status)" effect="light" size="small">
+              {{ statusLabel(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="时间" min-width="124">
+          <template #default="{ row }">
+            <div class="stack-cell">
+              <span class="time-text">{{ formatTime(row.created_at) }}</span>
+              <span class="cell-sub">{{ relativeTime(row.created_at) }}</span>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="IP / 环境" min-width="120">
+          <template #default="{ row }">
+            <div class="stack-cell">
+              <span class="mono-line single-line" :title="row.ip || ''">
+                {{ row.ip || '未知 IP' }}<template v-if="row.email"> · {{ row.email }}</template>
+              </span>
+              <span class="cell-sub single-line" :title="envSummary(row)">{{ envSummary(row) }}</span>
             </div>
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- 窄屏：一条反馈一张卡片，点击打开详情 -->
+      <div v-else class="feedback-cards" v-loading="loading">
+        <div
+          v-for="row in items"
+          :key="row.id"
+          class="feedback-card"
+          @click="onCellClick(row)"
+        >
+          <div class="feedback-card-top">
+            <el-checkbox
+              class="card-check"
+              :model-value="selectedIds.includes(row.id)"
+              @click.stop
+              @change="(v: any) => toggleSelect(row.id, !!v)"
+            />
+            <el-tag size="small" effect="light">{{ typeLabel(row.type) }}</el-tag>
+            <el-tag :type="statusTagType(row.status)" effect="light" size="small">
+              {{ statusLabel(row.status) }}
+            </el-tag>
+            <span class="card-relative">{{ relativeTime(row.created_at) }}</span>
+          </div>
+
+          <div class="feedback-card-title">{{ row.title || '未填写标题' }}</div>
+          <p class="feedback-card-desc">{{ row.description || '（无详细描述）' }}</p>
+
+          <div class="feedback-card-meta">
+            <span class="meta-item">#{{ row.id }}</span>
+            <span class="meta-item">{{ row.user_role || 'guest' }}</span>
+            <span class="meta-item">{{ row.ip || '未知 IP' }}</span>
+            <span v-if="row.email" class="meta-item">{{ row.email }}</span>
+          </div>
+          <div class="feedback-card-meta">
+            <span class="meta-item">{{ envSummary(row) }}</span>
+            <span class="meta-item card-time">{{ formatTime(row.created_at) }}</span>
+          </div>
+        </div>
+
+        <p v-if="!items.length" class="table-empty">暂无反馈记录</p>
+      </div>
       <el-dialog v-model="detailDialogVisible" title="反馈详情" :width="isMobile ? '95%' : '700px'">
         <div class="dialog-section">
-          <div class="dialog-row"><span class="label">ID</span><span class="value">{{ detailItem?.id }}</span></div>
-          <div class="dialog-row"><span class="label">哈希</span><span class="value single-line">{{ detailItem?.hash }}</span></div>
-          <div class="dialog-row"><span class="label">类型</span><span class="value">{{ typeLabel(detailItem?.type) }}</span></div>
-          <div class="dialog-row"><span class="label">时间</span><span class="value">{{ formatTime(detailItem?.created_at) }}</span></div>
+          <div class="dialog-grid">
+            <div class="dialog-row"><span class="label">ID</span><span class="value">{{ detailItem?.id }}</span></div>
+            <div class="dialog-row"><span class="label">类型</span><span class="value">{{ typeLabel(detailItem?.type) }}</span></div>
+            <div class="dialog-row"><span class="label">时间</span><span class="value">{{ formatTime(detailItem?.created_at) }}</span></div>
+            <div class="dialog-row">
+              <span class="label">提交限频</span>
+              <span class="value">{{ rateLimit > 0 ? `每 IP 每分钟最多 ${rateLimit} 次` : '不限制' }}</span>
+            </div>
+            <div class="dialog-row is-full"><span class="label">哈希</span><span class="value single-line">{{ detailItem?.hash }}</span></div>
+          </div>
         </div>
         <el-form label-position="top" class="mt-2">
           <el-form-item label="标题">
@@ -138,6 +214,7 @@ import { useRouter } from 'vue-router';
 import { getFeedbacks, deleteFeedbacks, updateFeedback, type Feedback } from '../../services/admin';
 import { getEnvVars, setEnvVar } from '../../services/api';
 import { ElMessageBox, ElMessage } from 'element-plus';
+import { Refresh, Delete } from '@element-plus/icons-vue';
 
 defineProps<{ embedded?: boolean }>();
 const router = useRouter();
@@ -150,11 +227,62 @@ const pageSize = ref(20);
 const loading = ref(false);
 const selectedIds = ref<number[]>([]);
 const isMobile = ref(window.innerWidth < 768);
-const updateIsMobile = () => { isMobile.value = window.innerWidth < 768; };
+/** 中屏（表格放不下全部列时）把哈希/角色/环境并进相邻格子 */
+const isCompact = ref(window.innerWidth < 1080);
+const updateIsMobile = () => {
+  isMobile.value = window.innerWidth < 768;
+  isCompact.value = window.innerWidth < 1080;
+};
 
 const formatTime = (time?: string) => {
   if (!time) return '';
   return new Date(time).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+};
+
+/** 库里存的是 UTC 秒级时间，补上 Z 再算差值 */
+const parseUtc = (time?: string) => {
+  if (!time) return NaN;
+  const raw = String(time);
+  const iso = raw.includes('T') ? (raw.endsWith('Z') ? raw : `${raw}Z`) : `${raw.replace(' ', 'T')}Z`;
+  return new Date(iso).getTime();
+};
+
+/** 相对时间：窄屏卡片上比绝对时间更好读 */
+const relativeTime = (time?: string) => {
+  const ts = parseUtc(time);
+  if (Number.isNaN(ts)) return '';
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  if (diff < 30 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+  return '';
+};
+
+/** 环境信息压成一行，供中屏与窄屏复用 */
+const envSummary = (row: Feedback) => {
+  const parts = [
+    row.device_type ? `设备: ${row.device_type}` : '',
+    row.os ? `系统: ${row.os}` : '',
+    row.browser ? `浏览器: ${row.browser}` : '',
+    row.network ? `网络: ${row.network}` : ''
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : '无环境信息';
+};
+
+const statusTagType = (status?: string | null) => {
+  const key = String(status || '').trim();
+  if (key === 'completed') return 'success';
+  if (key === 'accepted') return 'primary';
+  if (key === 'rejected') return 'info';
+  return 'warning';
+};
+
+/** 窄屏卡片没有表格勾选框，这里自己维护选中状态 */
+const toggleSelect = (id: number, checked: boolean) => {
+  const index = selectedIds.value.indexOf(id);
+  if (checked && index < 0) selectedIds.value.push(id);
+  if (!checked && index >= 0) selectedIds.value.splice(index, 1);
 };
 
 const rateLimit = ref(0);
@@ -285,6 +413,258 @@ onUnmounted(() => {
 .mb-2 { margin-bottom: 8px; }
 .mt-3 { margin-top: 12px; }
 .mt-2 { margin-top: 8px; }
+
+/* ---------- 列表卡片头部：标题 + 限频表单 ---------- */
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  /* 标题与右侧按钮必须同一行：空间不够时压缩左侧信息，不换行 */
+  flex-wrap: nowrap;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.head-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
+}
+
+.head-count {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* 限频设置做成一条设置带，而不是孤立的一行表单 */
+.limit-strip {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background-color: var(--el-fill-color-lighter);
+}
+
+.limit-form {
+  display: flex;
+  align-items: center;
+}
+
+.limit-form-item {
+  margin-bottom: 0;
+}
+
+.limit-form-item :deep(.el-form-item__label) {
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+  padding-right: 8px;
+  line-height: 28px;
+}
+
+.limit-form-item :deep(.el-form-item__content) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.limit-input {
+  width: 110px;
+}
+
+.limit-unit {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+.limit-hint {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  cursor: default;
+}
+
+.selected-tip {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+/* ---------- 详情子页面 ---------- */
+.dialog-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+}
+
+/* 中屏：单元格里的第二行小字 */
+.stack-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cell-sub {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
+.title-text {
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.time-text {
+  font-variant-numeric: tabular-nums;
+  color: var(--el-text-color-primary);
+}
+
+.mono-line {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 窄屏反馈卡片 ---------- */
+.feedback-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 80px;
+}
+
+.feedback-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  background-color: var(--el-fill-color-lighter);
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.feedback-card:hover {
+  border-color: var(--el-color-primary-light-5);
+}
+
+.feedback-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-check {
+  margin-right: -4px;
+}
+
+.card-relative {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.feedback-card-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.feedback-card-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-regular);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.feedback-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
+.meta-item {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.card-time {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-empty {
+  padding: 28px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--el-text-color-placeholder);
+}
+
+.dialog-row.is-full {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 768px) {
+  .card-head {
+    align-items: flex-start;
+  }
+
+  .card-head { gap: 10px; }
+
+  .head-title { font-size: 14px; }
+
+  .limit-form,
+  .limit-form :deep(.el-form-item),
+  .limit-form-item :deep(.el-form-item__content) {
+    width: 100%;
+  }
+
+  .limit-form-item :deep(.el-form-item__label) {
+    display: none;
+  }
+
+  .dialog-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .pagination-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: nowrap; }
 .page-total { white-space: nowrap; }
 .pagination-bar :deep(.el-pagination) { display: inline-flex; }

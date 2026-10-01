@@ -1,4 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { onlyTrackQueryChanged, setupScrollMemory } from '../utils/route-scroll';
+
 const HomeView = () => import('../views/HomeView.vue');
 const MusicView = () => import('../views/MusicView.vue');
 const LoginView = () => import('../views/LoginView.vue');
@@ -7,6 +9,7 @@ const TotalRankView = () => import('../views/TotalRankView.vue');
 const GrowthRankView = () => import('../views/GrowthRankView.vue');
 const HistoryRankView = () => import('../views/HistoryRankView.vue');
 const NonHuaweiRankView = () => import('../views/NonHuaweiRankView.vue');
+const CategoryRankView = () => import('../views/CategoryRankView.vue');
 const AppDashboardView = () => import('../views/AppDashboardView.vue');
 const NextAppDetailView = () => import('../views/NextAppDetailView.vue');
 const AppCardView = () => import('../views/AppCardView.vue');
@@ -21,6 +24,7 @@ const SubmissionView = () => import('../views/SubmissionView.vue');
 const AboutView = () => import('../views/AboutView.vue');
 import { useAuthStore } from '../stores/auth';
 import { trackVisit } from '../services/api';
+import { applyPageMeta } from '../utils/page-share';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -29,13 +33,23 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: HomeView,
-      meta: { title: '探索', description: '发现最新、最热门的移动应用，探索OpenStore的精彩世界。' }
+      meta: {
+        title: '探索',
+        // 分享卡片副标题（人话版）；SEO 用的关键词描述保留在 index.html 的 name="description" 里
+        description: '发现最新、最热门的鸿蒙应用，探索 OpenStore 的精彩世界。'
+      }
     },
     {
       path: '/music',
       name: 'music',
       component: MusicView,
       meta: { title: '音乐', description: '畅听海量音乐，发现你的专属歌单。' }
+    },
+    {
+      path: '/player',
+      name: 'player',
+      component: () => import('../views/PlayerView.vue'),
+      meta: { title: '正在播放', description: '查看当前播放的歌曲、进度与播放队列。' }
     },
     {
       path: '/apps',
@@ -77,7 +91,7 @@ const router = createRouter({
       path: '/topics',
       name: 'topics',
       component: TopicView,
-      meta: { title: '专题', description: '探索精彩专题，发现更多优质应用。' }
+      meta: { title: '专题', description: '跟随专题逛鸿蒙生态，发现值得一试的应用。' }
     },
     {
       path: '/topics/:id',
@@ -113,13 +127,19 @@ const router = createRouter({
       path: '/rank/history',
       name: 'history-rank',
       component: HistoryRankView,
-      meta: { title: '历史榜', description: '回顾应用历史排名，分析长期表现。' }
+      meta: { title: '下载量', description: '查看应用下载量的历史变化，分析长期趋势。' }
     },
     {
       path: '/rank/non-huawei',
       name: 'non-huawei-rank',
       component: NonHuaweiRankView,
-      meta: { title: '非华为榜', description: '探索非华为设备上的热门应用。' }
+      meta: { title: '第三方应用榜', description: '探索非华为设备上的热门应用。' }
+    },
+    {
+      path: '/rank/category',
+      name: 'category-rank',
+      component: CategoryRankView,
+      meta: { title: '分类榜', description: '按应用分类查看下载量增长，找出正在上涨的赛道。' }
     },
     {
       path: '/articles',
@@ -177,7 +197,7 @@ const router = createRouter({
       path: '/admin/settings',
       name: 'admin-settings',
       component: () => import('../views/admin/SystemSettingsView.vue'),
-      meta: { title: '系统设置', requiresAuth: true, description: '管理系统设置与主题' }
+      meta: { title: '主题设置', requiresAuth: true, description: '管理全站主题配色' }
     },
     {
       path: '/:pathMatch(.*)*',
@@ -186,14 +206,29 @@ const router = createRouter({
       meta: { title: '404', description: '页面未找到。' }
     },
   ],
-  scrollBehavior(_to, _from, savedPosition) {
+  scrollBehavior(to, from, savedPosition) {
     if (savedPosition) {
       return savedPosition;
-    } else {
-      return { top: 0 };
     }
+    /*
+     * 同一页面里只有曲目变了时不重置滚动位置：播放页和音乐页切歌都会把 ?track= 同步到地址栏，
+     * 若是照常「回到顶部」，每点一次上一首 / 下一首，页面就被拽回顶上。
+     * 其它导航（换页面、切换 view 等 query）维持原来的行为。
+     * 返回 false 表示这次导航不要改动滚动位置。
+     */
+    if (to.path === from.path && onlyTrackQueryChanged(to.query, from.query)) {
+      return false;
+    }
+    return { top: 0 };
   },
 });
+
+/*
+ * 额外记一层"每个页面离开时滚到哪"，只有浏览器后退时恢复。
+ * vue-router 自带的 savedPosition 实测经常取不到（从榜单页返回首页总是顶部），
+ * 见 utils/route-scroll.ts 里的 setupScrollMemory。
+ */
+setupScrollMemory(router);
 
 router.beforeEach((to) => {
   const store = useAuthStore();
@@ -206,43 +241,17 @@ router.beforeEach((to) => {
 });
 
 router.afterEach((to) => {
-  // Update document title
-  const defaultTitle = 'OpenStore | 发现更多精彩应用'; // 默认标题
-  const pageTitle = (to.query.title as string) || (to.meta.title as string);
-  document.title = pageTitle ? `OpenStore | ${pageTitle}` : defaultTitle;
-
-  // Update meta description
-  const defaultDescription = 'OpenStore 是一个发现和管理移动应用的平台，提供丰富的应用信息、排行榜和更新动态。'; // 默认描述
-  const description = (to.meta.description as string) || defaultDescription;
-  
-  const updateMeta = (name: string, content: string, property = false) => {
-    const selector = property ? `meta[property="${name}"]` : `meta[name="${name}"]`;
-    let el = document.querySelector(selector);
-    if (!el) {
-      el = document.createElement('meta');
-      if (property) el.setAttribute('property', name);
-      else el.setAttribute('name', name);
-      document.head.appendChild(el);
-    }
-    el.setAttribute('content', content);
-  };
-
-  updateMeta('description', description);
-  
-  // Update Open Graph and Twitter tags
-  const fullTitle = pageTitle ? `OpenStore | ${pageTitle}` : defaultTitle;
-  updateMeta('og:title', fullTitle, true);
-  updateMeta('og:description', description, true);
-  updateMeta('og:url', window.location.href, true);
-  updateMeta('twitter:title', fullTitle);
-  updateMeta('twitter:description', description);
-
-  // Ensure image tags exist (they point to root /og-image.png which is fine for most)
-  // But we can force them to be absolute if we have location.origin
-  const origin = window.location.origin;
-  const imageUrl = `${origin}/og-image.png`;
-  updateMeta('og:image', imageUrl, true);
-  updateMeta('twitter:image', imageUrl);
+  /*
+    标题 / 描述 / og / twitter 统一由 page-share 决定：
+    栏目页（探索、应用、专题、榜单…）带网站 logo，信息页（应用、文章、专题详情）
+    带自己的资源图片和文字。
+  */
+  applyPageMeta({
+    path: to.path,
+    fullPath: to.fullPath,
+    query: to.query as Record<string, any>,
+    meta: to.meta as Record<string, any>,
+  });
   
   // Track visitor (exclude admin paths)
   if (!to.path.startsWith('/admin')) {

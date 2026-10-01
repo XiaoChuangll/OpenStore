@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { getThemeSettings } from '../services/api';
+import { buildColorVars, THEME_COLOR_TOKENS } from '../utils/theme-color';
 
 type ThemePreference = 'light' | 'dark' | 'auto';
 
@@ -31,8 +32,19 @@ export const useThemeStore = defineStore('theme', () => {
     mediaQuery.addListener(handleSystemChange);
   }
 
+  /*
+   * 「强制深色」：某些页面（例如播放页）固定用深色。
+   * 刻意不去改 preference —— 那样会把强制值写进 localStorage，
+   * 用户直接刷新播放页时偏好就被永久改成深色了。这里只影响当前渲染。
+   */
+  const forcedDark = ref(false);
+  const setForcedDark = (value: boolean) => {
+    forcedDark.value = value;
+  };
+
   // Computed: is the dark mode actually active?
   const isDark = computed(() => {
+    if (forcedDark.value) return true;
     if (preference.value === 'auto') {
       return systemDark.value;
     }
@@ -44,22 +56,24 @@ export const useThemeStore = defineStore('theme', () => {
 
   const applyThemeVariables = () => {
     const root = document.documentElement;
-    const map: Record<string, string> = {
-      'theme_primary_color': '--el-color-primary',
-      'theme_success_color': '--el-color-success',
-      'theme_warning_color': '--el-color-warning',
-      'theme_danger_color': '--el-color-danger',
-      'theme_info_color': '--el-color-info',
-    };
-    
-    Object.entries(customTheme.value).forEach(([k, v]) => {
-      if (map[k]) {
-        if (v) {
-          root.style.setProperty(map[k], v);
-        } else {
-          root.style.removeProperty(map[k]);
-        }
+    const derivedNames = ['3', '5', '7', '8', '9'].map((level) => `light-${level}`);
+
+    THEME_COLOR_TOKENS.forEach(({ key, name }) => {
+      const baseVar = `--el-color-${name}`;
+      const derivedVars = [...derivedNames.map((suffix) => `${baseVar}-${suffix}`), `${baseVar}-dark-2`];
+      const value = customTheme.value[key];
+
+      // 先清空，避免换成 rgba 这类算不出梯度的值时残留上一次的颜色
+      [baseVar, ...derivedVars].forEach((variable) => root.style.removeProperty(variable));
+
+      if (!value) {
+        // 空值 = 使用 Element Plus 默认色，连同派生梯度一起交还给默认主题
+        return;
       }
+
+      Object.entries(buildColorVars(name, value, isDark.value)).forEach(([variable, color]) => {
+        root.style.setProperty(variable, color);
+      });
     });
   };
 
@@ -94,7 +108,7 @@ export const useThemeStore = defineStore('theme', () => {
   };
 
   // Watch for changes in preference or systemDark to apply theme
-  watch([preference, systemDark], () => {
+  watch([preference, systemDark, forcedDark], () => {
     applyTheme();
     localStorage.setItem('theme_mode', preference.value);
   });
@@ -103,5 +117,5 @@ export const useThemeStore = defineStore('theme', () => {
   applyTheme();
   loadThemeSettings();
 
-  return { isDark, preference, toggleTheme, customTheme, loadThemeSettings };
+  return { isDark, preference, toggleTheme, customTheme, loadThemeSettings, setForcedDark, forcedDark };
 });
