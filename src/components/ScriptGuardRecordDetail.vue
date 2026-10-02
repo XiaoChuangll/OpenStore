@@ -64,11 +64,7 @@
 </template>
 
 <script setup lang="ts">
-/*
- * 一条拦截记录的展开详情。
- * 表格的展开行和窄屏的卡片共用这一个组件，避免两处各写一遍字段。
- * 只负责展示，解封动作通过事件抛给父组件。
- */
+/* 拦截记录展开详情：表格展开行与窄屏卡片共用，只展示，解封通过事件抛出 */
 import { computed } from 'vue';
 import type { ScriptGuardBlockRecord } from '../services/admin';
 

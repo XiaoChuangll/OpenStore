@@ -528,11 +528,7 @@ module.exports = ({ collectPerfCheckRoutes }) => {
     res.json({ html: previewWarningPage() });
   });
 
-  /*
-   * 警告页自定义：读 / 存 / 恢复默认。
-   * 存在 system_settings 的 script_guard_page 键里，lib 侧有内存缓存，保存后立刻对
-   * 下一个被拦的请求生效 —— 不用重启，也不用改 .env。
-   */
+  // 警告页自定义：读 / 存 / 恢复默认（存 system_settings，保存即生效，无需重启）
   router.get('/api/admin/script-guard/page', requireAuth, (req, res) => {
     res.json({ config: getPageConfig(), defaults: DEFAULT_PAGE_CONFIG });
   });
@@ -556,10 +552,7 @@ module.exports = ({ collectPerfCheckRoutes }) => {
     });
   });
 
-  /*
-   * 拦截记录：每次「触发封禁」落一条（宽限期内的放行不记）。
-   * active 是当前仍在封禁期内的 IP（内存态），前端据此把对应行标成「拦截中」。
-   */
+  // 拦截记录：每次触发封禁落一条；active 是当前仍在封禁期内的 IP（内存态）
   router.get('/api/admin/script-guard/blocks', requireAuth, (req, res) => {
     listBlockRecords(req.query.limit, (err, items) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -585,11 +578,7 @@ module.exports = ({ collectPerfCheckRoutes }) => {
     res.json({ success: true, released });
   });
 
-  /*
-   * 一键触发真实拦截：对**当前管理员自己的 IP** 执行一次真实封禁。
-   * 不是预览 —— 会写拦截记录、进内存封禁表、打实时日志，重复点按同样的 4 倍规则升级。
-   * 浏览器本身不受影响（浏览器 UA 根本不进护栏逻辑），误伤时在「拦截记录」里解封即可。
-   */
+  // 一键触发真实拦截：对当前管理员 IP 真封一次（写记录 + 进封禁表），重复触发按 4 倍升级
   router.post('/api/admin/script-guard/trigger', requireAuth, (req, res) => {
     const ip = getClientIp(req);
     const result = triggerBlock(ip, { ua: req.body?.ua, path: req.body?.path });
@@ -602,10 +591,7 @@ module.exports = ({ collectPerfCheckRoutes }) => {
     res.json(result);
   });
 
-  /*
-   * 硬封禁名单：不区分 UA，命中后该 IP 的一切请求都返回 429（连浏览器也打不开站点）。
-   * /api/admin/* 与 /admin 例外，所以误封自己的出口 IP 还能进后台解封。
-   */
+  // 硬封禁名单：不区分 UA，命中后该 IP 的一切请求都返回 429（后台路径例外，可进来解封）
   router.get('/api/admin/script-guard/bans', requireAuth, (req, res) => {
     res.json({ items: listHardBans() });
   });

@@ -276,11 +276,7 @@ db.serialize(() => {
     updated_at INTEGER DEFAULT (strftime('%s', 'now'))
   )`);
 
-  /*
-   * 脚本护栏的拦截记录。
-   * 每次「触发封禁」写一条（同一 IP 屡犯会累积多条，正好是它的升级过程）；
-   * 宽限期内正常放行的请求不记，否则这张表会被正常流量刷爆。
-   */
+  // 脚本护栏拦截记录：每次触发封禁写一条（宽限期内放行的不记）
   db.run(`CREATE TABLE IF NOT EXISTS script_guard_blocks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ip TEXT,
@@ -293,12 +289,7 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
-  /*
-   * 硬封禁名单：不区分 UA，命中后该 IP 的**一切**请求都返回 429（连浏览器也打不开站点）。
-   * 与 script_guard_blocks（流水）不同，这里是"当前生效的名单"，所以 ip 做主键。
-   * expires_at 为 NULL 表示永久；后台 /api/admin/* 与 /admin 不受硬封禁影响，
-   * 否则误封自己的出口 IP 就再也进不去后台解封了。
-   */
+  // 硬封禁名单：不区分 UA，命中后该 IP 的一切请求都返回 429；expires_at 为 NULL = 永久
   db.run(`CREATE TABLE IF NOT EXISTS script_guard_bans (
     ip TEXT PRIMARY KEY,
     reason TEXT,

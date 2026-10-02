@@ -1,30 +1,10 @@
 /*
- * 脚本护栏：给 /api/v0 这类「公开且免鉴权的上游代理」加一层反自动化采集。
+ * 脚本护栏：给 /api/v0 这类公开代理加一层反自动化采集。
  *
- * ---- 为什么需要 ----
- * 2026-10-03 线上抓到一个 IP（南京电信 58.212.206.47）用 UA「AppGalleryData/2.0」
- * 按 /api/v0/apps/list/410、411、412… 的顺序翻页，每页约 10 秒，一路翻到第 529 页。
- * 上游全库 96067 条（page_size_max=100），也就是说它一次就拖走了五万多条。
- * 危险的地方在于：请求是用**我们的服务器身份**发出去的，上游对 apps/list 的高频风控
- * （见 src/services/upstream-compat.ts 的说明）最后会算在站点头上，受害的是正常访客。
- *
- * ---- 判定思路：白名单，而不是黑名单 ----
- * 正常访客一定带浏览器 UA（UAParser 能解析出 browser.name），解析不出来的
- * （空 UA、curl、python-requests、Go-http-client、okhttp、以及「AppGalleryData/2.0」
- * 这种自定义名字）只可能是脚本。所以这里不维护爬虫名单，也不猜对方下次改成什么名字。
- *
- * ---- 处置是阶梯式的 ----
- *   1) 宽限期：同一 IP 在窗口内前 FREE_HITS 次照常放行。不立刻亮牌是有意的 ——
- *      免得对方马上换一个浏览器 UA 继续（真换了，上游的风控就落在他自己头上，这正是我们要的）。
- *   2) 超限：返回 429 + 一个 HTML 警告页。脚本拿到 HTML 会解析失败，人能看懂；
- *      想继续用的自然会来找我们，这比单纯封 IP 有价值。
- *   3) 屡犯：封禁时长按 4 倍递增（15 分钟 → 1 小时 → 4 小时 → 16 小时），上限 24 小时。
- *
- * ---- 警告页可自定义 ----
- * 页面的文案存在 system_settings 的 script_guard_page 键里（后台「概览 → 脚本拦截」面板可改），
- * 内存缓存 + 保存时失效，改完立刻对下一个被拦的请求生效，不用重启也不动 .env。
- *
- * 后台「接口体检」和「请求重放」是后端自己发的请求，带专用 header，直接放行。
+ * 判定：UA 解析不出浏览器名的一律当脚本（白名单思路，不维护爬虫名单）。
+ * 处置：窗口内先给 FREE_HITS 次宽限，超限返回 429 警告页；屡犯封禁时长按 4 倍递增。
+ * 另有硬封禁名单（不区分 UA，见 hardBanGuard）与可后台自定义的警告页文案。
+ * 后台「接口体检」「请求重放」带专用 header，直接放行。
  */
 const UAParser = require('ua-parser-js');
 const geoip = require('geoip-lite');
@@ -61,10 +41,7 @@ const stats = { scriptRequests: 0, warned: 0, blocked: 0, strikes: 0 };
 
 const isInternal = (req) => INTERNAL_HEADERS.some((h) => req.headers[h] === '1');
 
-/**
- * 是不是「不像浏览器」的客户端。
- * 只有解析出 browser.name 才放过；解析不出来的一律当脚本处理。
- */
+/** UA 解析不出浏览器名就认为是脚本 */
 const looksLikeScript = (ua) => {
   const raw = String(ua || '').trim();
   if (!raw) return true;
@@ -83,15 +60,8 @@ const PAGE_CONFIG_KEY = 'script_guard_page';
 const PAGE_CONFIG_TTL_MS = 5 * 60 * 1000;
 
 /**
- * 默认文案。
- * 支持两条迷你标记（后台编辑框里也是这么写的，见 renderInline）：
- *   **文字**     → 加粗
- *   {{site}}     → 本站首页链接
- *
- * ⚠️ 措辞刻意保持模糊，**不要写判定依据**。
- * 早先的版本写的是「没有携带浏览器标识」——那等于把绕过方法直接告诉对方：
- * 他看到这句的第一反应就是给请求加一个浏览器 UA，护栏当场失效。
- * 所以这里只说「自动化访问行为」，不提 UA、请求头、访问频率，也不提上游。
+ * 默认文案。支持两条迷你标记（见 renderInline）：`**加粗**`、`{{site}}`。
+ * 措辞别写判定依据（如「没有携带浏览器标识」），那等于告诉对方怎么绕过。
  */
 const DEFAULT_PAGE_CONFIG = Object.freeze({
   badge: '429 · RATE LIMITED',
@@ -252,10 +222,7 @@ const esc = (str) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-/**
- * 迷你标记渲染。顺序很重要：**先整体转义**，再套用两条固定规则，
- * 所以后台在编辑框里填任何 HTML 都注入不出来（这里是管理员输入，但没必要留口子）。
- */
+/** 迷你标记渲染：先整体转义再套标记，所以填什么都注入不了 HTML */
 const renderInline = (text) =>
   esc(text)
     .replace(/\{\{\s*site\s*\}\}/gi, `<a href="${esc(SITE_ORIGIN)}">${esc(SITE_ORIGIN)}</a>`)
@@ -365,9 +332,7 @@ const sendWarning = (res, info) => {
 };
 
 /**
- * 后台「概览」页那个测试按钮用的预览。
- * 只渲染示例数据，**不走护栏逻辑**：不计数、不进封禁表、不影响任何 IP。
- * 数据用 TEST-NET-3 段（203.0.113.0/24，文档专用，永远不可能是真实访客）。
+ * 测试按钮用的预览：只渲染示例数据（TEST-NET-3 段），不计数、不进封禁表。
  */
 const previewWarningPage = () =>
   warningPage({
@@ -390,11 +355,7 @@ const getOrCreateEntry = (ip) => {
   return entry;
 };
 
-/**
- * 执行一次封禁：违规次数 +1、按 4 倍算时长、写拦截记录、打实时日志。
- * 中间件的自动拦截和后台的「一键触发真实拦截」走的是同一段代码，
- * 所以手动触发产生的记录、封禁时长、升级曲线和真实拦截完全一致。
- */
+/** 执行一次封禁：违规次数 +1、算时长、写记录、打日志；blockMs 传了就用它 */
 const applyBlock = (entry, { ip, ua, path, hitsUsed = 0 }) => {
   entry.strikes += 1;
   stats.strikes += 1;
@@ -414,10 +375,7 @@ const applyBlock = (entry, { ip, ua, path, hitsUsed = 0 }) => {
   return { blockMs, strikes: entry.strikes };
 };
 
-/**
- * 后台「一键触发真实拦截」：对指定 IP 立刻执行一次真实封禁，并返回真正会发给它的那个 429 页面。
- * 这不是预览 —— 它会写拦截记录、进内存封禁表，重复点会按同样的 4 倍规则升级。
- */
+/** 后台「一键触发真实拦截」：对该 IP 真封一次，返回会发给它的 429 页面 */
 const triggerBlock = (ip, { ua, path } = {}) => {
   const key = String(ip || '').trim();
   if (!key) return null;
@@ -447,13 +405,9 @@ const triggerBlock = (ip, { ua, path } = {}) => {
 /* ---------------------------- 硬封禁名单 ---------------------------- */
 
 /*
- * 与上面的「软封禁」不同：
- *   软封禁 —— 按 UA 判定，只挡 /api/v0 这类代理请求，浏览器访问不受影响；
- *   硬封禁 —— 不区分 UA，命中后该 IP 的**一切**请求都返回 429，连浏览器也打不开站点。
- *
- * 名单持久化在 script_guard_bans，启动时载入内存，热路径只查 Map（名单为空时直接放行）。
- * 例外：/api/admin/* 与 /admin 不受硬封禁影响 —— 否则误封自己的出口 IP 就再也进不去后台解封，
- * 只能上服务器改库。这是个有意的取舍：被误封的人仍然能打开后台登录页，但登录本身另有失败限流。
+ * 硬封禁：不区分 UA，命中后该 IP 的一切请求都返回 429（连浏览器也打不开站点）。
+ * 名单持久化在 script_guard_bans，启动载入内存，热路径只查 Map。
+ * /api/admin/*、/admin、/ws 例外，否则误封自己的出口 IP 就进不去后台解封。
  */
 const HARD_BAN_EXEMPT_RE = [/^\/api\/admin(\/|$)/, /^\/admin(\/|$)/, /^\/ws$/];
 const hardBans = new Map(); // ip -> { reason, createdAt, expiresAt(ms, 0=永久), hits }
@@ -491,10 +445,7 @@ const loadHardBans = (cb) => {
 /** 只接受 IP 字面量，避免把任意字符串写进名单/内存键 */
 const isValidIp = (raw) => /^[0-9a-fA-F:.]{3,45}$/.test(String(raw || '').trim());
 
-/**
- * 硬封禁一个 IP。
- * durationMs 传 0 或不传 = 永久；否则到期自动放行（到期判定在中间件里做）。
- */
+/** 硬封禁一个 IP：durationMs 为 0 或不传 = 永久 */
 const hardBanIp = (ip, { reason = '', durationMs = 0 } = {}, cb) => {
   const key = normalizeIp(String(ip || '').trim());
   if (!key || !isValidIp(key)) {
@@ -549,10 +500,7 @@ const listHardBans = () => {
     .sort((a, b) => b.hits - a.hits);
 };
 
-/**
- * 硬封禁中间件：挂到最前面（要在静态资源和 SPA 兜底之前），
- * 这样被封的 IP 连页面都打不开。名单为空时只做一次 size 判断，开销可忽略。
- */
+/** 硬封禁中间件：挂在最前面（静态资源与 SPA 兜底之前），名单为空时零开销 */
 const hardBanGuard = (req, res, next) => {
   if (hardBans.size === 0) return next();
   const path = req.path || '';
@@ -590,10 +538,7 @@ const hardBanGuard = (req, res, next) => {
 
 /* ------------------------------ 中间件 ------------------------------ */
 
-/**
- * 挂在需要保护的代理前缀上，例如 router.use('/api/v0', scriptGuard)。
- * 浏览器请求直接放行，几乎零开销（一次 UA 解析）。
- */
+/** 挂在需要保护的代理前缀上，例如 router.use('/api/v0', scriptGuard) */
 const scriptGuard = (req, res, next) => {
   if (!GUARD_ENABLED) return next();
   if (!looksLikeScript(req.headers['user-agent'])) return next();
@@ -671,7 +616,7 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000).unref?.();
 
-// 启动就读一次配置（system_settings 表由 database.cjs 建立，语句在同一连接上串行执行）
+// 启动载入配置与名单
 loadPageConfig();
 loadHardBans();
 

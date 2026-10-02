@@ -267,11 +267,7 @@
 </template>
 
 <script setup lang="ts">
-/*
- * 脚本护栏面板：拦截记录 / 警告页自定义 / 预览，以及一键触发真实拦截。
- * 预览只做展示（真正的拦截图在 server/lib/script-guard.cjs 的中间件里）；
- * 自定义存 system_settings，保存后在服务端内存缓存里立刻替换，无需重启。
- */
+/* 脚本护栏面板：拦截记录 / 硬封禁 / 警告页自定义 / 预览 */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ArrowRight } from '@element-plus/icons-vue';
@@ -300,11 +296,7 @@ const emit = defineEmits(['update:modelValue']);
 // 默认停在「拦截记录」——它是这个弹窗最常看的一页，另外两页是偶尔调整
 const tab = ref<'preview' | 'edit' | 'records' | 'bans'>('records');
 
-/*
- * 说明：页签说明里那个 {{site}} 标记必须写成 <code v-pre>，
- * 不能写成 `{{ '{{site}}' }}` —— Vue 的词法分析在第一个 `}}` 处就闭合了，
- * vite 会直接报 "Unterminated string constant"。
- */
+// 模板里的 {{site}} 只能写成 <code v-pre>，写成 {{ '{{site}}' }} 会被 Vue 在第一个 }} 处截断
 const tipsPlaceholder = '如果你是**正常访客**：这大概率是误判，请刷新重试；仍无法访问请通过下面的入口联系我们。';
 
 const html = ref('');
@@ -332,11 +324,7 @@ const form = reactive<ScriptGuardPageConfig>({
 // 提示条目在表里是数组，在输入框里是「一行一条」
 const tipsText = ref('');
 
-/*
- * 尺寸适配。
- * 断点跟后台其它页面保持一致（768 手机 / 1120 窄屏），另外盯一下视口高度：
- * 表格高度和 iframe 高度都跟高度挂钩，否则在 768p 的笔记本上弹窗会顶出屏幕。
- */
+// 断点与后台其它页面一致：768 手机 / 1120 窄屏；高度也要跟视口挂钩，否则弹窗会顶出屏幕
 const viewport = reactive({ w: window.innerWidth, h: window.innerHeight });
 const syncViewport = () => {
   viewport.w = window.innerWidth;
@@ -381,12 +369,7 @@ const resetPreview = () => {
   void loadPreview();
 };
 
-/*
- * 一键触发真实拦截。
- * 这里**不是**预览：服务端会真的把当前管理员这个 IP 写进拦截记录并封禁，
- * 重复点会按同样的 4 倍规则升级。浏览器访问不受影响（浏览器 UA 不进护栏），
- * 所以误伤了自己也能在「拦截记录」里一键解封。
- */
+// 一键触发是真实封禁（写记录 + 进封禁表），不是预览；重复触发按 4 倍升级
 const triggerReal = async () => {
   try {
     await ElMessageBox.confirm(
@@ -431,11 +414,7 @@ const loadConfig = async () => {
 };
 
 const handleOpen = () => {
-  /*
-   * 默认页签是「拦截记录」。
-   * 已经是这个页签 → 手动刷一次拿最新记录；不是 → 切过来，交给下面的 watch 去加载。
-   * 两种路径各只发一次请求，不会重复打接口。
-   */
+  // 默认页签是拦截记录：已在该页就手动刷新，否则切过来让 watch 去加载（两条路径各只发一次）
   if (tab.value === 'records') void loadRecords();
   else tab.value = 'records';
 
@@ -455,11 +434,7 @@ const activeList = ref<Array<{ ip: string; ua: string; strikes: number; remainMs
 const loadingRecords = ref(false);
 const clearing = ref(false);
 
-/*
- * 展开详情。
- * 表格侧用实例方法 toggleRowExpansion（展开状态由 el-table 自己持有，不额外维护一份，
- * 免得和它内部的展开逻辑打架）；卡片侧没表格，用一个 Set 自己记。
- */
+// 展开详情：表格用 toggleRowExpansion（状态交给 el-table），卡片用 Set 自己记
 const tableRef = ref();
 const expandedCards = ref(new Set<number>());
 
@@ -476,10 +451,7 @@ const toggleCard = (id: number) => {
 
 const activeIps = computed(() => new Set(activeList.value.map((a) => a.ip)));
 
-/*
- * 一个 IP 可能有多条记录（每升级一次封禁写一条），只有「最新那条」才代表当前状态。
- * 记录按 id 倒序返回，所以第一次遇到的 id 就是该 IP 的最新记录。
- */
+// 一个 IP 可能有多条记录，只有最新那条代表当前状态（列表按 id 倒序，首次遇到即最新）
 const latestIdByIp = computed(() => {
   const map: Record<string, number> = {};
   for (const row of records.value) {
@@ -745,11 +717,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport));
   overflow: hidden;
   background: #0d1117;
 }
-/*
- * iframe 高度跟视口高度挂钩（不再写死 640px）：
- * 警告页内部是 min-height:100vh 的整页文档，给它多高它就撑多高，
- * 所以这里只要保证「不顶出弹窗」即可。dvh 照顾移动端浏览器地址栏收放。
- */
+/* iframe 高度跟视口走，避免顶出弹窗 */
 .guard-frame {
   display: block;
   width: 100%;

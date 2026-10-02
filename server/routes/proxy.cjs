@@ -16,11 +16,7 @@ const { scriptGuard } = require('../lib/script-guard.cjs');
 
 const router = express.Router();
 
-/*
- * 脚本护栏：这三个前缀都是「把请求转发到外部主机」的公开代理，
- * 正常访客一定带浏览器 UA，非浏览器 UA 会被限额并弹 429 警告页。
- * 详见 lib/script-guard.cjs。
- */
+// 三个「转发到外部主机」的公开代理统一挂脚本护栏，详见 lib/script-guard.cjs
 router.use('/api/v0', scriptGuard);
 router.use('/api/proxy-request', scriptGuard);
 router.use('/api/music-proxy', scriptGuard);

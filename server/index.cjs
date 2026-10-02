@@ -47,11 +47,7 @@ app.set('trust proxy', TRUST_PROXY_HOPS);
 
 app.use(cors());
 
-/*
- * 硬封禁放在最前面：要在 body 解析、日志、静态资源与 SPA 兜底之前，
- * 否则被封的 IP 仍然能打开页面，就谈不上"硬"。
- * 名单为空时它只做一次 size 判断，正常流量零开销。
- */
+// 硬封禁放在最前面（body 解析、静态资源与 SPA 兜底之前）；名单为空时零开销
 app.use(hardBanGuard);
 
 // 兼容字面量 null 请求体：

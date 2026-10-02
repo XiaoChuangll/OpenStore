@@ -14,13 +14,8 @@ interface HmApiClientConfig {
 }
 
 /**
- * HarmonyOS 应用市场 API 客户端
- * 复刻了原项目的核心特性：
- * 1. 降级 (Failover): 默认关闭。以前这里写死了上游地址，结果本站 /api/v0 一旦返回 429
- *    （脚本护栏 / 硬封禁），前端会静默改走直连，封禁形同虚设，上游地址还暴露在 JS 包里。
- *    要临时启用就在 .env 里配 VITE_API_FALLBACK。
- * 2. 智能缓存 (Caching): 根据路径自动决定缓存时间
- * 3. 请求防抖 (Request Deduping): 避免并发重复请求
+ * HarmonyOS 应用市场 API 客户端：本站代理优先，按路径缓存 + 并发去重。
+ * 降级默认关闭（要启用配 VITE_API_FALLBACK），否则被封后前端会静默直连上游。
  */
 class HmApiClient {
   private primaryBaseUrl: string;
@@ -28,11 +23,7 @@ class HmApiClient {
   private cache: Map<string, CacheItem<any>> = new Map();
   private inFlight: Map<string, Promise<any>> = new Map();
 
-  /**
-   * 主线路（本站代理）最近一次失败的时间戳。
-   * 冷却期内先走备用线路，冷却结束后重新尝试主线路 ——
-   * 不再像以前那样"第一次失败就永久切到直连"，避免一次抖动之后所有请求都绑死在不稳的直连上。
-   */
+  /** 主线路最近一次失败时间；冷却期内先走备用线路，冷却结束再试主线路 */
   private primaryFailedAt = 0;
   private static readonly PRIMARY_COOLDOWN_MS = 60 * 1000;
 
@@ -205,10 +196,7 @@ class HmApiClient {
 
 export const hmApi = new HmApiClient({
   baseUrl: '/api/v0', // 走本站代理
-  /*
-   * 备用直连，默认关闭（不配就是空，候选线路只有 /api/v0 一条）。
-   * 需要临时启用就在 .env 里设 VITE_API_FALLBACK —— 注意它是构建时注入到 JS 包里的，不是秘密。
-   */
+  // 备用直连，默认关闭（不配则候选线路只有 /api/v0）；填了会构建进 JS 包，不是秘密
   fallbackUrl: import.meta.env.VITE_API_FALLBACK
 });
 

@@ -75,12 +75,7 @@ const createProxy = (target, pathRewrite) => async (req, res) => {
     // 不再单独 console.error，否则同一件事会打印两遍
     pushLiveLog('error', `上游代理失败 ${req.method} ${url}：${error.message}`, { kind: 'upstream' });
     if (!res.headersSent) {
-      /*
-       * 对外只回一句通用文案。
-       * error.message 里通常带着上游主机名 / IP（例如 getaddrinfo ENOTFOUND xxx、
-       * connect ECONNREFUSED 1.2.3.4:10003），原样回给调用方等于把「本站背后还有另一个接口」
-       * 连地址一起告诉对方。细节已经在上面的 pushLiveLog 里留档，排障不受影响。
-       */
+      // 只回通用文案：error.message 里通常带着上游主机名/IP，细节已进实时日志
       res.status(500).json({ error: '服务暂时不可用，请稍后重试' });
     }
   }

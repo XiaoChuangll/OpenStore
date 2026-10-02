@@ -1031,10 +1031,7 @@ export const unblockApp = async (pkg: string) => {
   await api.delete(`/blocked-apps/${encodeURIComponent(pkg)}`);
 };
 
-/**
- * 脚本护栏的 429 警告页预览（后台「概览」页的测试按钮用）。
- * 只取一段示例 HTML，不会真的拦截任何 IP，也不会消耗任何配额。
- */
+/** 警告页预览：只取示例 HTML，不拦截、不消耗配额 */
 export const getScriptGuardPreview = async () => {
   const { data } = await api.get('/script-guard/preview');
   return String(data?.html || '');
@@ -1110,10 +1107,7 @@ export interface ScriptGuardTriggerResult {
   html: string;
 }
 
-/**
- * 一键触发真实拦截：对当前管理员自己的 IP 执行一次**真实封禁**。
- * 会写拦截记录、进内存封禁表；重复调用按同样的 4 倍规则升级。
- */
+/** 一键触发真实拦截：对当前管理员 IP 真封一次，重复调用按 4 倍升级 */
 export const triggerScriptGuardBlock = async (payload?: { ua?: string; path?: string }) => {
   const { data } = await api.post('/script-guard/trigger', payload || {});
   return data as ScriptGuardTriggerResult;
