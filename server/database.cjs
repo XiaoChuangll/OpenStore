@@ -276,6 +276,23 @@ db.serialize(() => {
     updated_at INTEGER DEFAULT (strftime('%s', 'now'))
   )`);
 
+  /*
+   * 脚本护栏的拦截记录。
+   * 每次「触发封禁」写一条（同一 IP 屡犯会累积多条，正好是它的升级过程）；
+   * 宽限期内正常放行的请求不记，否则这张表会被正常流量刷爆。
+   */
+  db.run(`CREATE TABLE IF NOT EXISTS script_guard_blocks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT,
+    location TEXT,
+    ua TEXT,
+    path TEXT,
+    hits INTEGER DEFAULT 0,
+    strikes INTEGER DEFAULT 1,
+    block_ms INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS apps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

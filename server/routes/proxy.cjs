@@ -12,8 +12,18 @@ const { loadBlockedAppPackages } = require('../lib/blocked-apps.cjs');
 const { isBrowseAppQuery } = require('../lib/browse-query.cjs');
 const { assertPublicOutboundUrl, requestWithSafeRedirects, assertAllowedProxyTarget } = require('../lib/outbound-guard.cjs');
 const { MUSIC_PROXY_MAX_BYTES, acquireMusicProxySlot } = require('../lib/music-proxy.cjs');
+const { scriptGuard } = require('../lib/script-guard.cjs');
 
 const router = express.Router();
+
+/*
+ * 脚本护栏：这三个前缀都是「把请求转发到外部主机」的公开代理，
+ * 正常访客一定带浏览器 UA，非浏览器 UA 会被限额并弹 429 警告页。
+ * 详见 lib/script-guard.cjs。
+ */
+router.use('/api/v0', scriptGuard);
+router.use('/api/proxy-request', scriptGuard);
+router.use('/api/music-proxy', scriptGuard);
 
 router.use('/api/v0', (req, res, next) => {
   if (req.method !== 'POST' || req.path !== '/apps/query' || !isBrowseAppQuery(req.body)) {
@@ -148,7 +158,8 @@ router.get('/api/music-proxy', async (req, res) => {
 
     if (response.status >= 400) {
       response.data?.destroy?.();
-      return res.status(502).type('text/plain').send('upstream returned ' + response.status);
+      // 不回上游状态码，避免暴露「本站背后还有另一个接口」
+      return res.status(502).type('text/plain').send('音频资源暂时不可用，请稍后重试');
     }
 
     const declaredSize = Number(response.headers['content-length'] || 0);

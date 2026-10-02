@@ -14,6 +14,8 @@ const { extractCountryCode, matchCnProvince, CITY_TO_PROVINCE } = require('../li
 const { getAppsOverview, APP_OVERVIEW_CACHE_TTL, appOverviewCache } = require('../lib/apps-overview.cjs');
 const { cachedVisitorsAll, VISITORS_INSIGHTS_TTL, VISITORS_INSIGHTS_STALE_TTL } = require('../lib/visitors-stats.cjs');
 const { invalidateBlockedAppsCache } = require('../lib/blocked-apps.cjs');
+const { previewWarningPage, getPageConfig, savePageConfig, resetPageConfig, DEFAULT_PAGE_CONFIG, listBlockRecords, clearBlockRecords, unblockIp, scriptGuardSnapshot, triggerBlock } = require('../lib/script-guard.cjs');
+const { getClientIp } = require('../lib/client-ip.cjs');
 const { PORT } = require('../lib/config.cjs');
 
 module.exports = ({ collectPerfCheckRoutes }) => {
@@ -515,6 +517,89 @@ module.exports = ({ collectPerfCheckRoutes }) => {
       logAction(req.user?.username, 'delete', 'blocked_apps', pkg, { package: pkg });
       res.json({ success: true });
     });
+  });
+
+  /*
+   * 脚本护栏的警告页预览：后台「概览 → 快捷操作 → 脚本拦截」面板用。
+   * 纯渲染，不调用护栏中间件 —— 不计数、不进封禁表、不影响任何 IP，点多少次都安全。
+   * 返回 JSON 而不是直接吐 HTML，是为了复用后台已有的 JWT 头鉴权（新窗口打开带不上 Authorization）。
+   */
+  router.get('/api/admin/script-guard/preview', requireAuth, (req, res) => {
+    res.json({ html: previewWarningPage() });
+  });
+
+  /*
+   * 警告页自定义：读 / 存 / 恢复默认。
+   * 存在 system_settings 的 script_guard_page 键里，lib 侧有内存缓存，保存后立刻对
+   * 下一个被拦的请求生效 —— 不用重启，也不用改 .env。
+   */
+  router.get('/api/admin/script-guard/page', requireAuth, (req, res) => {
+    res.json({ config: getPageConfig(), defaults: DEFAULT_PAGE_CONFIG });
+  });
+
+  router.put('/api/admin/script-guard/page', requireAuth, (req, res) => {
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+    savePageConfig(req.body, (err, config) => {
+      if (err) return res.status(500).json({ error: err.message });
+      logAction(req.user?.username, 'update', 'script_guard_page', null, { title: config.title });
+      res.json({ success: true, config });
+    });
+  });
+
+  router.post('/api/admin/script-guard/page/reset', requireAuth, (req, res) => {
+    resetPageConfig((err, config) => {
+      if (err) return res.status(500).json({ error: err.message });
+      logAction(req.user?.username, 'update', 'script_guard_page', null, { reset: true });
+      res.json({ success: true, config });
+    });
+  });
+
+  /*
+   * 拦截记录：每次「触发封禁」落一条（宽限期内的放行不记）。
+   * active 是当前仍在封禁期内的 IP（内存态），前端据此把对应行标成「拦截中」。
+   */
+  router.get('/api/admin/script-guard/blocks', requireAuth, (req, res) => {
+    listBlockRecords(req.query.limit, (err, items) => {
+      if (err) return res.status(500).json({ error: err.message });
+      const snapshot = scriptGuardSnapshot();
+      res.json({ items, active: snapshot.blocked, stats: snapshot.stats });
+    });
+  });
+
+  router.delete('/api/admin/script-guard/blocks', requireAuth, (req, res) => {
+    clearBlockRecords((err) => {
+      if (err) return res.status(500).json({ error: err.message });
+      logAction(req.user?.username, 'delete', 'script_guard_blocks', null, {});
+      res.json({ success: true });
+    });
+  });
+
+  // 手动解封（误伤时用）：只清内存里的封禁状态，不动已写下的记录
+  router.post('/api/admin/script-guard/unblock', requireAuth, (req, res) => {
+    const ip = String(req.body?.ip || '').trim();
+    if (!ip) return res.status(400).json({ error: 'Missing ip' });
+    const released = unblockIp(ip);
+    logAction(req.user?.username, 'update', 'script_guard_unblock', null, { ip, released });
+    res.json({ success: true, released });
+  });
+
+  /*
+   * 一键触发真实拦截：对**当前管理员自己的 IP** 执行一次真实封禁。
+   * 不是预览 —— 会写拦截记录、进内存封禁表、打实时日志，重复点按同样的 4 倍规则升级。
+   * 浏览器本身不受影响（浏览器 UA 根本不进护栏逻辑），误伤时在「拦截记录」里解封即可。
+   */
+  router.post('/api/admin/script-guard/trigger', requireAuth, (req, res) => {
+    const ip = getClientIp(req);
+    const result = triggerBlock(ip, { ua: req.body?.ua, path: req.body?.path });
+    if (!result) return res.status(400).json({ error: '无法解析请求来源 IP' });
+    logAction(req.user?.username, 'update', 'script_guard_trigger', null, {
+      ip: result.ip,
+      strikes: result.strikes,
+      blockMs: result.blockMs
+    });
+    res.json(result);
   });
 
   return router;

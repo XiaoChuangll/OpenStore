@@ -63,6 +63,10 @@
             <el-button type="danger" plain @click="showBlockedApps = true">
               <el-icon><CircleClose /></el-icon> 异常应用
             </el-button>
+            <!-- 第 7 个按钮单独占一整行：进去看拦截记录、改警告页文案，也能一键触发真实拦截 -->
+            <el-button class="is-wide" type="danger" plain @click="showScriptGuardPreview = true">
+              <el-icon><Lock /></el-icon> 脚本拦截
+            </el-button>
           </div>
           
           <el-divider />
@@ -104,16 +108,20 @@
 
     <!-- 异常应用：屏蔽上游脏数据，首页列表不再展示 -->
     <BlockedAppsDialog v-model="showBlockedApps" />
+
+    <!-- 脚本护栏面板：拦截记录 / 自定义警告页 / 一键触发真实拦截 -->
+    <ScriptGuardPreviewDialog v-model="showScriptGuardPreview" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onActivated, onDeactivated, onMounted, onBeforeUnmount } from 'vue';
-import { User, Grid, Edit, Bell, Setting, Warning, CircleClose, Connection, Location } from '@element-plus/icons-vue';
+import { User, Grid, Edit, Bell, Setting, Warning, CircleClose, Connection, Location, Lock } from '@element-plus/icons-vue';
 import * as echarts from 'echarts';
 import { getAdminOverviewStats, getVisitorTrend, type AdminOverviewStats } from '../../services/admin';
 import LiveLogPanel from '../../components/LiveLogPanel.vue';
 import BlockedAppsDialog from '../../components/BlockedAppsDialog.vue';
+import ScriptGuardPreviewDialog from '../../components/ScriptGuardPreviewDialog.vue';
 import DataFreshnessCard from '../../components/DataFreshnessCard.vue';
 import TopologyCard from '../../components/TopologyCard.vue';
 import VisitorInsightsCard from '../../components/VisitorInsightsCard.vue';
@@ -125,6 +133,7 @@ defineProps<{ embedded?: boolean }>();
 defineEmits(['switch-tab']);
 
 const showBlockedApps = ref(false);
+const showScriptGuardPreview = ref(false);
 
 const stats = ref<AdminOverviewStats>({
   visitorCount: 0,
@@ -517,6 +526,11 @@ onBeforeUnmount(() => {
 /* Element Plus 默认给相邻按钮加 margin-left，在 grid 里会把列撑偏、导致换行后不对齐 */
 .actions-grid .el-button + .el-button {
   margin-left: 0;
+}
+
+/* 「脚本拦截」是第 7 个按钮，让它独占一行，别在 3 列网格里落单 */
+.actions-grid .el-button.is-wide {
+  grid-column: 1 / -1;
 }
 .actions-grid .el-icon {
   margin-right: 8px;
