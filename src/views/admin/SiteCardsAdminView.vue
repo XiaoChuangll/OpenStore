@@ -819,14 +819,6 @@ onBeforeUnmount(() => {
   opacity: 0.95;
 }
 
-/* 表单里的补充说明 */
-.field-tip {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--el-text-color-secondary);
-}
-
 /*
  * 榜单展示：两组按钮各占一行（以前 div 会跟按钮挤在同一行，看着很乱）。
  * 下面那行永远占位，只是不满足条件时藏起来 —— 点按钮不会改变弹窗高度。

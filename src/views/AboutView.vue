@@ -346,7 +346,6 @@ const feedbackErrorMessage = ref('');
 const queryErrorVisible = ref(false);
 const queryErrorMessage = ref('');
 const queryNotFound = ref(false);
-const submittedId = ref<number | null>(null);
 const submittedHash = ref<string | null>(null);
 const copyTipVisible = ref(false);
 const repoStars = ref<number | null>(null);
@@ -539,7 +538,6 @@ const submitFeedbackForm = async () => {
       user_role: role,
     };
     const data = await submitFeedback(payload);
-    submittedId.value = Number(data.id);
     submittedHash.value = String(data.hash || '');
     feedbackSuccessVisible.value = true;
     feedbackErrorVisible.value = false;

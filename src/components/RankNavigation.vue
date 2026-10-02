@@ -80,8 +80,14 @@ watch(activePath, async () => {
 const handleResize = () => updateBar();
 
 const handleChange = (target: string) => {
-  // 已经是当前页就不重复导航
-  if (target && target !== route.path) router.push(target);
+  if (!target || target === route.path) return;
+  /*
+   * 切榜单页签用 replace 而不是 push：
+   * 几个榜单页是同一栏目下的平级视图，用 push 每切一次就压一条历史，
+   * 「返回」按钮会退回上一个榜单页，而不是用户真正进来的那一页
+   * （vue-router 的 push 会把 history.state.back 改成刚离开的榜单页，replace 则保留）。
+   */
+  router.replace(target);
 };
 
 /*

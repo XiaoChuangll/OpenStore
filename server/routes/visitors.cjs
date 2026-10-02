@@ -2,7 +2,6 @@
  * 访客日志：列表 / 趋势 / 单 IP 历史 / 导出 / 批量删除
  */
 const express = require('express');
-const path = require('path');
 const db = require('../database.cjs');
 const { requireAuth } = require('../middleware/auth.cjs');
 const { cachedVisitorsAll, cachedVisitorsGet } = require('../lib/visitors-stats.cjs');

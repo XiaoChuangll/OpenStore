@@ -890,16 +890,6 @@ export interface PageVisitItem {
   last: string | null;
 }
 
-export const getDataFreshness = async () => {
-  const { data } = await api.get('/freshness');
-  return (data?.items || []) as FreshnessItem[];
-};
-
-export const getPageVisits = async () => {
-  const { data } = await api.get('/freshness');
-  return (data?.pages || []) as PageVisitItem[];
-};
-
 /** 一次请求同时拿到「数据表新鲜度」和「页面访问」两组数据 */
 export const getFreshnessOverview = async () => {
   const { data } = await api.get('/freshness');

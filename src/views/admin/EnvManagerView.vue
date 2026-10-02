@@ -107,7 +107,6 @@ const form = ref<{ key: string; value: string; category: string; secure: boolean
 
 const showHistory = ref(false);
 const history = ref<Array<{ id: number; key: string; updated_at: string }>>([]);
-const currentKey = ref<string>('');
 
 const fetchMap = async () => { envMap.value = await getEnvMap(); };
 onMounted(fetchMap);
@@ -128,7 +127,6 @@ const save = async () => {
 };
 
 const openHistory = async (row: EnvItem) => {
-  currentKey.value = row.key;
   const items = await getEnvHistory(row.key);
   history.value = items.map(i => ({ id: i.id, key: i.key, updated_at: i.updated_at }));
   showHistory.value = true;

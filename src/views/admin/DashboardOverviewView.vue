@@ -392,11 +392,6 @@ onBeforeUnmount(() => {
   /* 上面多了「总访客数」一行，图表高度相应收一点，整行高度与「快捷操作」保持齐平 */
   min-height: 240px;
 }
-.stat-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
 
 /* 总访客数 + 独立 IP：并进「近30天访客趋势」卡片，放在图表上方 */
 .visitor-total {

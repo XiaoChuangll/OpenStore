@@ -6,7 +6,6 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const db = require('../database.cjs');
 const { requireAuth, logAction } = require('../middleware/auth.cjs');
 const { DB_FILE_PATH, dbAllAsync, dbGetAsync, dbRunAsync, quoteIdent, listUserTables, countRows } = require('../lib/db-helpers.cjs');
 const { DB_MAINTENANCE_ACTIONS } = require('../lib/db-maintenance.cjs');

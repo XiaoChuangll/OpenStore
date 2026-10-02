@@ -3,7 +3,6 @@
  */
 const express = require('express');
 const axios = require('axios');
-const path = require('path');
 const jwt = require('jsonwebtoken');
 const db = require('../database.cjs');
 const { JWT_SECRET, requireAuth, logAction } = require('../middleware/auth.cjs');

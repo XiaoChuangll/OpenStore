@@ -1148,11 +1148,6 @@ const switchPrevFilter = () => {
   font-variant-numeric: tabular-nums;
 }
 
-.loading-wrapper {
-  height: 200px;
-  width: 100%;
-}
-
 @media (max-width: 939px) {
   .page-header {
     grid-template-columns: minmax(0, 1fr);
@@ -1470,10 +1465,6 @@ const switchPrevFilter = () => {
   box-shadow: none !important;
 }
 
-.update-search-input {
-  width: 240px;
-}
-
 /* Flip Animation */
 .title-combo {
   display: inline-flex;
@@ -1484,9 +1475,7 @@ const switchPrevFilter = () => {
 }
 
 .flip-up-enter-active,
-.flip-up-leave-active,
-.flip-down-enter-active,
-.flip-down-leave-active {
+.flip-up-leave-active {
   transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -1501,21 +1490,6 @@ const switchPrevFilter = () => {
 }
 .flip-up-enter-to,
 .flip-up-leave-from {
-  transform: rotateX(0deg);
-  opacity: 1;
-}
-
-/* Flip Down (Prev Item / Up List) */
-.flip-down-enter-from {
-  transform: rotateX(90deg);
-  opacity: 0;
-}
-.flip-down-leave-to {
-  transform: rotateX(-90deg);
-  opacity: 0;
-}
-.flip-down-enter-to,
-.flip-down-leave-from {
   transform: rotateX(0deg);
   opacity: 1;
 }

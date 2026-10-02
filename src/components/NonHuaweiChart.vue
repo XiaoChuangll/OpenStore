@@ -1,5 +1,5 @@
 <template>
-  <el-card class="chart-card" shadow="hover">
+  <el-card class="chart-card" :class="{ 'is-list-view': viewMode === 'list' }" shadow="hover">
     <template #header>
       <div class="card-header">
         <div class="header-left">
@@ -59,12 +59,29 @@
       </div>
     </template>
     <div v-if="viewMode === 'chart'" ref="chartRef" class="chart-box"></div>
-    <RankBarList
-      v-else
-      :rows="listRows"
-      :tone="primaryMetric === 'total' ? 'danger' : 'success'"
-      @select="openApp"
-    />
+    <template v-else>
+      <div ref="listWrapRef">
+        <RankBarList
+          :rows="visibleRows"
+          :tone="primaryMetric === 'total' ? 'danger' : 'success'"
+          @select="openApp"
+        />
+      </div>
+      <button
+        v-if="collapsible"
+        ref="moreButtonRef"
+        type="button"
+        class="rank-more"
+        :aria-expanded="expanded"
+        @click="toggleExpanded"
+      >
+        <span>{{ expanded ? '收起' : `展开全部 ${listRows.length} 条` }}</span>
+        <svg viewBox="0 0 1024 1024" width="12" height="12" aria-hidden="true">
+          <path v-if="expanded" fill="currentColor" d="M512 320 192 640h640z" />
+          <path v-else fill="currentColor" d="M512 704 192 384h640z" />
+        </svg>
+      </button>
+    </template>
   </el-card>
 </template>
 
@@ -74,6 +91,7 @@ import { useRouter, useRoute } from 'vue-router';
 import * as echarts from 'echarts';
 import { TrendCharts, List } from '@element-plus/icons-vue';
 import RankBarList from './RankBarList.vue';
+import { animateHeightChange } from '../utils/collapse-animate';
 import { hmApi } from '../services/hm-api';
 import { getCategoryGrowthRanking, mergeCategoryGrowth, getAppsByCategory } from '../services/next-api';
 import { selectWidthOf } from '../utils/select-width';
@@ -118,7 +136,7 @@ const activeCategory = computed(
   () => categoryOptions.value.find((item) => item.name === category.value) || null
 );
 
-/** 分类筛选的选项来源：上游大分类增速榜，按增量降序 */
+/** 分类筛选的选项来源：上游大分类增速榜 */
 const CATEGORY_MIN_APPS = 50;
 const loadCategories = async () => {
   try {
@@ -181,6 +199,31 @@ const listRows = computed(() =>
     }))
     .sort((a, b) => b.value - a.value)
 );
+
+/*
+ * 折叠：默认只铺前 10 条，底部留一个「展开全部 N 条」，与总下载榜一致 ——
+ * 名单长了在手机上要滑两屏多，看完想回到上面的图表得滑很久。
+ */
+const COLLAPSED_ROWS = 10;
+const COLLAPSE_OVER = 12;
+const expanded = ref(false);
+const listWrapRef = ref<HTMLElement | null>(null);
+/** 展开按钮：动画期间当"视角锚点"，收起后不会让人跳到别的版块 */
+const moreButtonRef = ref<HTMLElement | null>(null);
+const collapsible = computed(() => listRows.value.length > COLLAPSE_OVER);
+const visibleRows = computed(() =>
+  collapsible.value && !expanded.value ? listRows.value.slice(0, COLLAPSED_ROWS) : listRows.value
+);
+const toggleExpanded = () => {
+  void animateHeightChange(
+    listWrapRef.value,
+    () => {
+      expanded.value = !expanded.value;
+    },
+    moreButtonRef.value
+  );
+};
+
 
 const openApp = (row: { app_id?: string }) => {
   if (row?.app_id) router.push({ name: 'app-dashboard', query: { app_id: row.app_id } });
@@ -577,7 +620,7 @@ watch(viewMode, async (mode) => {
 
 onMounted(() => {
   fetchData();
-  // 分类选项单独加载（走 overview 缓存，和 /apps 分类页同一份数据）
+  // 分类选项单独加载（与图表数据分开请求，失败只退化成「全部分类」）
   loadCategories();
   window.addEventListener('resize', handleResize);
   ensureResizeObserver();
@@ -597,6 +640,15 @@ onUnmounted(() => {
 <style scoped>
 .chart-card {
   margin-bottom: 20px;
+}
+
+/*
+ * 列表模式时底部那颗「展开全部 / 收起」就是这张卡的页脚：
+ * 卡片自身不留底部内边距，否则横线下面会空出一大块，文字看着贴在横线上。
+ * （图表模式不动 —— 那里的 300px 图表需要这层内边距。）
+ */
+.chart-card.is-list-view :deep(.el-card__body) {
+  padding-bottom: 0;
 }
 .card-header {
   display: flex;
@@ -678,6 +730,32 @@ onUnmounted(() => {
   height: 24px;
   padding: 0;
 }
+.rank-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 2px;
+  border: 0;
+  border-top: 1px solid var(--el-border-color-lighter);
+  background: transparent;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.rank-more > span {
+  line-height: 1;
+}
+
+.rank-more:hover {
+  color: var(--el-color-primary);
+}
+
 .chart-box {
   width: 100%;
   height: 300px;

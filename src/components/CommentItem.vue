@@ -184,11 +184,6 @@ export default {
   align-items: center;
 }
 
-.ip-text {
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
-}
-
 .comment-body {
   color: var(--el-text-color-regular);
   font-size: 14px;

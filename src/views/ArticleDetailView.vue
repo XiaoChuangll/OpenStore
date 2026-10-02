@@ -261,7 +261,6 @@ const fetchDetail = async (password?: string) => {
           try {
             const detail = await getAppDetail(app.original_id);
             if (detail) {
-              console.log('Fetched app detail for', app.original_id, detail);
               fullAppDetails.value = {
                 ...fullAppDetails.value,
                 [app.original_id]: detail
@@ -413,12 +412,6 @@ watch(() => route.params.slug, () => {
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid var(--el-border-color-lighter);
-}
-.comments-placeholder {
-  background: var(--el-bg-color);
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid var(--el-border-color-lighter);
 }
 
 .markdown-body {

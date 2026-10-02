@@ -96,15 +96,14 @@ export const useThemeStore = defineStore('theme', () => {
     applyThemeVariables();
   };
 
+  /*
+   * 只在「浅色 / 深色」之间切换。
+   * 「跟随系统」是没手动设置过时的默认值（preference 初始为 auto），不进切换循环 ——
+   * 所以按「当前实际显示的是不是深色」取反，而不是 auto -> light -> dark 轮转。
+   */
   const toggleTheme = () => {
-    // Cycle: Auto -> Light -> Dark -> Auto
-    if (preference.value === 'auto') {
-      preference.value = 'light';
-    } else if (preference.value === 'light') {
-      preference.value = 'dark';
-    } else {
-      preference.value = 'auto';
-    }
+    const currentlyDark = preference.value === 'auto' ? systemDark.value : preference.value === 'dark';
+    preference.value = currentlyDark ? 'light' : 'dark';
   };
 
   // Watch for changes in preference or systemDark to apply theme

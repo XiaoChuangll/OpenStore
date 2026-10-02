@@ -674,13 +674,6 @@ onUnmounted(() => {
   margin-right: 8px;
 }
 
-.mobile-app-kind {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
 .mobile-tags-row {
   display: flex;
   justify-content: space-between;

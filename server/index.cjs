@@ -4,7 +4,6 @@ const geoip = require('geoip-lite');
 const UAParser = require('ua-parser-js');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');

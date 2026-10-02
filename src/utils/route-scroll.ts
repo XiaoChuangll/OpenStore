@@ -76,8 +76,6 @@ const restoreScroll = (top: number) => {
   const step = () => {
     if (stopped) return;
     window.scrollTo(0, top);
-    if (frames === 0 || frames === 20 || frames === 49) {
-    }
     frames += 1;
     // 约 800ms 内持续纠正；中途到达目标也再多跟几帧，防止别处紧接着又改一次
     if (frames < 8 || (Math.abs(window.scrollY - top) > 2 && frames < 50)) {

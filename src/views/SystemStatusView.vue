@@ -298,7 +298,7 @@ const avgLatency = computed(() => {
 
 const secondsToNextCheck = ref(AUTO_INTERVAL);
 
-/** 响应时间的档位：探测的是真实上游，阈值比本地接口宽一些 */
+/** 响应时间档位：探测的是真实上游，阈值给宽一些 */
 const latencyTone = (latency: number, online = true) => {
   if (!latency || !online) return 'is-idle';
   if (latency < 400) return 'is-good';

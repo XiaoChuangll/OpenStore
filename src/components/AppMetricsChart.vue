@@ -83,8 +83,6 @@ const predictNext = (data: number[], count: number) => {
   const lastVal = subset[subset.length - 1];
   
   for (let i = 1; i <= count; i++) {
-    // predictions.push(Math.max(lastVal, intercept + slope * (n - 1 + i))); // Ensure it doesn't drop below last known if monotonic
-    // Allow drop if trend is negative, but downloads usually monotonic
     let val = intercept + slope * (n - 1 + i);
     if (val < lastVal) val = lastVal; // Assuming downloads don't decrease
     predictions.push(Math.floor(val));

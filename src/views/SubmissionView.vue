@@ -1021,12 +1021,6 @@ const handleSubstanceInput = (value: string) => {
   padding: 20px;
 }
 
-.form-tip {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
-}
-
 /* ---------- 解析结果 ---------- */
 .parse-result {
   width: 100%;

@@ -145,8 +145,6 @@ const fetchAppsOverview = async (device?: number) => {
   return { categories, devices };
 };
 
-export const getStatsAccessToken = async () => '';
-
 export const getCategories = async (device?: number) => {
   const cacheKey = getOverviewCacheKey(device);
   const cachedCategories = categoriesCache.get(cacheKey);
