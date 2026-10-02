@@ -375,8 +375,6 @@ const emptySummary = () => ({
 });
 const compareLeftStats = ref(emptySummary());
 const compareRightStats = ref(emptySummary());
-const compareLeftTrend = ref<Array<{ date: string; count: number; unique_ip: number }>>([]);
-const compareRightTrend = ref<Array<{ date: string; count: number; unique_ip: number }>>([]);
 const filterLocation = ref('');
 const filterDevice = ref('');
 const filterPath = ref('');
@@ -907,8 +905,6 @@ const loadCompare = async () => {
     getVisitorTrend(leftDays, { offset: leftRange?.offset }),
     getVisitorTrend(rightDays, { offset: rightRange?.offset })
   ]);
-  compareLeftTrend.value = leftTrend;
-  compareRightTrend.value = rightTrend;
   compareLeftStats.value = summarizeTrend(leftTrend, leftDays, leftRange?.offset || 0);
   compareRightStats.value = summarizeTrend(rightTrend, rightDays, rightRange?.offset || 0);
   await updateCompareChart(leftTrend, rightTrend);
@@ -1226,11 +1222,6 @@ const exportCsv = async () => {
 }
 .trend-tabs {
   flex: 1;
-}
-.trend-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 .trend-panel {
   display: flex;

@@ -1234,8 +1234,6 @@ html.dark .aurora-blob {
   width: min(260px, 62vw);
   aspect-ratio: 1;
   border-radius: 50%;
-  /* 与迷你播放器里的那张小唱片同名：点开播放页时由它补间放大成这张大唱片 */
-  view-transition-name: player-disc;
   background:
     radial-gradient(circle at 50% 50%, #2b2b31 0 26%, #16161a 27% 100%);
   box-shadow:
@@ -1352,39 +1350,10 @@ html.dark .aurora-blob {
   padding: 20px 20px 16px;
   border: 1px solid color-mix(in srgb, var(--el-border-color) 65%, transparent);
   border-radius: 20px;
-  /*
-   * 与底部胶囊同名：展开时它补间成这张卡片。
-   * 卡片的进度条、底部工具条、三个按钮都单独起了名字，所以这层快照只剩"底板"。
-   */
-  view-transition-name: var(--vt-panel-name);
   background-color: color-mix(in srgb, var(--el-bg-color) 66%, transparent);
   backdrop-filter: blur(22px) saturate(1.25);
   -webkit-backdrop-filter: blur(22px) saturate(1.25);
   box-shadow: var(--el-box-shadow-light);
-}
-
-/*
- * 与底部迷你播放器一一对应的共享元素：展开/收起时，歌名、歌手和三个控制按钮
- * 各自从迷你播放器的位置补间到这里对应的位置（封面那对是 player-disc，见 .disc）。
- */
-.track-name {
-  view-transition-name: player-title;
-}
-
-.track-artist {
-  view-transition-name: player-artist;
-}
-
-.transport button:nth-of-type(1) {
-  view-transition-name: player-prev;
-}
-
-.transport .play-btn {
-  view-transition-name: player-play;
-}
-
-.transport button:nth-of-type(3) {
-  view-transition-name: player-next;
 }
 
 /* 不支持 backdrop-filter 的内核：退回不透明底色，保证可读 */

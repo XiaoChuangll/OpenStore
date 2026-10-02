@@ -504,11 +504,6 @@ onUnmounted(() => {
   cursor: default;
 }
 
-.selected-tip {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
 /* ---------- 详情子页面 ---------- */
 .dialog-grid {
   display: grid;
@@ -666,11 +661,9 @@ onUnmounted(() => {
 }
 
 .pagination-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: nowrap; }
-.page-total { white-space: nowrap; }
 .pagination-bar :deep(.el-pagination) { display: inline-flex; }
 .env { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--el-text-color-secondary); }
 .single-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.contact { font-size: 12px; color: var(--el-text-color-secondary); }
 .detail .env { margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--el-text-color-secondary); }
 .mobile-pagination-container {
   display: flex;
@@ -691,7 +684,6 @@ onUnmounted(() => {
   }
 }
 .clickable { cursor: pointer; }
-.dialog-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.6; }
 .dialog-section { font-size: 14px; line-height: 1.8; }
 .dialog-row { display: flex; margin-bottom: 8px; }
 .dialog-row .label { 

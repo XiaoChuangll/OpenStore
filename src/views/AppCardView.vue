@@ -151,7 +151,6 @@ onUnmounted(() => {
 .app-icon-fallback { color: var(--el-text-color-primary); }
 .app-title { font-weight: 500; font-size: 0.875rem; }
 .app-desc { font-size: 0.875rem; color: var(--el-text-color-secondary); margin-bottom: 6px; }
-.app-link { font-size: 0.75rem; color: var(--el-color-primary); }
 .app-actions { margin-top: 12px; }
 .app-download-btn { font-weight: 500; width: 100%; }
 

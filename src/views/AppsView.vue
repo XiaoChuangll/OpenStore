@@ -193,7 +193,6 @@ const categories = ref<any[]>([]);
 const appList = ref<any[]>([]);
 const loading = ref(false);
 const categoriesLoading = ref(false);
-const deviceStatsLoading = ref(false);
 const currentPage = ref(1);
 const pageSize = ref(20);
 const totalCount = ref(0);
@@ -339,7 +338,6 @@ const prewarmCategorySnapshots = async () => {
 };
 
 const fetchDeviceStats = async () => {
-  deviceStatsLoading.value = true;
   try {
     const res = await getDevices();
     let list: any[] = [];
@@ -367,8 +365,6 @@ const fetchDeviceStats = async () => {
      });
   } catch (e) {
     console.error('Failed to fetch device stats', e);
-  } finally {
-    deviceStatsLoading.value = false;
   }
 };
 
@@ -539,7 +535,6 @@ const handleBack = () => {
 };
 
 const handleAppClick = async (app: any) => {
-  console.log('View app details:', app);
   const appId = app.app_id || app.id;
   if (!appId) return;
 

@@ -9,15 +9,13 @@ interface CacheItem<T> {
 
 interface HmApiClientConfig {
   baseUrl: string;
-  fallbackUrl: string;
+  /** 可选的备用线路；留空即只走主线路，不做任何降级（默认） */
+  fallbackUrl?: string;
 }
 
 /**
- * HarmonyOS 应用市场 API 客户端
- * 复刻了原项目的核心特性：
- * 1. 自动降级 (Failover): 优先使用本站代理，失败时回退到直连上游
- * 2. 智能缓存 (Caching): 根据路径自动决定缓存时间
- * 3. 请求防抖 (Request Deduping): 避免并发重复请求
+ * HarmonyOS 应用市场 API 客户端：本站代理优先，按路径缓存 + 并发去重。
+ * 降级默认关闭（要启用配 VITE_API_FALLBACK），否则被封后前端会静默直连上游。
  */
 class HmApiClient {
   private primaryBaseUrl: string;
@@ -25,11 +23,7 @@ class HmApiClient {
   private cache: Map<string, CacheItem<any>> = new Map();
   private inFlight: Map<string, Promise<any>> = new Map();
 
-  /**
-   * 主线路（本站代理）最近一次失败的时间戳。
-   * 冷却期内先走备用线路，冷却结束后重新尝试主线路 ——
-   * 不再像以前那样"第一次失败就永久切到直连"，避免一次抖动之后所有请求都绑死在不稳的直连上。
-   */
+  /** 主线路最近一次失败时间；冷却期内先走备用线路，冷却结束再试主线路 */
   private primaryFailedAt = 0;
   private static readonly PRIMARY_COOLDOWN_MS = 60 * 1000;
 
@@ -38,7 +32,8 @@ class HmApiClient {
 
   constructor(config: HmApiClientConfig) {
     this.primaryBaseUrl = config.baseUrl;
-    this.fallbackUrl = config.fallbackUrl;
+    // 没配备用线路时两者相同 —— getBaseCandidates 只返回一个候选，等于完全不降级
+    this.fallbackUrl = String(config.fallbackUrl || '').trim() || config.baseUrl;
   }
 
   /** 按优先级返回本次请求要尝试的线路 */
@@ -200,8 +195,9 @@ class HmApiClient {
 }
 
 export const hmApi = new HmApiClient({
-  baseUrl: '/api/v0', // 优先走本站代理
-  fallbackUrl: 'https://shenjack.top:10003/api/v0' // 备用直连
+  baseUrl: '/api/v0', // 走本站代理
+  // 备用直连，默认关闭（不配则候选线路只有 /api/v0）；填了会构建进 JS 包，不是秘密
+  fallbackUrl: import.meta.env.VITE_API_FALLBACK
 });
 
 export interface SubmissionComment {

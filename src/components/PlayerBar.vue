@@ -104,11 +104,6 @@ const openPlayer = () => {
   bottom: 24px;
   transform: translateX(-50%);
   z-index: 2100;
-  /*
-   * 胶囊本体参与转场：它会补间成播放页那张播放器卡片。
-   * 里面的封面/文字/按钮都各自起了转场名（见下面几条），所以这里的快照只剩"底板"。
-   */
-  view-transition-name: var(--vt-panel-name);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -157,34 +152,6 @@ const openPlayer = () => {
   border-radius: 50%;
   object-fit: cover;
   background-color: var(--el-fill-color);
-  /* 与播放页的大唱片共用同一个转场名字：点开播放页时它会补间放大过去 */
-  view-transition-name: player-disc;
-}
-
-/*
- * 逐个元素做共享元素转场。
- * 注意是给「每个控件」起名，而不是给整条播放条起名：
- * 整条一起补间会把它拉伸成卡片的尺寸，里面的内容会被拽得乱飞，而且毛玻璃底板
- * 抓不到背景模糊、快照只剩一个硬邦邦的矩形。拆开之后各走各的，观感才对。
- */
-.bar-actions .bar-btn:nth-child(1) {
-  view-transition-name: player-prev;
-}
-
-.bar-actions .bar-btn:nth-child(2) {
-  view-transition-name: player-play;
-}
-
-.bar-actions .bar-btn:nth-child(3) {
-  view-transition-name: player-next;
-}
-
-.bar-name {
-  view-transition-name: player-title;
-}
-
-.bar-artist {
-  view-transition-name: player-artist;
 }
 
 .bar-text {

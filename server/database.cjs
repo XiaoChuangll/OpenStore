@@ -276,6 +276,27 @@ db.serialize(() => {
     updated_at INTEGER DEFAULT (strftime('%s', 'now'))
   )`);
 
+  // 脚本护栏拦截记录：每次触发封禁写一条（宽限期内放行的不记）
+  db.run(`CREATE TABLE IF NOT EXISTS script_guard_blocks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT,
+    location TEXT,
+    ua TEXT,
+    path TEXT,
+    hits INTEGER DEFAULT 0,
+    strikes INTEGER DEFAULT 1,
+    block_ms INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // 硬封禁名单：不区分 UA，命中后该 IP 的一切请求都返回 429；expires_at 为 NULL = 永久
+  db.run(`CREATE TABLE IF NOT EXISTS script_guard_bans (
+    ip TEXT PRIMARY KEY,
+    reason TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS apps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

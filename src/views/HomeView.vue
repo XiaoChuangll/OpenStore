@@ -783,24 +783,6 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.app-item {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px;
-  border-radius: 12px;
-  border: none;
-  background: var(--el-bg-color);
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.app-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-color: var(--el-color-primary-light-5);
-}
-
 .app-icon {
   width: 40px;
   height: 40px;

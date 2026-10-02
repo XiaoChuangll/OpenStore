@@ -4,7 +4,6 @@ const geoip = require('geoip-lite');
 const UAParser = require('ua-parser-js');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -34,6 +33,7 @@ const {
   applyShareCardToHtml
 } = require('./lib/share-cards.cjs');
 const { broadcast, attachWebSocket } = require('./lib/realtime.cjs');
+const { hardBanGuard } = require('./lib/script-guard.cjs');
 const { JWT_SECRET, requireAuth } = require('./middleware/auth.cjs');
 const { TRUST_PROXY_HOPS, PORT } = require('./lib/config.cjs');
 const { uploadsDir, UPLOAD_FORCE_DOWNLOAD_EXT } = require('./lib/uploads.cjs');
@@ -45,6 +45,9 @@ const app = express();
 app.set('trust proxy', TRUST_PROXY_HOPS);
 
 app.use(cors());
+
+// 硬封禁放在最前面（body 解析、静态资源与 SPA 兜底之前）；名单为空时零开销
+app.use(hardBanGuard);
 
 // 兼容字面量 null 请求体：
 // axios 在 Content-Type: application/json 下会把 null 序列化成字符串 "null"，

@@ -2,7 +2,7 @@
   <el-card class="chart-card" shadow="hover" :body-style="{ padding: 0 }">
     <template #header>
       <div class="card-header" @click="toggleCollapse">
-        <span class="card-title">应用最小SDK分布</span>
+        <span class="card-title">最小SDK分布</span>
         <div class="header-side">
           <span v-if="topName" class="avg-chip">最多 {{ topName }}</span>
           <el-icon class="collapse-icon" :class="{ 'is-collapsed': isCollapsed }">

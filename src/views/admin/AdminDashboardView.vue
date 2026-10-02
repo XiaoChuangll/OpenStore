@@ -244,7 +244,7 @@ const paneFromQuery = (): PaneKey => {
 
 const active = ref<PaneKey>(paneFromQuery());
 
-// 面板 → 组件：切换时交给 <KeepAlive> 缓存，切回来不再重新挂载、重新请求
+// 面板 → 组件：全部挂载着，非当前面板加 is-parked 隐藏，切回来不重新请求
 const PANE_COMPONENTS: Record<PaneKey, Component> = {
   overview: DashboardOverviewView,
   'music-apis': MusicApisAdminView,

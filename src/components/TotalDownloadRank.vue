@@ -27,7 +27,7 @@
             type="success"
             size="small"
           >增量</el-tag>
-          <!-- 图表 / 排名条 两种展示方式互相切换，选择记在本地，下次打开还是上次那个 -->
+          <!-- 图表 / 排名条 两种展示方式互相切换 -->
           <el-tooltip :content="viewMode === 'list' ? '切换为图表' : '切换为排名条'" placement="top">
             <el-button
               size="small"
@@ -412,8 +412,8 @@ const fetchData = async () => {
                    const inc = Math.max(0, latest.download_count - prev.download_count);
                    item.download_increment = inc;
               }
-          } catch (e) {
-              // console.warn(`Failed to fetch metrics for ${item.name}`);
+          } catch {
+              // 单个应用拿不到指标就跳过
           }
       }));
     }

@@ -1339,7 +1339,6 @@ const openCompare = () => {
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
-.tag-color { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--el-border-color); }
 .summary-actions { margin-top: 8px; display: flex; justify-content: flex-end; }
 .cover-preview { margin-top: 8px; }
 

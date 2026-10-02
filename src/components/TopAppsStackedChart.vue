@@ -119,7 +119,7 @@ const props = withDefaults(
     rankBy?: 'total' | 'growth';
     excludeHuawei?: boolean;
     mode?: 'increment' | 'cumulative';
-    /** 默认看多少天（累计口径默认给 60 天，走势才看得出来） */
+    /** 默认看多少天（组件默认 30；累计口径的调用方会传 60，走势才看得出来） */
     defaultDays?: number;
   }>(),
   {

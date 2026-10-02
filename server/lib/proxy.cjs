@@ -75,7 +75,8 @@ const createProxy = (target, pathRewrite) => async (req, res) => {
     // 不再单独 console.error，否则同一件事会打印两遍
     pushLiveLog('error', `上游代理失败 ${req.method} ${url}：${error.message}`, { kind: 'upstream' });
     if (!res.headersSent) {
-      res.status(500).json({ error: 'Proxy Error: ' + error.message });
+      // 只回通用文案：error.message 里通常带着上游主机名/IP，细节已进实时日志
+      res.status(500).json({ error: '服务暂时不可用，请稍后重试' });
     }
   }
 };

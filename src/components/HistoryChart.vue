@@ -98,7 +98,7 @@ const showIncrement = ref(true);
 /** 拉回来的原始时间序列，图表和列表共用 */
 const seriesData = ref<any[]>([]);
 
-/* 展示方式：chart（每次进页面都从图表开始）/ list（时间台账） */
+/* 展示方式：chart（图表，默认）/ list（时间台账）；选择记在本地 */
 const viewMode = ref<'list' | 'chart'>(localStorage.getItem(VIEW_MODE_KEY) === 'list' ? 'list' : 'chart');
 const toggleView = () => {
   viewMode.value = viewMode.value === 'list' ? 'chart' : 'list';
@@ -166,7 +166,7 @@ const toggleTotal = () => {
     showTotal.value = !showTotal.value;
     updateVisibility();
   } else {
-    // 列表模式：两个标签是单选，决定条形画哪个指标
+    // 列表模式：两个标签互为单选（台账里两个指标都显示，这里只同步标签状态）
     const next = primaryMetric.value === 'total' ? false : true;
     showTotal.value = next;
     showIncrement.value = !next;
@@ -604,9 +604,6 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-.ml-2 {
-  margin-left: 8px;
 }
 .cursor-pointer {
   cursor: pointer;

@@ -223,8 +223,8 @@ const introContentHeight = ref(0);
 const introOverflows = ref(false);
 const introExpanded = ref(false);
 
-/** 与 .detail-body 的断点保持一致：≥901px 才是左右两栏 */
-const INTRO_CLAMP_MIN_WIDTH = 901;
+/** 与 .detail-body 的断点保持一致：>1000px 才是左右两栏（CSS 为 max-width: 1000px 时改单列） */
+const INTRO_CLAMP_MIN_WIDTH = 1001;
 /** 再挤也要留出这么多介绍高度，否则小屏笔记本上只剩两行 */
 const INTRO_MIN_HEIGHT = 180;
 /** 展开 / 收起那一行的高度（首帧按钮还没渲染时先按这个留位，保证和右栏平齐） */

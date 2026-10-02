@@ -76,6 +76,12 @@ export default defineConfig(({ mode }) => {
     ],
     test: {
       environment: 'jsdom',
+      // 内联 element-plus：否则 vitest 把它交给 Node 加载，撞上它按需导入的 .css 会报错
+      server: {
+        deps: {
+          inline: ['element-plus'],
+        },
+      },
     },
     build: {
       rollupOptions: {

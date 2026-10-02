@@ -7,7 +7,7 @@ import { usePlayerStore } from './stores/player';
 import { useRouter, useRoute } from 'vue-router';
 import PlayerBar from './components/PlayerBar.vue';
 import RankNavigation from './components/RankNavigation.vue';
-import { waitForRouteChange } from './utils/view-transition';
+import { waitForRouteChange } from './utils/route-change';
 import { morphNavigate } from './utils/player-morph';
 import { Moon, Sunny, ArrowLeft, Compass, Menu, Refresh, Collection, Close, Monitor, Edit, InfoFilled, CaretRight, Document } from '@element-plus/icons-vue';
 import { useAuthStore } from './stores/auth';
@@ -128,7 +128,6 @@ const subDockItems = [
   { path: '/about', label: '关于', icon: InfoFilled },
 ];
 
-const adminMenuLoading = ref(false);
 const isMobileMenuOpen = ref(false);
 const isAuthed = computed(() => authStore.isLoggedIn());
 
@@ -217,8 +216,6 @@ const sliderReady = ref(false);
 /** dock 本体同理：首次摆放（等价的空跳）不上过渡 */
 const dockReady = ref(false);
 
-const isScrolling = ref(false);
-let scrollTimer: number | undefined;
 
 /** 桌面宽度：迷你播放条只在桌面端出现，移动端保持原来那颗唱片按钮 */
 const isDesktopViewport = ref(true);
@@ -276,8 +273,6 @@ const syncHeaderScrolled = () => {
 };
 
 const handleGlobalScroll = () => {
-  isScrolling.value = true;
-  
   if (isMobileMenuOpen.value) {
     closeMobileMenu();
   }
@@ -286,11 +281,6 @@ const handleGlobalScroll = () => {
   if (!headerScrollRaf) {
     headerScrollRaf = window.requestAnimationFrame(syncHeaderScrolled);
   }
-
-  clearTimeout(scrollTimer);
-  scrollTimer = window.setTimeout(() => {
-    isScrolling.value = false;
-  }, 150);
 };
 
 const handleTouchMove = () => {
@@ -455,21 +445,13 @@ const handleBack = () => {
 };
 
 const goAdminDashboard = async () => {
-  adminMenuLoading.value = true;
-  try {
-    await router.push('/admin/dashboard');
-  } finally {
-    adminMenuLoading.value = false;
-  }
+  await router.push('/admin/dashboard');
 };
 
 const handleThemeToggle = () => {
   themeStore.toggleTheme();
-  const modeText = {
-    'auto': '跟随系统',
-    'light': '浅色模式',
-    'dark': '深色模式'
-  }[themeStore.preference];
+  // 切换后 preference 一定是 light / dark（不再有 auto），直接按它取文案
+  const modeText = themeStore.preference === 'dark' ? '深色模式' : '浅色模式';
   
   ElMessage({
     message: `已切换至${modeText}`,
@@ -565,7 +547,7 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
           漏掉某个页面时它只是走回原来的「每次重新加载」，不会出错。
         -->
         <keep-alive
-          include="HomeView,MusicView,PlayerView,AppsView,UpdatesView,TopicView,TotalRankView,GrowthRankView,HistoryRankView,NonHuaweiRankView,CategoryRankView,AppCardView,ArticlesView,AboutView,SubmissionView,SystemStatusView,ArticleDetailView,TopicDetailView,UpdatesAppDetailView,AppDashboardView,DetailView,NextAppDetailView"
+          include="HomeView,MusicView,PlayerView,AppsView,UpdatesView,TopicView,TotalRankView,GrowthRankView,HistoryRankView,NonHuaweiRankView,CategoryRankView,AppCardView,ArticlesView,AboutView,SubmissionView,SystemStatusView,ArticleDetailView,TopicDetailView,UpdatesAppDetailView,AppDashboardView,NextAppDetailView"
           :max="30"
         >
           <component :is="Component" :key="route.path" />

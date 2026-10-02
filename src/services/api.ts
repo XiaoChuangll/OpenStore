@@ -218,30 +218,6 @@ export const getNewAppsByDateRange = async (dateFrom: string | undefined, dateTo
   }
 };
 
-export const getNewAppsByDate = async (dateStr: string, page = 1, pageSize = 20) => {
-  try {
-    const params = {
-      date_from: dateStr,
-      date_to: dateStr,
-      sort: 'listed_at',
-      desc: true,
-      page_size: pageSize,
-      detail: true
-    };
-    const response = await fetchAppList(page, params);
-    return response.data;
-  } catch (error) {
-    console.error('Failed to fetch new apps by date', error);
-    throw error;
-  }
-};
-
-export const getTodayNewApps = async (page = 1, pageSize = 20) => {
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-  return getNewAppsByDate(todayStr, page, pageSize);
-};
-
 export const getAppUpdates = async (page = 1, pageSize = 50) => {
   try {
     const params = {
@@ -594,19 +570,6 @@ export const getEnvHistory = async (key?: string): Promise<any[]> => {
   const response = await apiClient.get('/env/history', { params: { key } });
   return response.data.items;
 };
-export const rollbackEnvVar = async (id: number): Promise<void> => {
-  await apiClient.post('/env/rollback', { id });
-};
-
-// Logs
-export const getLogs = async (page: number = 1, pageSize: number = 20): Promise<{ items: any[]; total: number }> => {
-  const response = await apiClient.get('/logs', { params: { page, pageSize } });
-  return response.data;
-};
-export const batchDeleteLogs = async (ids: number[], clearAll: boolean = false): Promise<void> => {
-  await apiClient.post('/logs/batch-delete', { ids, clearAll });
-};
-
 // Incidents Admin
 export const getIncidents = async (): Promise<Incident[]> => {
   const response = await apiClient.get('/incidents');
@@ -672,10 +635,6 @@ export const getFeedbackSuccessList = async (limit = 10, status?: string): Promi
   const response = await apiClient.get('/public/feedbacks/success', { params });
   return response.data.items || [];
 };
-export const changePassword = async (data: any): Promise<void> => {
-  await apiClient.post('/auth/change-password', data);
-};
-
 // Upload
 export const uploadFile = async (file: File): Promise<{ url: string }> => {
   const formData = new FormData();

@@ -939,7 +939,6 @@ const mainTab = computed({
        openMore('mine');
     } else {
        viewMode.value = 'home';
-       pageTitle.value = '在线播放';
        layoutStore.setPageInfo('在线播放', true, goBack);
     }
   }
@@ -949,12 +948,10 @@ const handleMainTabChange = () => {
    // Logic handled by computed setter
 };
 
-const pageTitle = ref('在线播放');
 
 const goBack = () => {
     if (viewMode.value !== 'home') {
         viewMode.value = 'home';
-        pageTitle.value = '在线播放';
         layoutStore.setPageInfo('在线播放', true, goBack);
         playerStore.viewModeRequest = ''; // Reset request
         return;
@@ -973,7 +970,6 @@ const restorePageTitle = () => {
     else if (viewMode.value === 'rank') title = '排行榜';
     else if (viewMode.value === 'mine') title = '我的歌单';
     
-    pageTitle.value = title;
     layoutStore.setPageInfo(title, true, goBack);
     document.title = `OpenStore | ${title}`;
 };
@@ -1140,7 +1136,6 @@ const openMore = async (mode: 'radar' | 'recommend' | 'rank' | 'mine') => {
     else if (mode === 'rank') title = '排行榜';
     else if (mode === 'mine') title = '我的歌单';
     
-    pageTitle.value = title;
     layoutStore.setPageInfo(title, true, goBack);
     
     if (mode === 'radar') {
@@ -1163,7 +1158,6 @@ const openMore = async (mode: 'radar' | 'recommend' | 'rank' | 'mine') => {
                  recommendLoading.value = false;
              }
         }
-    } else if (mode === 'rank') {
     } else if (mode === 'mine') {
         if (mineSubMode.value === 'playlist') {
             if (userPlaylists.value.length === 0) fetchUserPlaylists();
@@ -1188,7 +1182,6 @@ const fetchUserPodcasts = async () => {
 
         const res = await proxyRequest(`${baseUrl}/dj/sublist?limit=${limit}&offset=${offset}&cookie=${cookieEncoded}`, 'GET', headers, {});
         
-        console.log('DJ Sublist Response:', res.data);
 
         if (res.data?.djRadios) {
             userPodcasts.value = res.data.djRadios;
@@ -1426,7 +1419,6 @@ const applyPendingViewMode = () => {
     if (mode === 'home') {
         pendingViewMode.value = '';
         viewMode.value = 'home';
-        pageTitle.value = '在线播放';
         layoutStore.setPageInfo('在线播放', true, goBack);
         return;
     }
@@ -1613,7 +1605,6 @@ const fetchDiscovery = async (forceRefresh = false) => {
    if (!forceRefresh) {
        const cached = musicCache.get<any>(CACHE_KEY);
        if (cached) {
-           console.log('[MusicView] Cache hit for discovery data');
            radarPlaylists.value = cached.radar;
            recommendPlaylists.value = cached.recommend;
            topList.value = cached.topList;
@@ -1679,10 +1670,8 @@ const getCookie = () => localStorage.getItem('netease_cookie') || '';
 
 const fetchUserProfile = async () => {
   const cookie = getCookie();
-  console.log('[MusicView] Fetching profile, cookie length:', cookie?.length || 0);
   
   if (!cookie || !currentApi.value) {
-      console.log('[MusicView] No cookie or API ready');
       return;
   }
 
@@ -1693,29 +1682,22 @@ const fetchUserProfile = async () => {
       const headers = { Cookie: cookie };
       const cookieEncoded = encodeURIComponent(cookie);
       
-      console.log('[MusicView] Requesting login status...');
       const res = await proxyRequest(`${baseUrl}/login/status?timestamp=${Date.now()}&cookie=${cookieEncoded}`, 'POST', headers, {});
       
       const data = res.data?.data || res.data;
-      console.log('[MusicView] Login status data:', data);
 
       if (data?.profile) {
-          console.log('[MusicView] Found profile directly');
           playerStore.setUserProfile(data.profile);
       } else if (data?.account?.id) {
-          console.log('[MusicView] Found account ID:', data.account.id, 'fetching detail...');
           // Fetch detail
           const detailRes = await proxyRequest(`${baseUrl}/user/detail?uid=${data.account.id}&cookie=${cookieEncoded}`, 'GET', headers, {});
-          console.log('[MusicView] User detail res keys:', Object.keys(detailRes.data || {}));
             
             if (detailRes.data?.profile) {
-                console.log('[MusicView] Profile found in detail:', detailRes.data.profile);
                 playerStore.setUserProfile(detailRes.data.profile);
             } else {
                 console.warn('[MusicView] Profile MISSING in user detail response');
                 // Try to construct basic profile from account if available in detail or status
                 if (data.account) {
-                     console.log('[MusicView] Using account info as fallback profile');
                      playerStore.setUserProfile({
                          userId: data.account.id,
                          nickname: data.account.userName || '用户',
@@ -2336,8 +2318,6 @@ onUnmounted(() => {
 .mb-4 { margin-bottom: 20px; }
 .mt-3 { margin-top: 12px; }
 .mt-4 { margin-top: 20px; }
-.ml-1 { margin-left: 4px; }
-.ml-2 { margin-left: 8px; }
 .cursor-pointer { cursor: pointer; }
 .pagination-container {
   display: flex;
@@ -2349,62 +2329,21 @@ onUnmounted(() => {
 .text-gray-500 { color: var(--el-text-color-secondary); }
 .mr-1 { margin-right: 4px; }
 .mr-3 { margin-right: 12px; }
-.api-tag { margin-left: 0; }
 .flex-center { display: flex; align-items: center; }
-.no-wrap-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%; }
 
 :deep(.el-page-header__content) {
   display: flex;
   align-items: center;
 }
 
-.api-status-bar {
-  padding-left: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  width: 100%;
-  box-sizing: border-box;
-  text-align: left;
-}
-
-.status-tag-wrapper {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  text-align: left;
-}
-
 .api-actions {
   display: flex;
   align-items: center;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-}
-.user-avatar-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 20px;
-  transition: background-color 0.2s;
-}
-.user-avatar-wrapper:hover {
-  background-color: var(--el-fill-color);
 }
 .username {
   font-size: 14px;
   font-weight: 500;
   color: var(--el-text-color-primary);
-}
-
-.search-card {
-  border-radius: 12px;
 }
 .search-box {
   display: flex;
@@ -2692,7 +2631,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
-  .hidden-xs-only { display: none; }
   .rank-grid { grid-template-columns: 1fr; }
 }
 
@@ -2794,26 +2732,6 @@ onUnmounted(() => {
 .card-desc {
   font-size: 12px;
   opacity: 0.9;
-}
-/* New V2 Layout Styles */
-.flex-between-center {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.greet-section {
-  padding: 10px 0;
-}
-.greet-title {
-  font-size: 28px;
-  font-weight: 700;
-  margin: 0 0 4px 0;
-  color: var(--el-text-color-primary);
-}
-.greet-subtitle {
-  font-size: 14px;
-  color: var(--el-text-color-secondary);
-  opacity: 0.8;
 }
 
 .personalized-grid-v2 {
@@ -3084,7 +3002,7 @@ onUnmounted(() => {
 }
 .fm-btn-play:hover {
   background: rgba(255, 255, 255, 0.3);
-  /* 不用 scale：外层 .fm-info-controls 是 overflow:hidden，放大后的边缘会被切掉 */
+  /* 用外发光做 hover 反馈，不改尺寸 */
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
 }
 
@@ -3154,22 +3072,6 @@ onUnmounted(() => {
   .fm-btn-play, .fm-btn-trash {
     display: none;
   }
-}
-.horizontal-scroll-container {
-  display: flex;
-  overflow-x: auto;
-  gap: 12px;
-  padding-bottom: 8px; /* For scrollbar space if visible */
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
-}
-.horizontal-scroll-container::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
-}
-
-.horizontal-scroll-item {
-  flex: 0 0 140px; /* Fixed width for items */
-  width: 140px;
 }
 
 /* ---------- 播单页 ---------- */
@@ -3708,24 +3610,5 @@ onUnmounted(() => {
   padding-left: 8px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-
-.header-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-right: 8px;
-  flex-shrink: 0;
-}
-.header-pagination .page-info {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  white-space: nowrap;
-}
-.table-header-bar > span {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
 }
 </style>

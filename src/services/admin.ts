@@ -890,16 +890,6 @@ export interface PageVisitItem {
   last: string | null;
 }
 
-export const getDataFreshness = async () => {
-  const { data } = await api.get('/freshness');
-  return (data?.items || []) as FreshnessItem[];
-};
-
-export const getPageVisits = async () => {
-  const { data } = await api.get('/freshness');
-  return (data?.pages || []) as PageVisitItem[];
-};
-
 /** 一次请求同时拿到「数据表新鲜度」和「页面访问」两组数据 */
 export const getFreshnessOverview = async () => {
   const { data } = await api.get('/freshness');
@@ -1029,4 +1019,113 @@ export const blockApp = async (payload: { package: string; name?: string; icon_u
 
 export const unblockApp = async (pkg: string) => {
   await api.delete(`/blocked-apps/${encodeURIComponent(pkg)}`);
+};
+
+/** 警告页预览：只取示例 HTML，不拦截、不消耗配额 */
+export const getScriptGuardPreview = async () => {
+  const { data } = await api.get('/script-guard/preview');
+  return String(data?.html || '');
+};
+
+/** 警告页文案的自定义配置（存在 system_settings 里，保存后立刻生效，不用重启） */
+export interface ScriptGuardPageConfig {
+  badge: string;
+  title: string;
+  message: string;
+  tips: string[];
+  contactLabel: string;
+  contactUrl: string;
+  showDetails: boolean;
+}
+
+export const getScriptGuardPageConfig = async () => {
+  const { data } = await api.get('/script-guard/page');
+  return data as { config: ScriptGuardPageConfig; defaults: ScriptGuardPageConfig };
+};
+
+export const saveScriptGuardPageConfig = async (config: ScriptGuardPageConfig) => {
+  const { data } = await api.put('/script-guard/page', config);
+  return data.config as ScriptGuardPageConfig;
+};
+
+export const resetScriptGuardPageConfig = async () => {
+  const { data } = await api.post('/script-guard/page/reset');
+  return data.config as ScriptGuardPageConfig;
+};
+
+/** 一次拦截（封禁）记录 */
+export interface ScriptGuardBlockRecord {
+  id: number;
+  ip: string;
+  location: string;
+  ua: string;
+  path: string;
+  hits: number;
+  strikes: number;
+  block_ms: number;
+  created_at: string;
+}
+
+export interface ScriptGuardBlockList {
+  items: ScriptGuardBlockRecord[];
+  /** 当前仍在封禁期内的 IP（内存态，重启即清空） */
+  active: Array<{ ip: string; ua: string; strikes: number; remainMs: number }>;
+  stats: { scriptRequests: number; warned: number; blocked: number; strikes: number };
+}
+
+export const getScriptGuardBlocks = async (limit = 100) => {
+  const { data } = await api.get('/script-guard/blocks', { params: { limit } });
+  return data as ScriptGuardBlockList;
+};
+
+export const clearScriptGuardBlocks = async () => {
+  await api.delete('/script-guard/blocks');
+};
+
+export const unblockScriptGuardIp = async (ip: string) => {
+  const { data } = await api.post('/script-guard/unblock', { ip });
+  return Boolean(data?.released);
+};
+
+export interface ScriptGuardTriggerResult {
+  ip: string;
+  status: number;
+  strikes: number;
+  blockMs: number;
+  remainMs: number;
+  /** 真正会发给这个 IP 的 429 页面 */
+  html: string;
+}
+
+/** 一键触发真实拦截：对当前管理员 IP 真封一次，重复调用按 4 倍升级 */
+export const triggerScriptGuardBlock = async (payload?: { ua?: string; path?: string }) => {
+  const { data } = await api.post('/script-guard/trigger', payload || {});
+  return data as ScriptGuardTriggerResult;
+};
+
+/** 硬封禁：不区分 UA，命中后该 IP 的一切请求都返回 429 */
+export interface ScriptGuardHardBan {
+  ip: string;
+  reason: string;
+  created_at: string;
+  expires_at: string | null;
+  permanent: boolean;
+  remainMs: number;
+  /** 封禁期间被挡下的请求数（内存计数，重启归零） */
+  hits: number;
+}
+
+export const getScriptGuardBans = async () => {
+  const { data } = await api.get('/script-guard/bans');
+  return (data.items || []) as ScriptGuardHardBan[];
+};
+
+export const addScriptGuardBan = async (payload: { ip: string; reason?: string; durationMs?: number }) => {
+  const { data } = await api.post('/script-guard/bans', payload);
+  return (data.items || []) as ScriptGuardHardBan[];
+};
+
+export const removeScriptGuardBan = async (ip: string) => {
+  const { data } = await api.post('/script-guard/bans/remove', { ip });
+  return (data.items || []) as ScriptGuardHardBan[];
 };
