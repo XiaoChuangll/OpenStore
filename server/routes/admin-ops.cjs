@@ -14,7 +14,7 @@ const { extractCountryCode, matchCnProvince, CITY_TO_PROVINCE } = require('../li
 const { getAppsOverview, APP_OVERVIEW_CACHE_TTL, appOverviewCache } = require('../lib/apps-overview.cjs');
 const { cachedVisitorsAll, VISITORS_INSIGHTS_TTL, VISITORS_INSIGHTS_STALE_TTL } = require('../lib/visitors-stats.cjs');
 const { invalidateBlockedAppsCache } = require('../lib/blocked-apps.cjs');
-const { previewWarningPage, getPageConfig, savePageConfig, resetPageConfig, DEFAULT_PAGE_CONFIG, listBlockRecords, clearBlockRecords, unblockIp, scriptGuardSnapshot, triggerBlock } = require('../lib/script-guard.cjs');
+const { previewWarningPage, getPageConfig, savePageConfig, resetPageConfig, DEFAULT_PAGE_CONFIG, listBlockRecords, clearBlockRecords, unblockIp, scriptGuardSnapshot, triggerBlock, hardBanIp, hardUnbanIp, listHardBans } = require('../lib/script-guard.cjs');
 const { getClientIp } = require('../lib/client-ip.cjs');
 const { PORT } = require('../lib/config.cjs');
 
@@ -600,6 +600,36 @@ module.exports = ({ collectPerfCheckRoutes }) => {
       blockMs: result.blockMs
     });
     res.json(result);
+  });
+
+  /*
+   * 硬封禁名单：不区分 UA，命中后该 IP 的一切请求都返回 429（连浏览器也打不开站点）。
+   * /api/admin/* 与 /admin 例外，所以误封自己的出口 IP 还能进后台解封。
+   */
+  router.get('/api/admin/script-guard/bans', requireAuth, (req, res) => {
+    res.json({ items: listHardBans() });
+  });
+
+  router.post('/api/admin/script-guard/bans', requireAuth, (req, res) => {
+    const ip = String(req.body?.ip || '').trim();
+    if (!ip) return res.status(400).json({ error: 'Missing ip' });
+    // durationMs 不传或 0 = 永久
+    const durationMs = Math.max(Number(req.body?.durationMs) || 0, 0);
+    hardBanIp(ip, { reason: req.body?.reason, durationMs }, (err) => {
+      if (err) return res.status(400).json({ error: err.message });
+      logAction(req.user?.username, 'update', 'script_guard_ban', null, { ip, durationMs });
+      res.json({ success: true, items: listHardBans() });
+    });
+  });
+
+  router.post('/api/admin/script-guard/bans/remove', requireAuth, (req, res) => {
+    const ip = String(req.body?.ip || '').trim();
+    if (!ip) return res.status(400).json({ error: 'Missing ip' });
+    hardUnbanIp(ip, (err) => {
+      if (err) return res.status(400).json({ error: err.message });
+      logAction(req.user?.username, 'delete', 'script_guard_ban', null, { ip });
+      res.json({ success: true, items: listHardBans() });
+    });
   });
 
   return router;

@@ -122,6 +122,44 @@
           <p v-if="!loadingRecords && records.length === 0" class="guard-empty-inline">暂无拦截记录</p>
         </div>
       </el-tab-pane>
+
+      <!-- ------------------------------ 硬封禁 ------------------------------ -->
+      <el-tab-pane label="硬封禁" name="bans">
+        <p class="guard-hint">
+          硬封禁<b>不区分 UA</b>：命中后这个 IP 的<b>一切</b>请求都返回 429，<b>连浏览器也打不开本站</b>。
+          名单存在库里，重启服务依然有效。
+        </p>
+        <p class="guard-warn">
+          后台 <code>/api/admin/*</code> 与 <code>/admin</code> 不受影响，所以就算误封自己的出口 IP，也还能进后台解除。
+          但同一 NAT 出口下的所有设备都会一起被挡 —— 公网 IP 是动态的，封之前想清楚。
+        </p>
+
+        <div class="ban-form">
+          <el-input v-model="banForm.ip" placeholder="要封禁的 IP，例如 58.212.206.47" class="ban-ip" clearable />
+          <el-input v-model="banForm.reason" placeholder="原因（可选）" class="ban-reason" clearable />
+          <el-select v-model="banForm.durationMs" class="ban-duration">
+            <el-option v-for="opt in BAN_DURATIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+          <el-button type="danger" :loading="banSaving" @click="submitBan">封禁</el-button>
+        </div>
+
+        <div v-loading="loadingBans" class="ban-list">
+          <div v-for="item in hardBans" :key="item.ip" class="ban-row">
+            <div class="ban-row-main">
+              <span class="ban-row-ip">{{ item.ip }}</span>
+              <el-tag v-if="item.permanent" type="danger" size="small" effect="dark">永久</el-tag>
+              <el-tag v-else type="warning" size="small">剩余 {{ humanMs(item.remainMs) }}</el-tag>
+              <span v-if="item.hits" class="ban-row-hits">已挡 {{ item.hits }} 次</span>
+            </div>
+            <div class="ban-row-sub">
+              {{ item.reason || '未填原因' }} · 封于 {{ formatTime(item.created_at) }}
+            </div>
+            <el-button link type="primary" size="small" @click="removeBan(item.ip)">解除</el-button>
+          </div>
+          <p v-if="!loadingBans && hardBans.length === 0" class="guard-empty-inline">名单为空</p>
+        </div>
+      </el-tab-pane>
+
       <!-- ------------------------------ 自定义 ------------------------------ -->
       <el-tab-pane label="自定义" name="edit">
         <p class="guard-hint">
@@ -210,6 +248,10 @@
         <el-button :loading="resetting" :disabled="!configLoaded" @click="restoreDefaults">恢复默认</el-button>
         <el-button type="primary" :loading="saving" :disabled="!configLoaded" @click="save">保存并预览</el-button>
       </template>
+      <template v-else-if="tab === 'bans'">
+        <el-button :loading="loadingBans" @click="loadBans">刷新</el-button>
+        <el-button @click="emit('update:modelValue', false)">关闭</el-button>
+      </template>
       <template v-else-if="tab === 'records'">
         <el-button type="danger" :loading="triggering" @click="triggerReal">触发拦截</el-button>
         <el-button type="danger" plain :loading="clearing" @click="clearRecords">清空记录</el-button>
@@ -243,16 +285,20 @@ import {
   clearScriptGuardBlocks,
   unblockScriptGuardIp,
   triggerScriptGuardBlock,
+  getScriptGuardBans,
+  addScriptGuardBan,
+  removeScriptGuardBan,
   type ScriptGuardPageConfig,
   type ScriptGuardBlockRecord,
-  type ScriptGuardTriggerResult
+  type ScriptGuardTriggerResult,
+  type ScriptGuardHardBan
 } from '../services/admin';
 
 defineProps<{ modelValue: boolean }>();
 const emit = defineEmits(['update:modelValue']);
 
 // 默认停在「拦截记录」——它是这个弹窗最常看的一页，另外两页是偶尔调整
-const tab = ref<'preview' | 'edit' | 'records'>('records');
+const tab = ref<'preview' | 'edit' | 'records' | 'bans'>('records');
 
 /*
  * 说明：页签说明里那个 {{site}} 标记必须写成 <code v-pre>，
@@ -396,9 +442,10 @@ const handleOpen = () => {
   // 每次打开都从「示例预览」开始，避免上次的真实触发结果被当成示例数据
   realResult.value = null;
 
-  // 另外两页的数据一并预取，切过去就不用等
+  // 另外几页的数据一并预取，切过去就不用等
   void loadPreview();
   void loadConfig();
+  void loadBans();
 };
 
 /* ---------------------------- 拦截记录 ---------------------------- */
@@ -489,6 +536,86 @@ const release = async (ip: string) => {
   }
 };
 
+/* ---------------------------- 硬封禁 ---------------------------- */
+
+const BAN_DURATIONS = [
+  { label: '永久', value: 0 },
+  { label: '1 小时', value: 60 * 60 * 1000 },
+  { label: '1 天', value: 24 * 60 * 60 * 1000 },
+  { label: '7 天', value: 7 * 24 * 60 * 60 * 1000 },
+  { label: '30 天', value: 30 * 24 * 60 * 60 * 1000 }
+];
+
+const hardBans = ref<ScriptGuardHardBan[]>([]);
+const loadingBans = ref(false);
+const banSaving = ref(false);
+const banForm = reactive({ ip: '', reason: '', durationMs: 0 });
+
+const loadBans = async () => {
+  loadingBans.value = true;
+  try {
+    hardBans.value = await getScriptGuardBans();
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || e?.message || '名单加载失败');
+  } finally {
+    loadingBans.value = false;
+  }
+};
+
+const submitBan = async () => {
+  const ip = banForm.ip.trim();
+  if (!ip) {
+    ElMessage.warning('先填要封禁的 IP');
+    return;
+  }
+
+  const durationText = BAN_DURATIONS.find((d) => d.value === banForm.durationMs)?.label || '';
+  try {
+    await ElMessageBox.confirm(
+      `将对 ${ip} 执行硬封禁（${durationText}）：该 IP 的一切请求都会返回 429，` +
+        '连浏览器也打不开本站（后台 /admin 与 /api/admin 除外）。同一 NAT 出口下的设备会一起被挡。',
+      '硬封禁确认',
+      { type: 'warning', confirmButtonText: '确认封禁', cancelButtonText: '取消' }
+    );
+  } catch {
+    return;
+  }
+
+  banSaving.value = true;
+  try {
+    hardBans.value = await addScriptGuardBan({
+      ip,
+      reason: banForm.reason.trim(),
+      durationMs: banForm.durationMs
+    });
+    banForm.ip = '';
+    banForm.reason = '';
+    ElMessage.success(`已硬封禁 ${ip}`);
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || e?.message || '封禁失败');
+  } finally {
+    banSaving.value = false;
+  }
+};
+
+const removeBan = async (ip: string) => {
+  try {
+    await ElMessageBox.confirm(`解除对 ${ip} 的硬封禁？`, '解除硬封禁', {
+      type: 'warning',
+      confirmButtonText: '解除',
+      cancelButtonText: '取消'
+    });
+  } catch {
+    return;
+  }
+  try {
+    hardBans.value = await removeScriptGuardBan(ip);
+    ElMessage.success(`已解除 ${ip}`);
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || e?.message || '解除失败');
+  }
+};
+
 /** 库里存的是 UTC，按和访客日志一致的口径转成东八区显示 */
 const formatTime = (val: string) => {
   if (!val) return '';
@@ -504,9 +631,10 @@ const humanMs = (ms: number) => {
   return `${Math.max(1, Math.round(n / 1000))} 秒`;
 };
 
-// 切到记录页签就刷新一次，省得看到过期数据
+// 切到记录/硬封禁页签就刷新一次，省得看到过期数据
 watch(tab, (next) => {
   if (next === 'records') void loadRecords();
+  if (next === 'bans') void loadBans();
 });
 
 const save = async () => {
@@ -639,6 +767,76 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport));
   max-height: min(56vh, 560px);
   overflow-y: auto;
   padding-right: 6px;
+}
+
+/* ---- 硬封禁 ---- */
+.ban-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.ban-ip {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.ban-reason {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.ban-duration {
+  flex: 0 0 120px;
+}
+.ban-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 80px;
+  max-height: min(46vh, 420px);
+  overflow-y: auto;
+}
+.ban-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  background: var(--el-fill-color-lighter);
+}
+.ban-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ban-row-ip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+.ban-row-hits {
+  font-size: 12px;
+  color: var(--el-color-danger);
+}
+.ban-row-sub {
+  grid-column: 1;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.ban-row > .el-button {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+@media (max-width: 768px) {
+  .ban-duration {
+    flex: 1 1 100px;
+  }
+  .ban-list {
+    max-height: none;
+  }
 }
 
 /* ---- 拦截记录 ---- */

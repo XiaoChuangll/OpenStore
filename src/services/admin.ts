@@ -1118,3 +1118,30 @@ export const triggerScriptGuardBlock = async (payload?: { ua?: string; path?: st
   const { data } = await api.post('/script-guard/trigger', payload || {});
   return data as ScriptGuardTriggerResult;
 };
+
+/** 硬封禁：不区分 UA，命中后该 IP 的一切请求都返回 429 */
+export interface ScriptGuardHardBan {
+  ip: string;
+  reason: string;
+  created_at: string;
+  expires_at: string | null;
+  permanent: boolean;
+  remainMs: number;
+  /** 封禁期间被挡下的请求数（内存计数，重启归零） */
+  hits: number;
+}
+
+export const getScriptGuardBans = async () => {
+  const { data } = await api.get('/script-guard/bans');
+  return (data.items || []) as ScriptGuardHardBan[];
+};
+
+export const addScriptGuardBan = async (payload: { ip: string; reason?: string; durationMs?: number }) => {
+  const { data } = await api.post('/script-guard/bans', payload);
+  return (data.items || []) as ScriptGuardHardBan[];
+};
+
+export const removeScriptGuardBan = async (ip: string) => {
+  const { data } = await api.post('/script-guard/bans/remove', { ip });
+  return (data.items || []) as ScriptGuardHardBan[];
+};

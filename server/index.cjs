@@ -34,6 +34,7 @@ const {
   applyShareCardToHtml
 } = require('./lib/share-cards.cjs');
 const { broadcast, attachWebSocket } = require('./lib/realtime.cjs');
+const { hardBanGuard } = require('./lib/script-guard.cjs');
 const { JWT_SECRET, requireAuth } = require('./middleware/auth.cjs');
 const { TRUST_PROXY_HOPS, PORT } = require('./lib/config.cjs');
 const { uploadsDir, UPLOAD_FORCE_DOWNLOAD_EXT } = require('./lib/uploads.cjs');
@@ -45,6 +46,13 @@ const app = express();
 app.set('trust proxy', TRUST_PROXY_HOPS);
 
 app.use(cors());
+
+/*
+ * 硬封禁放在最前面：要在 body 解析、日志、静态资源与 SPA 兜底之前，
+ * 否则被封的 IP 仍然能打开页面，就谈不上"硬"。
+ * 名单为空时它只做一次 size 判断，正常流量零开销。
+ */
+app.use(hardBanGuard);
 
 // 兼容字面量 null 请求体：
 // axios 在 Content-Type: application/json 下会把 null 序列化成字符串 "null"，

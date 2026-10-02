@@ -293,6 +293,19 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  /*
+   * 硬封禁名单：不区分 UA，命中后该 IP 的**一切**请求都返回 429（连浏览器也打不开站点）。
+   * 与 script_guard_blocks（流水）不同，这里是"当前生效的名单"，所以 ip 做主键。
+   * expires_at 为 NULL 表示永久；后台 /api/admin/* 与 /admin 不受硬封禁影响，
+   * 否则误封自己的出口 IP 就再也进不去后台解封了。
+   */
+  db.run(`CREATE TABLE IF NOT EXISTS script_guard_bans (
+    ip TEXT PRIMARY KEY,
+    reason TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS apps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

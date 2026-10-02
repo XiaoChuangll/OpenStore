@@ -29,7 +29,7 @@
 const UAParser = require('ua-parser-js');
 const geoip = require('geoip-lite');
 const db = require('../database.cjs');
-const { getClientIp } = require('./client-ip.cjs');
+const { getClientIp, normalizeIp } = require('./client-ip.cjs');
 const { pushLiveLog } = require('./live-log.cjs');
 const { SITE_ORIGIN, SITE_NAME } = require('./share-cards.cjs');
 
@@ -444,6 +444,150 @@ const triggerBlock = (ip, { ua, path } = {}) => {
   };
 };
 
+/* ---------------------------- 硬封禁名单 ---------------------------- */
+
+/*
+ * 与上面的「软封禁」不同：
+ *   软封禁 —— 按 UA 判定，只挡 /api/v0 这类代理请求，浏览器访问不受影响；
+ *   硬封禁 —— 不区分 UA，命中后该 IP 的**一切**请求都返回 429，连浏览器也打不开站点。
+ *
+ * 名单持久化在 script_guard_bans，启动时载入内存，热路径只查 Map（名单为空时直接放行）。
+ * 例外：/api/admin/* 与 /admin 不受硬封禁影响 —— 否则误封自己的出口 IP 就再也进不去后台解封，
+ * 只能上服务器改库。这是个有意的取舍：被误封的人仍然能打开后台登录页，但登录本身另有失败限流。
+ */
+const HARD_BAN_EXEMPT_RE = [/^\/api\/admin(\/|$)/, /^\/admin(\/|$)/, /^\/ws$/];
+const hardBans = new Map(); // ip -> { reason, createdAt, expiresAt(ms, 0=永久), hits }
+
+const toSqlUtc = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+const parseSqlUtc = (val) => {
+  if (!val) return 0;
+  const ms = Date.parse(String(val).replace(' ', 'T') + 'Z');
+  return Number.isNaN(ms) ? 0 : ms;
+};
+
+/** 从库里载入名单（启动时调一次；过期的顺手丢掉） */
+const loadHardBans = (cb) => {
+  db.all(`SELECT ip, reason, created_at, expires_at FROM script_guard_bans`, [], (err, rows) => {
+    if (err) {
+      if (cb) cb(err);
+      return;
+    }
+    const now = Date.now();
+    hardBans.clear();
+    for (const row of rows || []) {
+      const expiresAt = parseSqlUtc(row.expires_at);
+      if (expiresAt && expiresAt <= now) continue;
+      hardBans.set(normalizeIp(row.ip), {
+        reason: row.reason || '',
+        createdAt: row.created_at || '',
+        expiresAt,
+        hits: 0
+      });
+    }
+    if (cb) cb(null);
+  });
+};
+
+/** 只接受 IP 字面量，避免把任意字符串写进名单/内存键 */
+const isValidIp = (raw) => /^[0-9a-fA-F:.]{3,45}$/.test(String(raw || '').trim());
+
+/**
+ * 硬封禁一个 IP。
+ * durationMs 传 0 或不传 = 永久；否则到期自动放行（到期判定在中间件里做）。
+ */
+const hardBanIp = (ip, { reason = '', durationMs = 0 } = {}, cb) => {
+  const key = normalizeIp(String(ip || '').trim());
+  if (!key || !isValidIp(key)) {
+    if (cb) cb(new Error('IP 格式不正确'));
+    return;
+  }
+  const expiresAt = Number(durationMs) > 0 ? Date.now() + Number(durationMs) : 0;
+  const safeReason = String(reason || '').slice(0, 200);
+
+  db.run(
+    `INSERT INTO script_guard_bans (ip, reason, created_at, expires_at) VALUES (?, ?, CURRENT_TIMESTAMP, ?)
+     ON CONFLICT(ip) DO UPDATE SET reason = excluded.reason, created_at = CURRENT_TIMESTAMP, expires_at = excluded.expires_at`,
+    [key, safeReason, expiresAt ? toSqlUtc(expiresAt) : null],
+    (err) => {
+      if (!err) {
+        const prev = hardBans.get(key);
+        hardBans.set(key, { reason: safeReason, createdAt: toSqlUtc(Date.now()), expiresAt, hits: prev?.hits || 0 });
+        pushLiveLog('warn', `脚本护栏：已硬封禁 ${key}${safeReason ? `（${safeReason}）` : ''}`, { kind: 'system' });
+      }
+      if (cb) cb(err || null);
+    }
+  );
+};
+
+const hardUnbanIp = (ip, cb) => {
+  const key = normalizeIp(String(ip || '').trim());
+  if (!key) {
+    if (cb) cb(new Error('缺少 IP'));
+    return;
+  }
+  db.run(`DELETE FROM script_guard_bans WHERE ip = ?`, [key], (err) => {
+    if (!err) {
+      hardBans.delete(key);
+      pushLiveLog('info', `脚本护栏：已解除硬封禁 ${key}`, { kind: 'system' });
+    }
+    if (cb) cb(err || null);
+  });
+};
+
+const listHardBans = () => {
+  const now = Date.now();
+  return [...hardBans.entries()]
+    .map(([ip, v]) => ({
+      ip,
+      reason: v.reason,
+      created_at: v.createdAt,
+      expires_at: v.expiresAt ? new Date(v.expiresAt).toISOString() : null,
+      permanent: !v.expiresAt,
+      remainMs: v.expiresAt ? Math.max(0, v.expiresAt - now) : 0,
+      hits: v.hits || 0
+    }))
+    .sort((a, b) => b.hits - a.hits);
+};
+
+/**
+ * 硬封禁中间件：挂到最前面（要在静态资源和 SPA 兜底之前），
+ * 这样被封的 IP 连页面都打不开。名单为空时只做一次 size 判断，开销可忽略。
+ */
+const hardBanGuard = (req, res, next) => {
+  if (hardBans.size === 0) return next();
+  const path = req.path || '';
+  if (HARD_BAN_EXEMPT_RE.some((re) => re.test(path))) return next();
+
+  const ip = getClientIp(req);
+  const ban = hardBans.get(ip);
+  if (!ban) return next();
+
+  const now = Date.now();
+  if (ban.expiresAt && ban.expiresAt <= now) {
+    hardUnbanIp(ip);
+    return next();
+  }
+
+  ban.hits += 1;
+
+  const retryAfterSec = ban.expiresAt ? Math.ceil((ban.expiresAt - now) / 1000) : 0;
+  res.set('Cache-Control', 'no-store');
+  res.set('X-Robots-Tag', 'noindex');
+  if (retryAfterSec > 0) res.set('Retry-After', String(retryAfterSec));
+  res
+    .status(429)
+    .type('html')
+    .send(
+      warningPage({
+        ip,
+        ua: req.headers['user-agent'],
+        path: req.originalUrl,
+        retryAfterSec,
+        strikes: 0
+      })
+    );
+};
+
 /* ------------------------------ 中间件 ------------------------------ */
 
 /**
@@ -529,6 +673,7 @@ setInterval(() => {
 
 // 启动就读一次配置（system_settings 表由 database.cjs 建立，语句在同一连接上串行执行）
 loadPageConfig();
+loadHardBans();
 
 module.exports = {
   scriptGuard,
@@ -542,5 +687,9 @@ module.exports = {
   clearBlockRecords,
   unblockIp,
   triggerBlock,
+  hardBanGuard,
+  hardBanIp,
+  hardUnbanIp,
+  listHardBans,
   DEFAULT_PAGE_CONFIG
 };
