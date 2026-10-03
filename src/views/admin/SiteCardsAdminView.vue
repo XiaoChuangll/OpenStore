@@ -1,18 +1,17 @@
 <template>
   <div class="admin-view site-cards-admin">
-    <div class="section-card">
-      <div class="section-head">
-        <div class="section-left">
-          <span class="section-title">页面卡片</span>
-          <span class="meta-chip">共 {{ items.length }} 张</span>
-          <span class="meta-chip">{{ activePageMeta.hint }}</span>
-        </div>
+    <AdminSection title="页面卡片">
+      <template #meta>
+        <span class="meta-chip">共 {{ items.length }} 张</span>
+        <span class="meta-chip">{{ activePageMeta.hint }}</span>
+      </template>
+      <template #actions>
         <div class="head-right">
           <span v-if="orderSaving" class="meta-chip is-saving">保存顺序…</span>
           <el-button size="small" :icon="RefreshLeft" :loading="resetting" @click="resetCurrentPage">恢复默认</el-button>
           <el-button size="small" :icon="Refresh" :loading="loading" @click="fetchList">刷新</el-button>
         </div>
-      </div>
+      </template>
 
       <!-- 页面 dock：选择要管理的页面 -->
       <nav ref="dockRef" class="page-dock" :class="{ 'is-wrapped': dockWrapped }">
@@ -59,7 +58,7 @@
       <p class="dock-tip">
         按住卡片任意位置上下拖动即可调整权重，顺序自动保存；拖动中按 Esc 可取消。
       </p>
-    </div>
+    </AdminSection>
 
     <el-dialog v-model="showDialog" title="编辑卡片" width="480px">
       <el-form label-position="top" :model="form">
@@ -157,6 +156,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Refresh, RefreshLeft } from '@element-plus/icons-vue';
 import { getSiteCards, reorderSiteCards, resetSiteCards, updateSiteCard, type SiteCard } from '../../services/admin';
+import AdminSection from '../../components/admin/AdminSection.vue';
 
 type CardRow = SiteCard & { enabledBoolean: boolean };
 
@@ -164,7 +164,7 @@ const PAGES = [
   // label 跟前台的叫法对齐：/ 这一页在前台叫「探索」，里面分「首页」「系统」两个页签
   { key: 'home', label: '探索·首页', hint: '探索页「首页」页签的板块', manageable: true },
   { key: 'system', label: '探索·系统', hint: '探索页「系统」页签的卡片', manageable: true },
-  { key: 'about', label: '关于', hint: '关于页面的卡片', manageable: true },
+  { key: 'about', label: '关于', hint: '关于页面的卡片（含页面头部）', manageable: true },
 ];
 
 // 内容型页面目前没有可配置卡片，放在 dock 里只是为了标明全局范围
@@ -568,39 +568,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.section-card {
-  padding: 16px 18px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 12px;
-  background-color: var(--el-bg-color-overlay);
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: nowrap;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-
-.section-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  white-space: nowrap;
-}
-
 .meta-chip {
   padding: 1px 8px;
   border-radius: 999px;

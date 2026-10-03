@@ -1,10 +1,6 @@
 <template>
   <div class="admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 更新日志管理 </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="更新日志管理" />
 
     <el-card class="mb-4">
       <div class="card-header"><h3>日志列表</h3><el-button type="primary" size="small" @click="openCreate">新增日志</el-button></div>
@@ -105,9 +101,9 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, onMounted, computed, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { useRouter } from 'vue-router';
 import { Edit, Delete } from '@element-plus/icons-vue';
 import { getChangelogs, createChangelog, updateChangelog, deleteChangelog } from '../../services/admin';
 import { onWS } from '../../services/ws';
@@ -122,7 +118,6 @@ import 'katex/dist/katex.min.css';
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
 
-const router = useRouter();
 const items = ref<Changelog[]>([]);
 const showDialog = ref(false);
 const dialogTitle = ref('新增日志');
@@ -226,7 +221,6 @@ const formatTime = (time: string) => {
   return new Date(time).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 };
 
-const goBack = () => router.push('/');
 </script>
 
 <style scoped>

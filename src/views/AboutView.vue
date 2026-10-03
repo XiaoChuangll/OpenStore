@@ -1,78 +1,140 @@
 <template>
   <div class="about-view">
-    <el-card class="about-card mb-4" v-if="showContent" :style="cardStyle('content')">
-      <div 
-        class="about-content" 
+    <!-- 页面头部：站点身份 + 作者，始终做成第一屏的主视觉 -->
+    <AboutHero
+      class="about-hero-item"
+      :style="cardStyle('hero')"
+      :site-name="aboutData.site_name"
+      :tagline="aboutData.tagline"
+      :version="siteVersion"
+      :author-name="aboutData.author_name"
+      :repo-name="repoName"
+      :repo-stars="repoStars"
+      :social-links="socialLinks"
+    />
+
+    <el-card
+      v-if="showContent"
+      class="about-card is-full content-card"
+      :style="cardStyle('content')"
+    >
+      <div
+        class="about-content"
         :class="{ 'ql-editor': !aboutData.content_markdown, 'markdown-body': !!aboutData.content_markdown }"
         v-html="aboutData.content_html"
       ></div>
     </el-card>
 
-    <el-card class="about-card mb-4" :style="cardStyle('author')">
+    <el-card class="about-card is-half" :style="cardStyle('author')">
       <template #header>
         <div class="card-header">
-          <span>关于作者</span>
+          <span class="card-title"><el-icon><User /></el-icon>关于作者</span>
         </div>
       </template>
-      <div class="about-content">
+      <div class="info-list">
         <div class="info-row">
           <span class="label">开发者</span>
-          <div class="developer-info">
-            <span class="value">{{ aboutData.author_name || 'ChuEng' }}</span>
-            <div class="author-info" v-if="aboutData.author_avatar">
-              <el-image 
-                :src="aboutData.author_avatar" 
-                fit="cover" 
-                class="author-avatar"
-                :preview-src-list="[aboutData.author_avatar]"
-              />
-            </div>
-          </div>
+          <span class="value">{{ aboutData.author_name || 'ChuEng' }}</span>
         </div>
         <div class="info-row">
-          <div class="flex items-center">
-            <span class="label mr-2">Github</span>
-            <a v-if="repoStars !== null" :href="`https://github.com/${getRepoName(aboutData.github_repo)}/stargazers`" target="_blank" class="value link star-link">
-              <el-icon class="mr-1 text-yellow-500"><StarFilled /></el-icon> {{ repoStars }}
-            </a>
-          </div>
-          <div class="flex items-center">
-            <a :href="aboutData.author_github || 'https://github.com/XiaoChuangll'" target="_blank" class="value link">
-              {{ getGithubUsername(aboutData.author_github) || 'XiaoChuangll' }} <el-icon><Link /></el-icon>
-            </a>
-          </div>
+          <span class="label">GitHub</span>
+          <a
+            :href="aboutData.author_github || 'https://github.com/XiaoChuangll'"
+            target="_blank"
+            rel="noopener"
+            class="value link"
+          >
+            {{ getGithubUsername(aboutData.author_github) || 'XiaoChuangll' }}
+            <el-icon><Link /></el-icon>
+          </a>
+        </div>
+        <div class="info-row">
+          <span class="label">仓库</span>
+          <a v-if="repoName" :href="`https://github.com/${repoName}`" target="_blank" rel="noopener" class="value link">
+            {{ repoName }}
+            <el-icon><Link /></el-icon>
+          </a>
+          <span v-else class="value is-muted">未配置</span>
+        </div>
+        <div class="info-row">
+          <span class="label">星标</span>
+          <a
+            v-if="repoStars !== null && repoName"
+            :href="`https://github.com/${repoName}/stargazers`"
+            target="_blank"
+            rel="noopener"
+            class="value link star-link"
+          >
+            <el-icon class="text-yellow-500"><StarFilled /></el-icon> {{ repoStars }}
+          </a>
+          <span v-else class="value is-muted">—</span>
         </div>
       </div>
     </el-card>
 
-    <el-card class="about-card mb-4" :style="cardStyle('tech-stack')">
+    <el-card class="about-card is-half" :style="cardStyle('tech-stack')">
       <template #header>
         <div class="card-header">
-          <span>技术栈</span>
+          <span class="card-title"><el-icon><Cpu /></el-icon>技术栈</span>
         </div>
       </template>
-      <div class="tech-stack">
-        <el-tag 
-          v-for="tech in techStack" 
+      <div v-if="techStack.length" class="tech-stack">
+        <el-tag
+          v-for="tech in techStack"
           :key="tech.name"
-          :type="tech.type"
+          :type="tech.color"
           effect="light"
-          class="tech-tag"
           size="large"
+          class="tech-tag"
         >
           {{ tech.name }}
         </el-tag>
       </div>
+      <p v-else class="empty-tip">暂未配置技术栈</p>
     </el-card>
 
-    <el-card class="about-card mb-4" :style="cardStyle('changelogs')">
+    <el-card v-if="contributors.length" class="about-card is-full" :style="cardStyle('contributors')">
       <template #header>
-        <div class="card-header cursor-pointer select-none flex items-center justify-between" @click="toggleChangelogs">
-          <div class="flex items-center">
-            <span class="mr-2">更新日志</span>
+        <div class="card-header">
+          <span class="card-title"><el-icon><Medal /></el-icon>鸣谢</span>
+        </div>
+      </template>
+      <p class="contributors-intro">感谢以下贡献者对 OpenStore 的支持：</p>
+      <div class="contributors">
+        <a
+          v-for="person in contributors"
+          :key="person.github"
+          :href="githubProfileUrl(person.github)"
+          target="_blank"
+          rel="noopener"
+          class="contributor"
+          :title="`@${person.github}`"
+        >
+          <el-image
+            :src="githubAvatarUrl(person.github, 160)"
+            fit="cover"
+            class="contributor-avatar"
+            loading="lazy"
+          >
+            <!-- 头像取不到时退回首字母，别留一个破图 -->
+            <template #error>
+              <span class="contributor-fallback">{{ (person.name || person.github).slice(0, 1).toUpperCase() }}</span>
+            </template>
+          </el-image>
+          <span class="contributor-name">{{ person.name || person.github }}</span>
+        </a>
+      </div>
+    </el-card>
+
+    <el-card class="about-card is-full" :style="cardStyle('changelogs')">
+      <template #header>
+        <div class="card-header is-toggle" @click="toggleChangelogs">
+          <span class="card-title">
+            <el-icon><Histogram /></el-icon>
+            更新日志
             <el-tag size="small" effect="light" type="primary" round>{{ latestChangelogVersion }}</el-tag>
-          </div>
-          <el-icon :class="{ 'rotate-90': changelogsExpanded }"><ArrowRight /></el-icon>
+          </span>
+          <el-icon class="toggle-icon" :class="{ 'rotate-90': changelogsExpanded }"><ArrowRight /></el-icon>
         </div>
       </template>
       <el-collapse-transition>
@@ -87,21 +149,23 @@
                 <div class="changelog-content markdown-body" v-html="getChangelogHtml(item)"></div>
               </div>
             </div>
-            <div v-if="changelogsFetched && changelogs.length === 0 && !changelogsLoading" class="text-center text-gray-400 py-4">
+            <p v-if="changelogsFetched && changelogs.length === 0 && !changelogsLoading" class="empty-tip">
               暂无更新日志
-            </div>
+            </p>
           </div>
         </div>
       </el-collapse-transition>
     </el-card>
 
-    <el-card class="about-card mb-4" v-if="aboutData.github_repo" :style="cardStyle('commits')">
+    <el-card v-if="aboutData.github_repo" class="about-card is-full" :style="cardStyle('commits')">
       <template #header>
-        <div class="card-header cursor-pointer select-none flex items-center justify-between" @click="toggleCommits">
-          <div class="flex items-center">
-            <span class="mr-2">最近提交 ({{ getRepoName(aboutData.github_repo) }})</span>
-          </div>
-          <el-icon :class="{ 'rotate-90': commitsExpanded }"><ArrowRight /></el-icon>
+        <div class="card-header is-toggle" @click="toggleCommits">
+          <span class="card-title">
+            <el-icon><Connection /></el-icon>
+            最近提交
+            <span class="card-count">{{ repoName }}</span>
+          </span>
+          <el-icon class="toggle-icon" :class="{ 'rotate-90': commitsExpanded }"><ArrowRight /></el-icon>
         </div>
       </template>
       <el-collapse-transition>
@@ -118,25 +182,21 @@
                   <span class="commit-time">{{ new Date(commit.commit.author.date).toLocaleString() }}</span>
                 </div>
               </div>
-              <a :href="commit.html_url" target="_blank" class="commit-link">
+              <a :href="commit.html_url" target="_blank" rel="noopener" class="commit-link">
                 <el-icon><Link /></el-icon>
               </a>
             </div>
-            <div v-if="commits.length === 0 && !commitsLoading" class="text-center text-gray-400 py-4">
-              暂无提交记录或无法获取
-            </div>
+            <p v-if="commits.length === 0 && !commitsLoading" class="empty-tip">暂无提交记录或无法获取</p>
           </div>
         </div>
       </el-collapse-transition>
     </el-card>
 
-    <el-card class="about-card mb-4" :style="cardStyle('feedback')">
+    <el-card class="about-card is-full" :style="cardStyle('feedback')">
       <template #header>
-        <div class="card-header cursor-pointer select-none flex items-center justify-between" @click="toggleFeedback">
-          <div class="flex items-center">
-            <span class="mr-2">意见反馈</span>
-          </div>
-          <el-icon :class="{ 'rotate-90': feedbackExpanded }"><ArrowRight /></el-icon>
+        <div class="card-header is-toggle" @click="toggleFeedback">
+          <span class="card-title"><el-icon><ChatDotRound /></el-icon>意见反馈</span>
+          <el-icon class="toggle-icon" :class="{ 'rotate-90': feedbackExpanded }"><ArrowRight /></el-icon>
         </div>
       </template>
       <el-collapse-transition>
@@ -194,7 +254,6 @@
                   <span v-if="copyTipVisible" class="copy-tip">已复制</span>
                 </div>
               </el-alert>
-              <div class="privacy-tip"></div>
             </el-tab-pane>
             <el-tab-pane label="查询进度" name="query">
               <div class="hash-query">
@@ -280,16 +339,29 @@
     </el-card>
 
     <div class="footer-info">
-      <p>Version {{ aboutData.version || '1.0.0' }}</p>
+      <p>Version {{ siteVersion }}</p>
       <p>&copy; {{ new Date().getFullYear() }} BetaHub Tech. All rights reserved.</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed } from 'vue';
+import { onMounted, onUnmounted, ref, computed, watch } from 'vue';
 import { useLayoutStore } from '../stores/layout';
-import { Link, ArrowRight, StarFilled, CircleCheck, CircleCheckFilled, Clock } from '@element-plus/icons-vue';
+import {
+  Link,
+  ArrowRight,
+  StarFilled,
+  CircleCheck,
+  CircleCheckFilled,
+  Clock,
+  User,
+  Cpu,
+  ChatDotRound,
+  Histogram,
+  Medal,
+  Connection,
+} from '@element-plus/icons-vue';
 import { getAboutPage, getPublicChangelogs, submitFeedback, getFeedbackProgressByHash, getFeedbackSuccessList, type AboutPage, type Changelog, type FeedbackSummary } from '../services/api';
 import axios from 'axios';
 import MarkdownIt from 'markdown-it';
@@ -297,13 +369,17 @@ import '@vueup/vue-quill/dist/vue-quill.snow.css'; // Import Quill styles for co
 import 'github-markdown-css/github-markdown.css';
 import { useAuthStore } from '../stores/auth';
 import { getPublicSiteCards } from '../services/admin';
+import { contentVersion } from '../services/content-refresh';
+import AboutHero from '../components/AboutHero.vue';
+import { DEFAULT_TECH_STACK, githubAvatarUrl, githubProfileUrl, normalizeContributors, normalizeSocialLinks, normalizeTechStack, type Contributor, type SocialLinkItem, type TechStackItem } from '../utils/about';
 
 /*
  * 关于页面的卡片顺序 / 显隐由后台「首页配置 → 关于」决定：
- * 卡片都留在模板原位，用 flex order + display 调整，避免大改结构。
+ * 卡片都留在模板原位，用 grid order + display 调整，避免大改结构。
+ * hero 是后加的卡片，老库启动时会被种子数据补上，没补上时按模板顺序落在最前面。
  */
 const aboutCards = ref<Record<string, { enabled: boolean; order: number }>>({});
-const ABOUT_CARD_FALLBACK = ['content', 'author', 'tech-stack', 'changelogs', 'commits', 'feedback'];
+const ABOUT_CARD_FALLBACK = ['hero', 'content', 'author', 'tech-stack', 'contributors', 'changelogs', 'commits', 'feedback'];
 
 const loadAboutCards = async () => {
   let keys = ABOUT_CARD_FALLBACK;
@@ -361,18 +437,34 @@ const md = new MarkdownIt({
   breaks: true,
 });
 
-const techStack = [
-  { name: 'Vue 3', type: 'success' },
-  { name: 'TypeScript', type: 'primary' },
-  { name: 'Vite', type: 'warning' },
-  { name: 'Element Plus', type: 'primary' },
-  { name: 'Pinia', type: 'warning' },
-  { name: 'Apache ECharts', type: 'danger' },
-  { name: 'Node.js', type: 'success' },
-  { name: 'Express', type: 'info' },
-  { name: 'SQLite', type: 'info' },
-  { name: 'Font Awesome', type: 'primary' }
-] as const;
+/** 技术栈：后台没配置过就用默认值，保证首屏不空 */
+const techStack = computed<TechStackItem[]>(() => {
+  const list = normalizeTechStack(aboutData.value.tech_stack);
+  return list.length ? list : DEFAULT_TECH_STACK;
+});
+
+/** 社交入口：后台清了就退回作者的 GitHub / 仓库地址，避免 Hero 底部整块消失 */
+const socialLinks = computed<SocialLinkItem[]>(() => {
+  const list = normalizeSocialLinks(aboutData.value.social_links);
+  if (list.length) return list;
+  const fallback: SocialLinkItem[] = [];
+  if (aboutData.value.author_github) {
+    fallback.push({ label: 'GitHub', url: aboutData.value.author_github, icon: 'github' });
+  }
+  if (aboutData.value.github_repo) {
+    fallback.push({
+      label: '仓库',
+      url: `https://github.com/${getRepoName(aboutData.value.github_repo)}`,
+      icon: 'star',
+    });
+  }
+  return fallback;
+});
+
+const repoName = computed(() => (aboutData.value.github_repo ? getRepoName(aboutData.value.github_repo) : ''));
+
+/** 鸣谢名单：头像按 GitHub 用户名现拼地址，后台改了名字/顺序立刻反映到前台 */
+const contributors = computed<Contributor[]>(() => normalizeContributors(aboutData.value.contributors));
 
 const showContent = computed(() => {
   const html = aboutData.value.content_html;
@@ -665,9 +757,16 @@ const latestChangelog = computed(() => {
   return list[0] || null;
 });
 
-const latestChangelogVersion = computed(() => {
-  return latestChangelog.value?.version || aboutData.value.version || '1.0.0';
+/*
+ * 首屏版本徽标和页脚共用同一个来源：优先「关于」里配置的版本，
+ * 没配置才退回最新一条更新日志（更新日志每条有自己的 vX.Y.Z，不是站点版本）。
+ */
+const siteVersion = computed(() => {
+  return aboutData.value.version || latestChangelog.value?.version || '1.0.0';
 });
+
+/** 更新日志卡片标题上的标签：用日志自己的版本号，没配才退回站点版本 */
+const latestChangelogVersion = computed(() => latestChangelog.value?.version || siteVersion.value);
 
 const fetchChangelogs = async () => {
   changelogsLoading.value = true;
@@ -816,6 +915,8 @@ const fetchData = async () => {
       `,
       author_name: 'ChuEng',
       author_github: 'https://github.com/XiaoChuangll',
+      site_name: 'OpenStore',
+      tagline: '鸿蒙应用数据探索与分析平台',
       version: '1.0.0'
     };
   }
@@ -833,6 +934,12 @@ onMounted(async () => {
   loadAboutCards();
 });
 
+// 后台保存「关于」内容 / 卡片配置后（WS → contentVersion +1）重新取数
+watch(contentVersion, () => {
+  fetchData();
+  loadAboutCards();
+});
+
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll);
   layoutStore.setHeaderState(false);
@@ -841,50 +948,357 @@ onUnmounted(() => {
 
 <style scoped>
 .about-view {
-  max-width: 800px;
+  max-width: 960px;
   margin: 0 auto;
-  /* 卡片顺序由后台配置决定，用 flex order 调换位置 */
-  display: flex;
-  flex-direction: column;
+  /*
+   * 两列网格：hero / 内容 / 更新日志 / 提交 / 反馈整宽，作者与技术栈并排。
+   * 卡片顺序仍然由后台配置的 order 决定，dense 让半宽卡片自动补上空位。
+   */
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  grid-auto-flow: dense;
 }
-.mb-4 {
-  margin-bottom: 20px;
+
+.about-view > .is-full,
+.about-view > .about-hero-item {
+  grid-column: 1 / -1;
 }
+
+.about-hero-item {
+  margin: 0;
+}
+
 .about-card {
-  border-radius: 12px;
+  border-radius: 14px;
+  margin: 0;
 }
+
+.about-card :deep(.el-card__header) {
+  padding: 14px 18px;
+}
+
+.about-card :deep(.el-card__body) {
+  padding: 18px;
+}
+
+.content-card :deep(.el-card__body) {
+  padding: 22px 24px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-header.is-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+
+.card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.card-title .el-icon {
+  color: var(--el-color-primary);
+  font-size: 16px;
+}
+
+.card-count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: var(--el-fill-color-light);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--el-text-color-secondary);
+}
+
+.toggle-icon {
+  color: var(--el-text-color-secondary);
+}
+
 .about-content {
-  line-height: 1.6;
+  line-height: 1.7;
 }
+
 .about-content.ql-editor,
 .about-content.markdown-body {
   padding: 0;
   overflow-y: visible;
   height: auto;
 }
-.card-header {
+
+.empty-tip {
+  margin: 0;
+  padding: 16px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
-.feedback-tabs {
+
+/* 作者信息 */
+.info-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--el-border-color-lighter);
+}
+
+.info-row:first-child {
+  padding-top: 0;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.info-row .label {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+.info-row .value {
+  min-width: 0;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-row .value.is-muted {
+  font-weight: 400;
+  color: var(--el-text-color-placeholder);
+}
+
+.info-row .link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+
+.info-row .link:hover {
+  text-decoration: underline;
+}
+
+/* 技术栈 */
+.tech-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tech-tag {
+  border: none;
+  font-weight: 500;
+  /* 撑满整行：标签按内容比例分摊剩余宽度，右端不会留下参差空白 */
+  flex-grow: 1;
+  justify-content: center;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  cursor: default;
+}
+
+.tech-tag:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px -8px rgba(15, 23, 42, 0.5);
+}
+
+/* 更新日志 / 提交 */
+.changelogs-list,
+.commits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.changelog-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.changelog-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.changelog-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.changelog-date {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.changelog-content {
   margin-top: 8px;
+  padding: 0;
 }
+
+.commit-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.commit-item:last-child {
+  border-bottom: none;
+}
+
+.commit-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.commit-msg {
+  margin-bottom: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.commit-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.commit-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.commit-link {
+  display: flex;
+  align-items: center;
+  font-size: 18px;
+  color: var(--el-color-primary);
+}
+
+.commit-link:hover {
+  color: var(--el-color-primary-light-3);
+}
+
+/* 鸣谢 */
+.contributors-intro {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+.contributors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.contributor {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 14px 6px 6px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 999px;
+  background-color: var(--el-fill-color-lighter);
+  text-decoration: none;
+  transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+}
+
+.contributor:hover {
+  border-color: color-mix(in srgb, var(--el-color-primary) 45%, transparent);
+  background-color: var(--el-color-primary-light-9);
+  transform: translateY(-1px);
+}
+
+.contributor-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  border: 1px solid var(--el-border-color-lighter);
+  background-color: var(--el-bg-color);
+}
+
+/* 头像挂了也要占住同样的位置，否则整行会抖 */
+.contributor-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background-color: var(--el-color-primary-light-8);
+  color: var(--el-color-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.contributor-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 反馈 */
+.feedback-tabs {
+  margin-top: 4px;
+}
+
 .success-alert :deep(.el-alert__content) {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+
 .hash-query-row {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
 }
+
 .hash-query-row .el-input {
   flex: 1 1 auto;
   min-width: 0;
 }
+
 .hash-query-row .el-button {
   flex: 0 0 auto;
 }
+
 .query-result {
   margin-top: 12px;
   padding: 14px 16px;
@@ -899,6 +1313,7 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 10px;
 }
+
 .query-result-head {
   display: flex;
   align-items: center;
@@ -906,6 +1321,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
   line-height: 1;
 }
+
 .query-result .qr-time {
   margin-left: auto;
   display: inline-flex;
@@ -915,9 +1331,11 @@ onUnmounted(() => {
   color: var(--el-text-color-secondary);
   font-variant-numeric: tabular-nums;
 }
+
 .query-result .qr-time .el-icon {
   font-size: 13px;
 }
+
 .query-result-title {
   font-size: 15px;
   font-weight: 600;
@@ -925,6 +1343,7 @@ onUnmounted(() => {
   color: var(--el-text-color-primary);
   word-break: break-word;
 }
+
 @media (max-width: 480px) {
   .query-result .qr-time {
     /* 窄屏让时间换行到下一行，别把两个标签挤变形 */
@@ -932,15 +1351,18 @@ onUnmounted(() => {
     width: 100%;
   }
 }
+
 .success-list {
   margin-top: 20px;
   background-color: var(--el-fill-color-lighter);
   border-radius: 8px;
   padding: 16px;
 }
+
 .success-list-completed {
   background-color: var(--el-color-success-light-9);
 }
+
 .success-list-accepted {
   background-color: var(--el-color-primary-light-9);
 }
@@ -956,6 +1378,7 @@ onUnmounted(() => {
   /* 图标与标题之间留出间距：flex 会吃掉模板里那个空格，不显式给 gap 就会贴在一起 */
   gap: 6px;
 }
+
 .success-list-header::before {
   content: "";
   position: absolute;
@@ -966,18 +1389,23 @@ onUnmounted(() => {
   border-radius: 4px;
   background-color: var(--el-color-success);
 }
+
 .success-list-completed .success-list-header {
   color: var(--el-color-success-dark-2);
 }
+
 .success-list-completed .success-list-header::before {
   background-color: var(--el-color-success);
 }
+
 .success-list-accepted .success-list-header {
   color: var(--el-color-primary-dark-2);
 }
+
 .success-list-accepted .success-list-header::before {
   background-color: var(--el-color-primary);
 }
+
 .success-item {
   display: flex;
   align-items: center;
@@ -987,12 +1415,15 @@ onUnmounted(() => {
   transition: background-color 0.2s;
   border-radius: 4px;
 }
+
 .success-item:hover {
   background-color: var(--el-fill-color-light);
 }
+
 .success-item:last-child {
   border-bottom: none;
 }
+
 .success-item .title {
   font-size: 14px;
   color: var(--el-text-color-primary);
@@ -1003,24 +1434,28 @@ onUnmounted(() => {
   margin-right: 16px;
   font-weight: 500;
 }
+
 .success-item .meta {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   white-space: nowrap;
   flex-shrink: 0;
 }
+
 .success-alert .alert-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-weight: 600;
 }
+
 .success-alert .alert-desc {
   display: flex;
   align-items: baseline;
   gap: 6px;
   font-size: 14px;
 }
+
 .success-alert .alert-desc .hash {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   color: var(--el-color-primary);
@@ -1033,223 +1468,67 @@ onUnmounted(() => {
   cursor: pointer;
   user-select: none;
 }
+
 .copy-tip {
   color: var(--el-color-success);
   margin-left: 8px;
   font-size: 13px;
 }
-.developer-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.author-info {
-  display: flex;
-  justify-content: center;
-  margin: 0;
-}
-.author-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 2px solid var(--el-border-color);
-}
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  padding-bottom: 12px;
-}
-.info-row:last-child {
-  border-bottom: none;
-  margin-bottom: 0;
-  padding-bottom: 0;
-}
-.info-row .label {
-  color: var(--el-text-color-secondary);
-}
-.commits-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.changelogs-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.commit-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-.changelog-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-.commit-item:last-child {
-  border-bottom: none;
-}
-.changelog-item:last-child {
-  border-bottom: none;
-}
-.commit-info {
-  flex: 1;
-  min-width: 0;
-  margin-right: 12px;
-}
-.changelog-info {
-  flex: 1;
-  min-width: 0;
-}
-.commit-msg {
-  font-weight: 500;
-  margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.changelog-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  gap: 12px;
-}
-.changelog-date {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.changelog-content {
-  margin-top: 8px;
-  padding: 0;
-}
-.commit-meta {
-  display: flex;
-  align-items: center;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  gap: 12px;
-}
-.commit-user {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.commit-link {
-  color: var(--el-color-primary);
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-}
-.commit-link:hover {
-  color: var(--el-color-primary-light-3);
-}
-.info-row .value {
-  font-weight: 500;
-  color: var(--el-text-color-primary);
-}
-.info-row .link {
-  color: var(--el-color-primary);
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.info-row .link:hover {
-  text-decoration: underline;
-}
-.tech-stack {
-  padding: 20px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.tech-tag {
-  flex-grow: 1;
-  justify-content: center;
-  transition: all 0.3s ease;
-  cursor: default;
-  border: none;
-  font-weight: 500;
-}
-.tech-tag:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-.mr-1 { margin-right: 4px; }
-.mr-2 { margin-right: 12px; }
-.mb-2 { margin-bottom: 12px; }
 
-.feedback-form :deep(.el-checkbox__label) {
-  white-space: normal;
-  word-break: break-word;
-  line-height: 1.6;
-}
-@media (max-width: 480px) {
-  .feedback-form :deep(.el-checkbox__label) {
-    display: block;
-  }
-}
-
-h2 {
-  margin-bottom: 20px;
-  color: var(--el-text-color-primary);
-}
-p, ul {
-  color: var(--el-text-color-regular);
-  margin-bottom: 16px;
-}
-ul {
-  padding-left: 20px;
-}
-li {
-  margin-bottom: 8px;
-}
 .footer-info {
   /* 页脚永远排在所有卡片之后 */
-  order: 100;
-  margin-top: 40px;
+  order: 1000;
+  grid-column: 1 / -1;
+  margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid var(--el-border-color-light);
   text-align: center;
   color: var(--el-text-color-secondary);
   font-size: 0.9rem;
 }
+
+.footer-info p {
+  margin: 4px 0;
+}
+
 .rotate-90 {
   transform: rotate(90deg);
+}
+
+.toggle-icon {
   transition: transform 0.3s;
 }
-.el-icon {
-  transition: transform 0.3s;
-}
+
 .text-yellow-500 {
   color: #e6a23c;
 }
+
 .flex {
   display: flex;
 }
+
 .items-center {
   align-items: center;
 }
-.justify-between {
-  justify-content: space-between;
+
+.mb-2 {
+  margin-bottom: 12px;
 }
+
+.mt-2 {
+  margin-top: 12px;
+}
+
 .star-link {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  gap: 4px;
   text-decoration: none;
   font-weight: 500;
   color: var(--el-text-color-primary);
   transition: opacity 0.2s;
 }
+
 .star-link:hover {
   opacity: 0.8;
   text-decoration: none;
@@ -1349,5 +1628,17 @@ li {
 :deep(.ql-editor pre) {
   background-color: var(--el-fill-color-light) !important;
   color: var(--el-text-color-primary) !important;
+}
+
+/* 窄屏：改单列，半宽卡片自然铺满 */
+@media (max-width: 720px) {
+  .about-view {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .content-card :deep(.el-card__body) {
+    padding: 18px 16px;
+  }
 }
 </style>

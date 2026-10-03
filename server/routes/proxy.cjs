@@ -1,13 +1,10 @@
 /*
- * 上游代理：/api/v0 透传（含屏蔽应用重写）、/api/proxy-request、/api/music-proxy
+ * 上游代理：/api/v0 透传（浏览查询会追加屏蔽应用条件）、/api/proxy-request、/api/music-proxy
  */
 const express = require('express');
-const axios = require('axios');
 const path = require('path');
-const { pushLiveLog } = require('../lib/live-log.cjs');
 const { getClientIp } = require('../lib/client-ip.cjs');
 const { createProxy } = require('../lib/proxy.cjs');
-const { UPSTREAM_USER_AGENT } = require('../lib/config.cjs');
 const { loadBlockedAppPackages } = require('../lib/blocked-apps.cjs');
 const { isBrowseAppQuery } = require('../lib/browse-query.cjs');
 const { assertPublicOutboundUrl, requestWithSafeRedirects, assertAllowedProxyTarget } = require('../lib/outbound-guard.cjs');
@@ -21,47 +18,32 @@ router.use('/api/v0', scriptGuard);
 router.use('/api/proxy-request', scriptGuard);
 router.use('/api/music-proxy', scriptGuard);
 
+/*
+ * 浏览 / 筛选类查询：把屏蔽名单作为查询条件下推给上游。
+ * 分页后再过滤会导致每页少几条、total_count 也对不上；下推后每页是满的。
+ * 带关键词的搜索不走这里（见 isBrowseAppQuery），被屏蔽的应用仍能搜到。
+ */
 router.use('/api/v0', (req, res, next) => {
   if (req.method !== 'POST' || req.path !== '/apps/query' || !isBrowseAppQuery(req.body)) {
     return next();
   }
 
-  loadBlockedAppPackages(async (blocked) => {
+  loadBlockedAppPackages((blocked) => {
     if (!blocked.size) return next();
 
-    const target = process.env.VITE_API_TARGET || 'https://shenjack.top:10003';
-    const headers = {
-      'Content-Type': 'application/json',
-      // 与所有上游调用保持一致：用我们自己的标识，不透传访客 UA
-      'User-Agent': UPSTREAM_USER_AGENT
-    };
-    const startedAt = Date.now();
+    // 上游没有 not_eq，用 not_i_like 表达不等于（不带通配符即等值匹配）
+    const exclusions = [...blocked].map((pkg) => ({
+      key: 'pkg_name',
+      value: pkg,
+      op: 'not_i_like',
+    }));
 
-    try {
-      const response = await axios.post(`${target}${req.originalUrl}`, req.body ?? {}, {
-        headers,
-        timeout: 20000,
-        validateStatus: () => true
-      });
-      const payload = response.data;
-      const list = payload?.data?.data;
+    const original = req.body && typeof req.body === 'object' ? req.body : {};
+    // 原条件整体包一层 and，再追加排除项（上游支持嵌套 and）
+    const base = Object.keys(original).length ? [original] : [];
+    req.body = { and: [...base, ...exclusions] };
 
-      if (Array.isArray(list)) {
-        payload.data.data = list.filter(
-          (app) => !blocked.has(String(app?.pkg_name || '').toLowerCase())
-        );
-      }
-
-      const ms = Date.now() - startedAt;
-      pushLiveLog(response.status >= 500 ? 'error' : response.status >= 400 ? 'warn' : 'info',
-        `POST ${req.originalUrl} → ${response.status} · ${ms}ms`,
-        { kind: 'upstream', method: 'POST', path: req.originalUrl, status: response.status, ms }
-      );
-      res.status(response.status).json(payload);
-    } catch (error) {
-      console.error('屏蔽列表过滤失败，回退到普通代理：', error.message);
-      next();
-    }
+    next();
   });
 });
 

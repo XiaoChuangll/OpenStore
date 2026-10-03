@@ -1,23 +1,17 @@
 <template>
   <div class="admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 故障与维护管理 </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="故障与维护管理" />
 
-    <div class="section-card">
-      <!-- 头部：统计 + 发布 -->
-      <div class="section-head">
-        <div class="section-left">
-          <span class="section-title">故障、维护与提示</span>
-          <span class="section-count">共 {{ items.length }} 条</span>
-          <span v-if="ongoingCount" class="meta-chip is-alert">进行中 {{ ongoingCount }}</span>
-          <span v-if="scheduledCount" class="meta-chip">计划维护 {{ scheduledCount }}</span>
-          <span v-if="noticeCount" class="meta-chip">提示 {{ noticeCount }}</span>
-        </div>
+    <AdminSection title="故障、维护与提示">
+      <template #meta>
+        <span class="section-count">共 {{ items.length }} 条</span>
+        <span v-if="ongoingCount" class="meta-chip is-alert">进行中 {{ ongoingCount }}</span>
+        <span v-if="scheduledCount" class="meta-chip">计划维护 {{ scheduledCount }}</span>
+        <span v-if="noticeCount" class="meta-chip">提示 {{ noticeCount }}</span>
+      </template>
+      <template #actions>
         <el-button type="primary" size="small" :icon="Plus" @click="handleCreate">发布</el-button>
-      </div>
+      </template>
 
       <!-- 过滤条 -->
       <div class="filter-bar">
@@ -128,7 +122,7 @@
           {{ hasFilter ? '没有符合条件的记录' : '暂无故障或维护记录' }}
         </p>
       </div>
-    </div>
+    </AdminSection>
 
     <!-- 发布 / 编辑弹窗 -->
     <el-dialog
@@ -243,8 +237,8 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue';
-import { useRouter } from 'vue-router';
 import { getIncidents, createIncident, updateIncident, deleteIncident, type Incident } from '../../services/admin';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -252,10 +246,10 @@ import {
   WarningFilled, Tools, InfoFilled, BellFilled, Promotion, ChatDotRound,
   Link, Download, Clock, CircleCheckFilled, Star, Trophy, Setting, Monitor
 } from '@element-plus/icons-vue';
+import AdminSection from '../../components/admin/AdminSection.vue';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
-const router = useRouter();
 
 const items = ref<Incident[]>([]);
 const loading = ref(false);
@@ -433,9 +427,6 @@ const timeRangeText = (row: Incident) => {
   return `已持续 ${Math.floor(diff / 86_400_000)} 天`;
 };
 
-const goBack = () => {
-  router.push('/admin');
-};
 
 const handleCreate = () => {
   isEdit.value = false;
@@ -517,41 +508,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.mb-4 { margin-bottom: 20px; }
-
-.section-card {
-  padding: 16px 18px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 12px;
-  background-color: var(--el-bg-color-overlay);
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  /* 标题与发布按钮保持同一行 */
-  flex-wrap: nowrap;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-
-.section-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  white-space: nowrap;
-}
 
 .section-count {
   font-size: 12px;

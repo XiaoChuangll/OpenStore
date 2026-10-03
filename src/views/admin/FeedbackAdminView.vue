@@ -1,10 +1,6 @@
 <template>
   <div class="feedback-admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 用户反馈 </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="用户反馈" />
 
     <el-card>
       <!-- 限频配置并进列表卡片的头部，用表单形态 -->
@@ -209,16 +205,14 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { getFeedbacks, deleteFeedbacks, updateFeedback, type Feedback } from '../../services/admin';
 import { getEnvVars, setEnvVar } from '../../services/api';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { Refresh, Delete } from '@element-plus/icons-vue';
 
 defineProps<{ embedded?: boolean }>();
-const router = useRouter();
-const goBack = () => router.push('/admin');
 
 const items = ref<Feedback[]>([]);
 const total = ref(0);
@@ -409,7 +403,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.mb-4 { margin-bottom: 16px; }
 .mb-2 { margin-bottom: 8px; }
 .mt-3 { margin-top: 12px; }
 .mt-2 { margin-top: 8px; }

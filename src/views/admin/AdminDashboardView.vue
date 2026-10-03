@@ -10,7 +10,7 @@
       <template v-if="!isNarrow">
         <!-- 顶部品牌：logo + 站点名（logo 与顶栏同一个 mask 图案） -->
         <div class="admin-brand">
-          <span class="admin-brand-logo" role="img" aria-label="OpenStore"></span>
+          <BrandMark class="admin-brand-logo" :size="22" />
           <span class="admin-brand-name">OpenStore</span>
         </div>
 
@@ -180,6 +180,7 @@ import {
 } from '@element-plus/icons-vue';
 
   import MenuSettingIcon from '../../components/MenuSettingIcon.vue';
+  import BrandMark from '../../components/BrandMark.vue';
 
   /*
    * 面板一律按需加载：管理端里文章/公告/关于/更新日志都带 Quill + markdown 渲染器，
@@ -309,7 +310,7 @@ const SECTIONS: Record<string, { title: string; hint: string }> = {
   articles: { title: '文章管理', hint: '分类、标签与文章' },
   comments: { title: '评论管理', hint: '评论审核与筛选' },
   'site-cards': { title: '首页配置', hint: '各页面卡片与拖拽排序' },
-  about: { title: '关于页面', hint: '站点信息与版本' },
+  about: { title: '关于页面', hint: '站点信息、技术栈与页面内容' },
   'music-apis': { title: '接口管理', hint: '第三方接口与可用性检测' },
   links: { title: '链接管理', hint: '友情链接' },
   groups: { title: '群聊管理', hint: '群聊信息' },
@@ -642,13 +643,10 @@ const handleSwitchTab = (tabName: any) => {
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
+/* 角标是内联 SVG 组件（BrandMark）：这里只管圆环颜色，尺寸由组件的 size 属性给 */
 .admin-brand-logo {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  background-color: var(--el-text-color-primary);
-  -webkit-mask: url('/favicon.svg') no-repeat center center / contain;
-  mask: url('/favicon.svg') no-repeat center center / contain;
+  color: var(--el-text-color-primary);
 }
 
 .admin-brand-name {

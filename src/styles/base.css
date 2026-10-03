@@ -1,0 +1,84 @@
+/* 基础重置：页面根元素、字体平滑、滚动条、焦点环、点击高亮 */
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", sans-serif;
+  background-color: var(--el-bg-color-page);
+  color: var(--el-text-color-primary);
+  transition: background-color 0.3s, color 0.3s;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* 键盘可达性：只在键盘操作时显示焦点环（替代原来"彻底移除 outline"的做法） */
+
+button:focus,
+html .el-button:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-5);
+  outline-offset: 2px;
+}
+
+/* Remove mobile tap highlight color */
+
+* {
+  /* Firefox */
+
+/* IE/Edge */
+  -webkit-tap-highlight-color: transparent;
+  scrollbar-width: none; 
+  -ms-overflow-style: none; 
+}
+
+/* Global scrollbar hiding for Webkit */
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* Lower z-index for announcement guide tooltip so it goes under the header */
+
+html .el-popper.header-covered-tooltip {
+  z-index: 900 !important;
+}
+
+/* Hide scrollbar utility */
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Hide scrollbars for all Element Plus Dialogs */
+
+html .el-overlay-dialog::-webkit-scrollbar,
+html .el-dialog::-webkit-scrollbar,
+html .el-dialog__body::-webkit-scrollbar {
+  display: none;
+}
+
+html .el-overlay-dialog,
+html .el-dialog,
+html .el-dialog__body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Hide Element Plus custom scrollbars in dialogs */
+
+html .el-dialog .el-scrollbar__bar {
+  display: none !important;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

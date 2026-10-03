@@ -1,10 +1,6 @@
 <template>
   <div class="admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 应用管理 </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="应用管理" />
     <!-- toolbar--tabs：窄屏时这排按钮会被摆到下面页签行的右侧（见 AdminDashboardView） -->
     <div class="toolbar toolbar--tabs">
       <!-- size=small：放进页签行后按行高收一号，跟表头/页签的尺寸匹配 -->
@@ -260,16 +256,15 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { Plus, Edit, Delete, Search, Refresh } from '@element-plus/icons-vue';
 import { getApps, createApp, updateApp, deleteApp, uploadFile, getAppSubmissions, approveAppSubmission, rejectAppSubmission, updateAppSubmission, type AppItem, type AppSubmission } from '../../services/admin';
-import { useRouter } from 'vue-router';
 import { getAppIconUrl } from '../../utils/app-info';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
-const router = useRouter();
 const items = ref<AppItem[]>([]);
 const pendingItems = ref<Array<AppSubmission & { loading?: boolean }>>([]);
 const activeTab = ref<'apps' | 'pending'>('apps');
@@ -510,11 +505,9 @@ const beforeUpload = (rawFile: File) => {
   return true;
 };
 
-const goBack = () => router.push('/');
 </script>
 
 <style scoped>
-.mb-4 { margin-bottom: 20px; }
 .toolbar { display: flex; gap: 10px; margin-bottom: 12px; }
 
 /* ---------- 顶部过滤条 ---------- */

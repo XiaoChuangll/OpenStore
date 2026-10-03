@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '../stores/auth';
+import type { Contributor, SocialLinkItem, TechStackItem } from '../utils/about';
 
 const API_URL = '/api/admin';
 
@@ -495,6 +496,15 @@ export interface AboutPage {
   author_github?: string;
   github_repo?: string;
   version?: string;
+  site_name?: string;
+  tagline?: string;
+  /** 技术栈标签（服务端已解析成数组） */
+  tech_stack?: TechStackItem[];
+  /** 作者社交入口（服务端已解析成数组） */
+  social_links?: SocialLinkItem[];
+  /** 鸣谢名单（服务端已解析成数组） */
+  contributors?: Contributor[];
+  updated_at?: string;
 }
 
 export const getAboutPage = async () => {
@@ -503,7 +513,8 @@ export const getAboutPage = async () => {
 };
 
 export const updateAboutPage = async (payload: Partial<AboutPage>) => {
-  await api.put('/about', payload);
+  const { data } = await api.put('/about', payload);
+  return (data || {}) as { changed?: number; item?: AboutPage };
 };
 
 export interface Visitor {

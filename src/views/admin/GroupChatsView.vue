@@ -1,10 +1,6 @@
 <template>
   <div class="admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 群聊自定义管理 </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="群聊自定义管理" />
 
     <div class="toolbar">
       <el-button type="primary" :icon="Plus" @click="openCreate">新增群聊</el-button>
@@ -68,8 +64,8 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { Plus } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { getGroupChats, createGroupChat, updateGroupChat, deleteGroupChat, uploadFile, type GroupChat } from '../../services/admin';
@@ -77,7 +73,6 @@ import { getGroupChats, createGroupChat, updateGroupChat, deleteGroupChat, uploa
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
 
-const router = useRouter();
 const items = ref<GroupChat[]>([]);
 
 const isMobile = ref(window.innerWidth < 768);
@@ -157,11 +152,9 @@ const beforeAvatarUpload = (rawFile: File) => {
   return true;
 };
 
-const goBack = () => router.push('/');
 </script>
 
 <style scoped>
-.mb-4 { margin-bottom: 20px; }
 .toolbar { display: flex; gap: 10px; margin-bottom: 12px; }
 .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
 .upload-row { display: flex; align-items: center; gap: 12px; }

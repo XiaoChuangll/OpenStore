@@ -1,6 +1,6 @@
 <template>
   <section
-    v-if="loading || current"
+    v-if="showSection"
     class="topic-spotlight"
     @mouseenter="paused = true"
     @mouseleave="paused = false"
@@ -9,10 +9,10 @@
       <h3 class="spotlight-heading">
         精选专题
         <!-- 多张海报时轮播：小圆点可以手动切 -->
-        <span v-if="slides.length > 1" class="spotlight-dots">
+        <span v-if="cards.length > 1" class="spotlight-dots">
           <button
-            v-for="(slide, index) in slides"
-            :key="slide.key"
+            v-for="(card, index) in cards"
+            :key="card.slide.key"
             type="button"
             class="spotlight-dot"
             :class="{ 'is-active': index === activeIndex }"
@@ -24,62 +24,76 @@
       </h3>
     </div>
 
-    <div
-      class="spotlight-card"
-      :class="{ 'is-loading': loading }"
-      role="link"
-      tabindex="0"
-      :aria-label="current ? `${current.cta}：${current.title}` : '精选专题'"
-      @click="openTopic"
-      @keydown.enter.prevent="openTopic"
-      @keydown.space.prevent="openTopic"
-    >
-      <!--
-        不用 mode="out-in"：那会让旧海报先完全淡出、新海报才开始进，
-        中间约 0.6 秒卡片是空的（就是"轮换时能看见四周的空白区域"）。
-        这里让两张同时在，靠绝对定位叠在一起交叉淡入淡出。
-      -->
-      <transition name="spotlight-swap">
-        <div :key="current?.key || 'empty'" class="spotlight-slide">
-          <div class="spotlight-banner">
-            <span v-if="current?.badge" class="spotlight-badge">{{ current.badge }}</span>
+    <!-- 每张海报一张常驻卡片，轮播只切换 .is-active（不改动 DOM，图标滚动得以延续） -->
+    <div class="spotlight-stage">
+      <!-- 骨架：与真实卡片同高，先把位置占住，避免整块内容突然出现把下面的板块顶下去 -->
+      <div v-if="showSkeleton" class="spotlight-card is-active spotlight-skeleton" aria-hidden="true">
+        <div class="spotlight-slide">
+          <div class="spotlight-banner spotlight-skeleton-banner"></div>
+          <div class="spotlight-body">
+            <span class="skeleton-bar is-title"></span>
+            <span class="skeleton-bar is-subtitle"></span>
+            <span class="skeleton-bar is-meta"></span>
+          </div>
+        </div>
+      </div>
 
-            <div class="spotlight-blur" aria-hidden="true">
-              <img v-for="(icon, i) in blurIcons" :key="`b${i}`" :src="icon" alt="" />
+      <template v-else>
+        <div
+          v-for="(card, index) in cards"
+          :key="card.slide.key"
+          class="spotlight-card"
+          :class="{ 'is-active': index === activeIndex }"
+          :aria-hidden="index === activeIndex ? undefined : 'true'"
+          role="link"
+          tabindex="0"
+          :aria-label="`${card.slide.cta}：${card.slide.title}`"
+          @click="card.slide.go()"
+          @keydown.enter.prevent="card.slide.go()"
+          @keydown.space.prevent="card.slide.go()"
+        >
+        <div class="spotlight-slide">
+          <div class="spotlight-banner">
+            <span v-if="card.slide.badge" class="spotlight-badge">{{ card.slide.badge }}</span>
+
+            <div v-if="card.blurIcons.length" class="spotlight-blur" aria-hidden="true">
+              <img v-for="(icon, i) in card.blurIcons" :key="`b${i}`" :src="icon" alt="" />
             </div>
             <div class="spotlight-veil" aria-hidden="true"></div>
 
             <!-- 图标过多时上下两行反向滚动，悬停暂停，悬停单个图标放大 -->
             <div
-              v-if="icons.length"
+              v-if="card.slide.icons.length"
               class="spotlight-marquee"
-              :class="{ 'is-scroll': marquee }"
+              :class="{ 'is-scroll': card.marquee }"
             >
               <div
-                v-for="(row, rowIndex) in rows"
+                v-for="(row, rowIndex) in card.rows"
                 :key="rowIndex"
                 class="spotlight-row"
                 :class="{ 'is-reverse': rowIndex % 2 === 1 }"
               >
                 <div
                   class="spotlight-track"
-                  :style="{ '--marquee-copies': copies, '--marquee-duration': `${rowDuration(row)}s` }"
+                  :style="{ '--marquee-copies': card.copies, '--marquee-duration': `${rowDuration(row)}s` }"
                 >
-                  <template v-for="copy in copies" :key="copy">
-                    <el-image
+                  <template v-for="copy in card.copies" :key="copy">
+                    <!-- 用原生 img：el-image 在 load 前会渲染占位，图标墙会先空白再填充 -->
+                    <span
                       v-for="(icon, i) in row"
                       :key="`${copy}-${i}`"
-                      :src="icon"
                       class="spotlight-icon"
-                      fit="cover"
-                      :aria-hidden="copy > 1 ? 'true' : null"
+                      :aria-hidden="copy > 1 ? 'true' : undefined"
                     >
-                      <template #error>
-                        <span class="spotlight-icon-fallback">
-                          <el-icon><Picture /></el-icon>
-                        </span>
-                      </template>
-                    </el-image>
+                      <img
+                        v-if="!failedIcons.has(icon)"
+                        :src="icon"
+                        class="spotlight-icon-img"
+                        alt=""
+                        @error="failedIcons.add(icon)"
+                      />
+                      <el-icon v-else class="spotlight-icon-fallback"><Picture /></el-icon>
+                    </span>
                   </template>
                 </div>
               </div>
@@ -87,30 +101,34 @@
           </div>
 
           <div class="spotlight-body">
-            <h4 class="spotlight-title">{{ current?.title || '正在挑一个专题…' }}</h4>
-            <!-- 始终占一行：有些专题没有副标题，用不换行空格占位，避免切换海报时卡片高度跳动 -->
-            <p class="spotlight-subtitle">{{ current?.subtitle || '\u00A0' }}</p>
-            <div v-if="current" class="spotlight-meta">
-              <span>{{ current.metaText }}</span>
+            <h4 class="spotlight-title">{{ card.slide.title }}</h4>
+            <!-- 始终占一行：有些专题没有副标题，用不换行空格占位，避免卡片高度跳动 -->
+            <p class="spotlight-subtitle">{{ card.slide.subtitle || '\u00A0' }}</p>
+            <div class="spotlight-meta">
+              <span>{{ card.slide.metaText }}</span>
               <span class="dot">·</span>
-              <span>{{ appCount }} 个应用</span>
+              <span>{{ card.slide.count }} 个应用</span>
               <span class="spotlight-cta">
-                {{ current.cta }}
+                {{ card.slide.cta }}
                 <el-icon><ArrowRight /></el-icon>
               </span>
             </div>
           </div>
         </div>
-      </transition>
+      </div>
+      </template>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ArrowRight, Picture } from '@element-plus/icons-vue';
 import { getTopics, getTopicDetail, getNewAppsByDateRange, getAppUpdates, type FullSubstanceInfo } from '../services/api';
+
+// active：所在页签是否可见；隐藏时不排期，避免在后台切海报、发请求
+const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true });
 
 /**
  * 首页的「精选专题」：随机挑一个专题，用专题详情页那套头图展示。
@@ -136,6 +154,8 @@ const MARQUEE_COPIES = 3;
 const router = useRouter();
 const loading = ref(false);
 const topic = ref<FullSubstanceInfo | null>(null);
+/** 加载失败的图标地址：换成兜底图标，避免一直挂破图 */
+const failedIcons = ref(new Set<string>());
 
 interface SpotlightSlide {
   key: 'weekly' | 'daily' | 'topic';
@@ -257,24 +277,75 @@ const slides = computed<SpotlightSlide[]>(() => {
 
 const activeIndex = ref(0);
 const paused = ref(false);
-const current = computed<SpotlightSlide | null>(() => {
+
+/**
+ * 渲染快照。数据刷新时冻结「正在前台」的那张，等它切走后再换内容，
+ * 避免用户看到当前海报原地重新加载。
+ */
+const renderedSlides = ref<SpotlightSlide[]>([]);
+let frozenIndex: number | null = null;
+
+const syncRenderedSlides = () => {
   const list = slides.value;
+  const next = list.slice();
+  const frozenIdx = frozenIndex;
+  const frozen = frozenIdx === null ? null : renderedSlides.value[frozenIdx];
+  // 同一张海报（key 不变）且仍在前台：沿用旧内容
+  if (frozen && frozenIdx !== null && list[frozenIdx] && frozen.key === list[frozenIdx].key) {
+    next[frozenIdx] = frozen;
+  }
+  renderedSlides.value = next;
+};
+
+// 数据变了：冻结前台那张，其余直接换新
+watch(
+  slides,
+  () => {
+    frozenIndex = slides.value[activeIndex.value] ? activeIndex.value : null;
+    syncRenderedSlides();
+  },
+  { immediate: true }
+);
+
+// 切换后解冻：那张已不在前台，可以安全换新内容
+watch(activeIndex, () => {
+  frozenIndex = null;
+  syncRenderedSlides();
+});
+
+const current = computed<SpotlightSlide | null>(() => {
+  // 用渲染快照：前台那张是冻结的，保证显隐判断与显示内容一致
+  const list = renderedSlides.value;
   if (!list.length) return null;
   return list[Math.min(Math.max(activeIndex.value, 0), list.length - 1)];
 });
 
-const appCount = computed(() => current.value?.count || 0);
-const iconUrls = computed(() => (current.value?.icons || []).slice(0, MAX_ICONS));
-const blurIcons = computed(() => iconUrls.value.slice(0, BLUR_LIMIT));
-const icons = computed(() => iconUrls.value);
-const marquee = computed(() => icons.value.length > STATIC_LIMIT);
-const rows = computed(() => {
-  const list = icons.value;
-  if (!marquee.value) return [list];
-  const half = Math.ceil(list.length / 2);
-  return [list, [...list.slice(half), ...list.slice(0, half)]];
-});
-const copies = computed(() => (marquee.value ? MARQUEE_COPIES : 1));
+/**
+ * 卡片渲染数据。每张海报是一张常驻卡片，轮播只切换前后台（见 .spotlight-card 样式），
+ * 因此图标滚动不会因重建而重置。
+ */
+interface SpotlightCard {
+  slide: SpotlightSlide;
+  blurIcons: string[];
+  rows: string[][];
+  marquee: boolean;
+  copies: number;
+}
+
+const cards = computed<SpotlightCard[]>(() =>
+  renderedSlides.value.map((slide) => {
+    const icons = slide.icons.slice(0, MAX_ICONS);
+    const isMarquee = icons.length > STATIC_LIMIT;
+    const half = Math.ceil(icons.length / 2);
+    return {
+      slide,
+      blurIcons: icons.slice(0, BLUR_LIMIT),
+      rows: isMarquee ? [icons, [...icons.slice(half), ...icons.slice(0, half)]] : [icons],
+      marquee: isMarquee,
+      copies: isMarquee ? MARQUEE_COPIES : 1,
+    };
+  })
+);
 
 /**
  * 滚动速度按「每个图标多少秒」算，而不是固定总时长 ——
@@ -294,10 +365,6 @@ const rowDuration = (row: string[]) =>
 const formatDate = (value?: string) => {
   if (!value) return '';
   return new Date(value).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
-};
-
-const openTopic = () => {
-  current.value?.go();
 };
 
 const loadSpotlight = async () => {
@@ -382,16 +449,17 @@ const loadDaily = async () => {
   }
 };
 
-const goSlide = (index: number) => {
+/** 手动点圆点：同样先确保目标海报已预热，避免跳过去看到加载过程 */
+const goSlide = async (index: number) => {
+  if (index === activeIndex.value) return;
+  await awaitWarm(slides.value[index]);
   activeIndex.value = index;
+  warmUpNext(index);
+  scheduleRoundRefresh();
   scheduleNext();
 };
 
-/**
- * 一轮海报播完后的自动刷新：专题换一个 + 本周上新 / 今日更新重新取数。
- * 由 scheduleNext 在绕回第一张之前 await，保证"刷新完成才切下一轮"，
- * 不会出现切过去还是旧内容、或者中间空一拍。
- */
+/** 重新取一轮数据：换一个专题 + 刷新本周上新 / 今日更新（后台执行，不阻塞切换） */
 const refreshAll = async () => {
   try {
     await Promise.all([loadSpotlight(), loadWeekly(), loadDaily()]);
@@ -409,33 +477,177 @@ let carouselTimer: number | null = null;
 const dwellOf = (slide: SpotlightSlide | null) =>
   slide?.key === 'weekly' || slide?.key === 'daily' ? DWELL_WEEKLY : DWELL_TOPIC;
 
+/* ------------------------------- 图标预热 ------------------------------- */
+
+/** 切换前等待预热的上限（弱网兜底） */
+const WARMUP_TIMEOUT_MS = 3000;
+
+/** 预热标识：带上图标清单，刷新换了图标但 key 不变时也要重新预热 */
+const warmKeyOf = (slide: SpotlightSlide) => `${slide.key}::${slide.icons.join('|')}`;
+
+/** 已预热完成（含确认加载失败） */
+const warmedSlides = ref(new Set<string>());
+/** 等待超时后放行的，不重复等 */
+const skippedSlides = ref(new Set<string>());
+/** 进行中的预热，用于去重 */
+const warmingPromises = new Map<string, Promise<void>>();
+
+/** 下载并 decode 一组图片；成功失败都算完成，避免个别坏图卡住整批 */
+const warmUpImages = (urls: string[]) => {
+  const unique = [...new Set(urls.filter(Boolean))];
+  return Promise.all(
+    unique.map(
+      (url) =>
+        new Promise<void>((resolve) => {
+          const img = new Image();
+          img.decoding = 'async';
+          const done = () => resolve();
+          img.onload = () => {
+            // onload 只代表下载完，再 decode 一次，首帧绘制就不用现解码
+            if (typeof img.decode === 'function') img.decode().then(done, done);
+            else done();
+          };
+          img.onerror = done;
+          img.src = url;
+        })
+    )
+  );
+};
+
+/** 开始预热（只发一次，不设上限，后台下完为止；超时兜底在 awaitWarm） */
+const ensureSlideWarm = (slide?: SpotlightSlide | null): Promise<void> => {
+  if (!slide || !slide.icons.length) return Promise.resolve();
+  const key = warmKeyOf(slide);
+  if (warmedSlides.value.has(key)) return Promise.resolve();
+  const inflight = warmingPromises.get(key);
+  if (inflight) return inflight;
+
+  const task = warmUpImages(slide.icons.slice(0, MAX_ICONS)).then(() => {
+    warmedSlides.value.add(key);
+    warmingPromises.delete(key);
+  });
+
+  warmingPromises.set(key, task);
+  return task;
+};
+
+/** 等预热完成，最多 WARMUP_TIMEOUT_MS；超时记入 skippedSlides 放行 */
+const awaitWarm = async (slide?: SpotlightSlide | null) => {
+  if (!slide || !slide.icons.length) return;
+  const key = warmKeyOf(slide);
+  if (warmedSlides.value.has(key) || skippedSlides.value.has(key)) return;
+
+  await Promise.race([
+    ensureSlideWarm(slide),
+    new Promise<void>((resolve) => window.setTimeout(resolve, WARMUP_TIMEOUT_MS)),
+  ]);
+  if (!warmedSlides.value.has(key)) skippedSlides.value.add(key);
+};
+
+/** 预热下一张（当前这张一显示就调用，给切换留提前量） */
+const warmUpNext = (from = activeIndex.value) => {
+  const list = slides.value;
+  if (list.length < 2) return;
+  void ensureSlideWarm(list[(from + 1) % list.length]);
+};
+
+/** 本轮是否已刷新过 */
+let refreshedThisRound = false;
+/** 后台刷新的延时器 */
+let roundRefreshTimer: number | null = null;
+const ROUND_REFRESH_DELAY_MS = 1000;
+
+/**
+ * 新一轮开头（回到第一张）落地约 1 秒后，在后台刷新下一轮数据：
+ * 延迟 1 秒让切换先渲染完，整轮停留时间用来加载，切换时无需等数据。
+ */
+const scheduleRoundRefresh = () => {
+  if (roundRefreshTimer) window.clearTimeout(roundRefreshTimer);
+  roundRefreshTimer = null;
+  // 只在回到第一张时排一次
+  if (activeIndex.value !== 0) return;
+  refreshedThisRound = false;
+  roundRefreshTimer = window.setTimeout(() => {
+    roundRefreshTimer = null;
+    if (!props.active || refreshedThisRound) return;
+    refreshedThisRound = true;
+    void refreshAll().then(() => {
+      // 刷新后预热下一张的图标
+      warmUpNext();
+    });
+  }, ROUND_REFRESH_DELAY_MS);
+};
+
+/** 当前这张是否已就绪（或已超时放行）；没就绪不渲染，避免露出加载过程 */
+const currentReady = computed(() => {
+  const slide = current.value;
+  if (!slide || !slide.icons.length) return true;
+  const key = warmKeyOf(slide);
+  return warmedSlides.value.has(key) || skippedSlides.value.has(key);
+});
+
+/** 是否渲染这一块：加载中或已有数据就占位，避免整块内容突然出现 */
+const showSection = computed(() => loading.value || slides.value.length > 0);
+/** 是否显示骨架：数据或图标还没就绪 */
+const showSkeleton = computed(() => !(cards.value.length > 0 && currentReady.value));
+
+/* ------------------------------- 轮播排期 ------------------------------- */
+
 /** 按当前海报的停留时间排下一次切换（手动切换后会重新计时） */
 const scheduleNext = () => {
   if (carouselTimer) window.clearTimeout(carouselTimer);
+  carouselTimer = null;
+  // 页签隐藏时不排期
+  if (!props.active) return;
+
   carouselTimer = window.setTimeout(async () => {
     if (!paused.value && slides.value.length > 1) {
       const nextIndex = (activeIndex.value + 1) % slides.value.length;
-      /*
-       * 绕回第一张 = 一轮播完了：先把数据刷新完再切过去。
-       * （#换一个 按钮已去掉，改成这里自动刷新；刷新期间仍然停在最后一张海报上，
-       *   所以不会出现空白或"切过去还是旧内容"。）
-       */
-      if (nextIndex === 0) await refreshAll();
-      // 刷新后海报数量可能变了（比如今天没有更新），夹一下免得越界
-      activeIndex.value = Math.min(Math.max(nextIndex, 0), Math.max(slides.value.length - 1, 0));
+      const list = slides.value;
+      const target = Math.min(nextIndex, Math.max(list.length - 1, 0));
+      // 等下一张预热完成再切（最多 3 秒）
+      await awaitWarm(list[target]);
+
+      activeIndex.value = target;
+      // 落地即预热再下一张
+      warmUpNext(target);
+      // 新一轮开头：落地 1 秒后后台刷新
+      scheduleRoundRefresh();
     }
     scheduleNext();
   }, dwellOf(current.value));
 };
 
+watch(
+  () => props.active,
+  (on) => {
+    if (on) {
+      scheduleNext();
+    } else if (carouselTimer) {
+      window.clearTimeout(carouselTimer);
+      carouselTimer = null;
+      // 页签隐藏就不再排后台刷新
+      if (roundRefreshTimer) {
+        window.clearTimeout(roundRefreshTimer);
+        roundRefreshTimer = null;
+      }
+    }
+  }
+);
+
 onMounted(async () => {
   await Promise.all([loadWeekly(), loadDaily(), loadSpotlight()]);
+  // 首屏先预热第一张再显示（最多 3 秒）
+  await awaitWarm(slides.value[0]);
   activeIndex.value = 0;
+  // 一露面就预热下一张
+  warmUpNext(0);
   scheduleNext();
 });
 
 onUnmounted(() => {
   if (carouselTimer) window.clearTimeout(carouselTimer);
+  if (roundRefreshTimer) window.clearTimeout(roundRefreshTimer);
 });
 </script>
 
@@ -488,45 +700,94 @@ onUnmounted(() => {
   transform: scale(1.2);
 }
 
-.spotlight-card {
-  /* 交叉淡入淡出时，正在离场的那张要绝对定位叠在上面，需要这里当定位参照 */
+/* 海报舞台：所有卡片叠在这里，只有当前这张占布局位置 */
+.spotlight-stage {
   position: relative;
+}
+
+/*
+ * 常驻卡片：轮播只切换前后台。后台卡片用 visibility 隐藏（不是 display:none），
+ * 否则动画会被重置。
+ */
+.spotlight-card {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
   overflow: hidden;
   border: 1px solid var(--el-border-color);
   border-radius: 12px;
   background: var(--el-bg-color);
   box-shadow: var(--el-box-shadow-light);
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  /* 隐藏延到淡出之后，让退场动画播完 */
+  transition: opacity 0.34s ease, visibility 0s linear 0.34s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.spotlight-card.is-active {
+  /* 当前这张回到正常流，撑起舞台高度 */
+  position: relative;
+  inset: auto;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.34s ease, visibility 0s linear 0s, border-color 0.2s, box-shadow 0.2s;
+}
+
+/* 骨架：与真实卡片同高，先把位置占住 */
+.spotlight-skeleton {
+  cursor: default;
+}
+
+.spotlight-skeleton:hover {
+  border-color: var(--el-border-color);
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.spotlight-skeleton-banner {
+  background: var(--el-fill-color-light);
+}
+
+.spotlight-skeleton .skeleton-bar {
+  display: block;
+  border-radius: 6px;
+  background-color: var(--el-fill-color);
+  animation: spotlight-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.spotlight-skeleton .is-title {
+  width: 160px;
+  height: 24px;
+  margin-bottom: 6px;
+}
+
+.spotlight-skeleton .is-subtitle {
+  width: 260px;
+  height: 18px;
+  margin-bottom: 12px;
+}
+
+.spotlight-skeleton .is-meta {
+  width: 180px;
+  height: 16px;
+}
+
+@keyframes spotlight-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* 非当前卡：图标滚动原地暂停，切回来从暂停位置继续 */
+.spotlight-card:not(.is-active) .spotlight-track {
+  animation-play-state: paused;
 }
 
 .spotlight-slide {
   width: 100%;
-}
-
-/* 海报切换动画 */
-.spotlight-swap-enter-active,
-.spotlight-swap-leave-active {
-  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.34s ease-out;
-}
-
-/*
- * 「推出推入」而不是叠加淡入淡出：
- *   旧图往左平移 100% 出画，新图从右边 100% 平移进来。
- * 两张都各占一半、拼起来始终铺满卡片 —— 既不会像 mode="out-in" 那样中间空一拍，
- * 也不会像叠加淡化那样两张重影糊在一起；平移幅度是整张宽度，边缘不露底色。
- */
-.spotlight-swap-leave-active {
-  position: absolute;
-  inset: 0;
-}
-
-.spotlight-swap-enter-from {
-  transform: translateX(100%);
-}
-
-.spotlight-swap-leave-to {
-  transform: translateX(-100%);
 }
 
 /* 本周上新角标 */
@@ -552,11 +813,6 @@ onUnmounted(() => {
 .spotlight-card:focus-visible {
   outline: 2px solid var(--el-color-primary);
   outline-offset: 2px;
-}
-
-.spotlight-card.is-loading {
-  opacity: 0.6;
-  pointer-events: none;
 }
 
 .spotlight-banner {
@@ -673,6 +929,9 @@ html.dark .spotlight-veil {
 }
 
 .spotlight-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 46px;
   height: 46px;
   flex: 0 0 auto;
@@ -683,6 +942,14 @@ html.dark .spotlight-veil {
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.18);
   transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease;
   position: relative;
+}
+
+/* 图标本体：填满外壳 */
+.spotlight-icon-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 html.dark .spotlight-icon {
@@ -796,6 +1063,10 @@ html.dark .spotlight-icon:hover {
 
   .spotlight-icon:hover {
     transform: none;
+  }
+
+  .spotlight-skeleton .skeleton-bar {
+    animation: none;
   }
 }
 </style>
