@@ -2,16 +2,15 @@
   "openapi": "3.1.0",
   "info": {
     "title": "鸿蒙应用市场 第三方API",
-    "description": "鸿蒙应用市场 第三方API\n\n提供鸿蒙应用市场数据查询、统计分析等功能\n\n使用者不得在获取信息之后在本地原样存储",
+    "description": "鸿蒙应用市场 第三方API\n\n提供鸿蒙应用市场数据查询、统计分析等功能\n\n如需使用帮助，欢迎加入QQ群：1104231298\n\n使用要求：\n现在所有请求均要求有一个非null user-agent\n使用者不得在获取信息之后在本地原样存储\n使用者不得使用该API获取的信息后声明为“华为官方数据”",
     "contact": {
       "name": "shenjackyuanjie",
       "email": "3695888@qq.com"
     },
     "license": {
-      "name": "GPL-3.0",
-      "identifier": "GPL-3.0"
+      "name": ""
     },
-    "version": "0.10.11"
+    "version": "0.12.32"
   },
   "paths": {
     "/api/v0/apps/app_id/{app_id}": {
@@ -20,7 +19,7 @@
           "应用查询"
         ],
         "summary": "根据应用ID查询应用详细信息",
-        "description": "该接口会优先从华为应用市场获取最新数据，如果获取失败则返回数据库中的历史数据。\n应用ID是华为应用市场为每个应用分配的唯一标识符。",
+        "description": "该接口优先返回数据库中的现有数据，仅在数据库无记录时查询华为应用市场。\n应用ID是华为应用市场为每个应用分配的唯一标识符。",
         "operationId": "query_app_id",
         "parameters": [
           {
@@ -30,6 +29,15 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "use_cache",
+            "in": "query",
+            "description": "是否优先使用数据库缓存；即使为 false，短时间内的同步节流缓存仍然生效。",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -86,19 +94,74 @@
         }
       }
     },
+    "/api/v0/apps/icon/content": {
+      "get": {
+        "tags": [
+          "应用查询"
+        ],
+        "summary": "通过本站转发数据库中记录的应用图标，避免 WASM 图片加载受到第三方 CORS 限制。",
+        "operationId": "get_app_icon_content",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "query",
+            "description": "应用 ID",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "pkg_name",
+            "in": "query",
+            "description": "包名",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "应用图标图片字节，Content-Type 为上游返回的 image/*（通常为 image/webp）",
+            "content": {
+              "image/webp": {}
+            }
+          },
+          "400": {
+            "description": "缺少 app_id 与 pkg_name"
+          },
+          "403": {
+            "description": "图标 URL 指向非受信主机"
+          },
+          "404": {
+            "description": "数据库中未找到该应用的图标记录"
+          },
+          "502": {
+            "description": "上游图标请求失败、响应非法或图标超过 5 MiB"
+          }
+        }
+      }
+    },
     "/api/v0/apps/list/{page_count}": {
       "get": {
         "tags": [
           "应用查询"
         ],
-        "summary": "分页获取应用列表，支持多种排序和过滤选项",
-        "description": "查询参数说明：\n- page_size: 每页数量，默认50，最大值受系统限制\n- detail: 是否返回详细信息，true返回完整信息，false返回简要信息\n- sort: 排序字段，支持：rating（评分）、downloads（下载量）、updated_at（更新时间）等\n- desc: 是否降序排序，默认false\n- search: 搜索关键词\n- search_key: 搜索字段，支持：name（应用名）、pkg_name（包名）、developer（开发者）等\n- exclude_huawei: 是否排除华为官方应用\n- exclude_atomic: 是否排除原子化服务",
+        "summary": "分页获取应用列表，支持多种排序和过滤选项。",
+        "description": "路径参数说明：\n- `page_count`: 页码，1-based；传入 `0` 会按第 1 页处理\n\n查询参数说明：\n- `page_size`: 每页数量，默认值由 `AppListQuery` 决定，最大值受系统限制\n- `detail`: 是否返回详细信息，`true` 返回完整信息，`false` 返回简要信息\n- `sort`: 排序字段，实际支持范围以 `AppListQuery::is_valid_sort()` 为准\n- `desc`: 是否降序排序，默认 `false`\n- `search_key`: 搜索字段，实际支持范围以 `AppListQuery::is_valid_search()` 为准\n- `search_value`: 搜索值\n- `search_exact`: 是否精确匹配\n- `search_not_null`: 搜索时是否排除空值\n- `exclude_huawei`: 是否排除华为官方应用\n- `exclude_atomic`: 是否排除原子化服务",
         "operationId": "app_list_paged",
         "parameters": [
           {
             "name": "page_count",
             "in": "path",
-            "description": "页码，从0开始",
+            "description": "页码，1-based；0 会按第 1 页处理",
             "required": true,
             "schema": {
               "type": "string"
@@ -229,7 +292,7 @@
         ],
         "responses": {
           "200": {
-            "description": "返回数据包含total_count（总数）和page_size（每页数量）"
+            "description": "返回数据包含 total_count（总数）和 page_size（每页数量）"
           }
         }
       }
@@ -266,7 +329,7 @@
           "应用查询"
         ],
         "summary": "根据应用包名查询应用详细信息",
-        "description": "该接口会优先从华为应用市场获取最新数据，如果获取失败则返回数据库中的历史数据。\n返回的数据包括：应用基础信息、版本信息、评分、下载量、开发者信息等。",
+        "description": "该接口优先返回数据库中的现有数据，仅在数据库无记录时查询华为应用市场。\n返回的数据包括：应用基础信息、版本信息、评分、下载量、开发者信息等。",
         "operationId": "query_pkg",
         "parameters": [
           {
@@ -276,6 +339,15 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "use_cache",
+            "in": "query",
+            "description": "是否优先使用数据库缓存；即使为 false，短时间内的同步节流缓存仍然生效。",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -291,14 +363,14 @@
         "tags": [
           "应用查询"
         ],
-        "summary": "分页获取应用列表，支持复杂搜索条件",
-        "description": "查询参数说明：\n- page: 页码，从0开始，默认0\n- page_size: 每页数量，默认100\n- detail: 是否返回详细信息，true返回完整信息，false返回简要信息\n- sort: 排序字段，支持：rating（评分）、downloads（下载量）、updated_at（更新时间）等\n- desc: 是否降序排序，默认false\n\n请求体（可选）：SearchExpression 搜索表达式，支持 AND/OR 嵌套逻辑\n示例：\n```json\n{ \"and\": [\n    { \"key\": \"name\", \"value\": \"游戏\", \"op\": \"ilike\" },\n    { \"key\": \"rating\", \"value\": \"4.0\", \"op\": \"gte\" }\n]}\n```",
+        "summary": "分页获取应用列表，支持复杂搜索条件。",
+        "description": "查询参数说明：\n- `page`: 页码，1-based；传入 `0` 会按第 1 页处理\n- `page_size`: 每页数量，默认 100\n- `detail`: 是否返回详细信息，`true` 返回完整信息，`false` 返回简要信息\n- `sort`: 排序字段，实际支持范围以 `AppQueryListQuery::is_valid_sort()` 为准\n- `desc`: 是否降序排序，默认 `false`\n\n请求体（可选）：`SearchExpression` 搜索表达式，支持 AND/OR 嵌套逻辑。\n示例：\n```json\n{ \"and\": [\n    { \"key\": \"name\", \"value\": \"游戏\", \"op\": \"ilike\" },\n    { \"key\": \"rating\", \"value\": \"4.0\", \"op\": \"gte\" }\n]}\n```",
         "operationId": "app_list_query",
         "parameters": [
           {
             "name": "page",
             "in": "query",
-            "description": "页码（从0开始）",
+            "description": "页码（1-based）",
             "required": false,
             "schema": {
               "type": [
@@ -379,7 +451,29 @@
         },
         "responses": {
           "200": {
-            "description": "返回数据包含total_count（总数）和page_size（每页数量）"
+            "description": "返回数据包含 total_count（总数）和 page_size（每页数量）"
+          }
+        }
+      }
+    },
+    "/api/v0/charts/api_history": {
+      "get": {
+        "tags": [
+          "统计图表"
+        ],
+        "summary": "获取 Harmony API 级别历史分布数据",
+        "description": "返回数据库中记录的每日 API 级别分布比例。\n数据格式为按日期排序的列表，每项包含日期以及对应的 API 级别比例映射。",
+        "operationId": "get_api_history_data",
+        "responses": {
+          "200": {
+            "description": "成功返回 Harmony API 级别历史分布数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -389,11 +483,11 @@
         "tags": [
           "统计图表"
         ],
-        "summary": "获取应用最低支持SDK版本分布统计（POST）",
-        "description": "返回数据库中所有应用的最低支持SDK版本（minSdkVersion）分布情况。\n统计数据以SDK版本号为键，应用数量为值。\n用于了解开发者对不同Android版本的支持情况。",
+        "summary": "获取应用最低支持 SDK 版本分布统计（GET / POST）",
+        "description": "返回数据库中应用的最低支持 SDK 版本（`minsdk`）分布情况。\n- `GET`：获取全量分布统计\n- `POST`：可附带搜索表达式，仅统计匹配结果",
         "operationId": "get_min_sdk_distribution",
         "requestBody": {
-          "description": "搜索表达式，支持 AND/OR 嵌套逻辑, 参考 ApiSearchExpression",
+          "description": "可选搜索表达式；GET 请求通常不带请求体，POST 请求可携带 AND/OR 嵌套逻辑表达式",
           "content": {
             "application/json": {
               "schema": {
@@ -411,7 +505,7 @@
         },
         "responses": {
           "200": {
-            "description": "成功返回各SDK版本的应用数量分布",
+            "description": "成功返回各 SDK 版本的应用数量分布",
             "content": {
               "application/json": {
                 "schema": {
@@ -428,11 +522,11 @@
         "tags": [
           "统计图表"
         ],
-        "summary": "获取应用星级评分分布统计（POST）",
-        "description": "返回数据库中所有应用的星级评分分布情况，统计1星到5星各个评分区间的应用数量。\n用于生成评分分布图表或进行数据分析。",
+        "summary": "获取应用星级评分分布统计（GET / POST）",
+        "description": "返回数据库中应用的 1 星到 5 星评分分布。\n- `GET`：获取全量分布统计\n- `POST`：可附带搜索表达式，仅统计匹配结果",
         "operationId": "get_rating_distribution",
         "requestBody": {
-          "description": "搜索表达式，支持 AND/OR 嵌套逻辑, 参考 ApiSearchExpression",
+          "description": "可选搜索表达式；GET 请求通常不带请求体，POST 请求可携带 AND/OR 嵌套逻辑表达式",
           "content": {
             "application/json": {
               "schema": {
@@ -460,11 +554,11 @@
         "tags": [
           "统计图表"
         ],
-        "summary": "获取应用目标SDK版本分布统计（POST）",
-        "description": "返回数据库中所有应用的目标SDK版本（targetSdkVersion）分布情况。\n统计数据以SDK版本号为键，应用数量为值。\n用于了解开发者针对的Android目标版本趋势。",
+        "summary": "获取应用目标 SDK 版本分布统计（GET / POST）",
+        "description": "返回数据库中应用的目标 SDK 版本（`target_sdk`）分布情况。\n- `GET`：获取全量分布统计\n- `POST`：可附带搜索表达式，仅统计匹配结果",
         "operationId": "get_target_sdk_distribution",
         "requestBody": {
-          "description": "搜索表达式，支持 AND/OR 嵌套逻辑, 参考 ApiSearchExpression",
+          "description": "可选搜索表达式；GET 请求通常不带请求体，POST 请求可携带 AND/OR 嵌套逻辑表达式",
           "content": {
             "application/json": {
               "schema": {
@@ -482,7 +576,29 @@
         },
         "responses": {
           "200": {
-            "description": "成功返回各目标SDK版本的应用数量分布",
+            "description": "成功返回各目标 SDK 版本的应用数量分布",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v0/dashboard/config": {
+      "get": {
+        "tags": [
+          "市场信息"
+        ],
+        "summary": "获取 Dashboard 客户端显示配置。",
+        "description": "原生客户端按此配置决定是否请求并显示下载量相关区块。配置请求失败时，\n客户端应采用隐藏敏感指标的保守默认值。",
+        "operationId": "dashboard_config",
+        "responses": {
+          "200": {
+            "description": "返回 top.rayawa.dashboard 客户端的看板显示配置",
             "content": {
               "application/json": {
                 "schema": {
@@ -505,9 +621,7 @@
             "description": "获取飞书数据连接器元信息",
             "content": {
               "application/json": {
-                "schema": {
-
-                }
+                "schema": {}
               }
             }
           }
@@ -525,9 +639,7 @@
             "description": "获取飞书记录",
             "content": {
               "application/json": {
-                "schema": {
-
-                }
+                "schema": {}
               }
             }
           }
@@ -545,9 +657,7 @@
             "description": "获取飞书表格元信息",
             "content": {
               "application/json": {
-                "schema": {
-
-                }
+                "schema": {}
               }
             }
           }
@@ -569,6 +679,86 @@
         }
       }
     },
+    "/api/v0/rankings/category_download_growth": {
+      "get": {
+        "tags": [
+          "排行榜"
+        ],
+        "summary": "大分类下载量增速排行",
+        "description": "按应用分类（kind_id/kind_name）聚合窗口内的下载量增量。\n结果带内存 TTL 缓存，缓存周期与 `[api].interval_seconds` 一致；\n缓存未命中或过期时才查询数据库，数据库失败时优先返回旧缓存。",
+        "operationId": "category_download_growth",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "description": "统计窗口天数，默认 7",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "返回限制，默认 50",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "分页页码，1-based，默认 1",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "min_apps",
+            "in": "query",
+            "description": "最小赛道 APP 数，默认 1",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功返回大分类赛道下载量增速排行（按 kind 聚合）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v0/rankings/developers": {
       "get": {
         "tags": [
@@ -581,7 +771,20 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "最大返回数量",
+            "description": "最大返回数量 / 每页条数",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码（1-based），为 None 时不分页",
             "required": false,
             "schema": {
               "type": [
@@ -636,12 +839,14 @@
         "tags": [
           "排行榜"
         ],
+        "summary": "获取应用下载量增长排行榜（截止到今天）",
+        "description": "比较上海时区今天与 today - interval 的下载量状态，默认比较今天和昨天；不会回退到最近一个有数据的 metric_date，因此如果今天还没有写入下载状态，返回空结果是符合预期的。",
         "operationId": "download_increase",
         "parameters": [
           {
             "name": "months",
             "in": "query",
-            "description": "月数间隔",
+            "description": "月数间隔；与上海时区“今天”一起组成比较窗口，默认 `0`。",
             "required": false,
             "schema": {
               "type": [
@@ -655,7 +860,7 @@
           {
             "name": "days",
             "in": "query",
-            "description": "天数间隔",
+            "description": "天数间隔；默认 `1`。不传 `days` / `months` 时比较“今天 vs 昨天”。",
             "required": false,
             "schema": {
               "type": [
@@ -669,7 +874,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "返回限制",
+            "description": "返回限制，默认 `100`。",
             "required": false,
             "schema": {
               "type": [
@@ -683,7 +888,7 @@
           {
             "name": "listed_days",
             "in": "query",
-            "description": "已上架天数",
+            "description": "仅保留最近多少天内上架的应用。",
             "required": false,
             "schema": {
               "type": [
@@ -697,7 +902,7 @@
           {
             "name": "listed_months",
             "in": "query",
-            "description": "已上架月数",
+            "description": "仅保留最近多少月内上架的应用。",
             "required": false,
             "schema": {
               "type": [
@@ -711,7 +916,7 @@
           {
             "name": "page",
             "in": "query",
-            "description": "分页页码",
+            "description": "分页页码，1-based，默认 `1`。",
             "required": false,
             "schema": {
               "type": [
@@ -725,7 +930,7 @@
           {
             "name": "exclude_huawei",
             "in": "query",
-            "description": "是否排除华为来源",
+            "description": "是否排除华为来源应用，默认 `false`。",
             "required": false,
             "schema": {
               "type": [
@@ -737,7 +942,7 @@
           {
             "name": "exclude_atomic",
             "in": "query",
-            "description": "是否排除原子化应用",
+            "description": "是否排除原子化应用，默认 `false`。",
             "required": false,
             "schema": {
               "type": [
@@ -749,7 +954,154 @@
         ],
         "responses": {
           "200": {
-            "description": "获取应用下载量增长排行榜（指定时间区间）",
+            "description": "获取应用下载量增长排行榜；比较今天与指定窗口起点，若今天无下载状态数据则返回空列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "排行榜"
+        ],
+        "summary": "使用高级搜索获取应用下载量增长排行榜",
+        "description": "查询参数、分页、排序和返回明细与 GET 相同。请求体复用应用高级搜索表达式，并额外支持 download_increment；该字段只能是根条件或最外层 AND 的直属条件。空 body、null、{}、根级空 AND/OR 均表示不使用高级筛选。",
+        "operationId": "download_increase_query",
+        "parameters": [
+          {
+            "name": "months",
+            "in": "query",
+            "description": "月数间隔；与上海时区“今天”一起组成比较窗口，默认 `0`。",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "description": "天数间隔；默认 `1`。不传 `days` / `months` 时比较“今天 vs 昨天”。",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "返回限制，默认 `100`。",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "listed_days",
+            "in": "query",
+            "description": "仅保留最近多少天内上架的应用。",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "listed_months",
+            "in": "query",
+            "description": "仅保留最近多少月内上架的应用。",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "分页页码，1-based，默认 `1`。",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "exclude_huawei",
+            "in": "query",
+            "description": "是否排除华为来源应用，默认 `false`。",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "exclude_atomic",
+            "in": "query",
+            "description": "是否排除原子化应用，默认 `false`。",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "可选高级搜索表达式。普通字段在 app_full_info 上预先筛选；download_increment 仅支持 eq/ne/gt/gte/lt/lte 和 i64 字符串值。",
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApiSearchExpression"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功返回高级筛选后的下载量增长排行榜；非法 JSON、字段或表达式也以 HTTP 200 返回 success=false",
             "content": {
               "application/json": {
                 "schema": {
@@ -772,6 +1124,124 @@
         "responses": {
           "200": {
             "description": "成功返回每日下载量最高的应用列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v0/rankings/new_app_download_growth": {
+      "get": {
+        "tags": [
+          "排行榜"
+        ],
+        "summary": "新 APP 下载量增速排行",
+        "description": "\"新 APP\" 定义为当前下载量处于 `[min_downloads, max_downloads)` 区间内的应用。\n`level` 为 `category` 时按大分类聚合，否则（含非法值）按细分赛道聚合。\n结果带内存 TTL 缓存，缓存周期与 `[api].interval_seconds` 一致。",
+        "operationId": "new_app_download_growth",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "description": "统计窗口天数，默认 7",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "返回限制，默认 50",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "分页页码，1-based，默认 1",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "min_apps",
+            "in": "query",
+            "description": "最小赛道新 APP 数，默认 5",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "min_downloads",
+            "in": "query",
+            "description": "当前下载量下限，默认 1000",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "max_downloads",
+            "in": "query",
+            "description": "当前下载量上限，默认 100000，使用小于该值",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "description": "聚合粒度，可选 segment 或 category，默认 segment",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功返回新 APP 下载量增速排行（当前下载量处于早期区间）",
             "content": {
               "application/json": {
                 "schema": {
@@ -843,7 +1313,20 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "最大返回数量",
+            "description": "最大返回数量 / 每页条数",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码（1-based），为 None 时不分页",
             "required": false,
             "schema": {
               "type": [
@@ -905,7 +1388,20 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "最大返回数量",
+            "description": "最大返回数量 / 每页条数",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码（1-based），为 None 时不分页",
             "required": false,
             "schema": {
               "type": [
@@ -955,137 +1451,82 @@
         }
       }
     },
-    "/api/v0/statistics/current": {
+    "/api/v0/rankings/segment_download_growth": {
       "get": {
         "tags": [
-          "访问统计"
+          "排行榜"
         ],
-        "summary": "获取当前统计数据（内存中的实时数据）",
-        "description": "GET /api/statistics/current",
-        "operationId": "get_current_statistics",
-        "responses": {
-          "200": {
-            "description": "获取当前统计数据（内存中的实时数据），包括UA和IP访问统计"
-          }
-        }
-      }
-    },
-    "/api/v0/statistics/history": {
-      "get": {
-        "tags": [
-          "访问统计"
-        ],
-        "summary": "获取历史统计数据（数据库中的持久化数据）",
-        "description": "GET /api/statistics/history?stat_type=ua&page=1&page_size=50",
-        "operationId": "get_history_statistics",
+        "summary": "细分赛道下载量增速排行",
+        "description": "按应用分类（kind_id/kind_name）+ 细分标签（tag_name，空时回退 kind_name）聚合窗口内的下载量增量。\n结果带内存 TTL 缓存，缓存周期与 `[api].interval_seconds` 一致。",
+        "operationId": "segment_download_growth",
         "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "description": "统计窗口天数，默认 7",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "返回限制，默认 50",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
           {
             "name": "page",
             "in": "query",
-            "description": "页码",
+            "description": "分页页码，1-based，默认 1",
             "required": false,
             "schema": {
-              "type": "integer",
+              "type": [
+                "integer",
+                "null"
+              ],
               "format": "int32",
               "minimum": 0
             }
           },
           {
-            "name": "page_size",
+            "name": "min_apps",
             "in": "query",
-            "description": "每页大小",
+            "description": "最小赛道 APP 数，默认 5",
             "required": false,
             "schema": {
-              "type": "integer",
+              "type": [
+                "integer",
+                "null"
+              ],
               "format": "int32",
               "minimum": 0
             }
-          },
-          {
-            "name": "stat_type",
-            "in": "query",
-            "description": "统计类型：\"ua\" 或 \"ip\"",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {
           "200": {
-            "description": "获取历史统计数据（数据库中的持久化数据），支持UA和IP统计查询"
-          }
-        }
-      }
-    },
-    "/api/v0/statistics/hourly": {
-      "get": {
-        "tags": [
-          "访问统计"
-        ],
-        "summary": "获取每小时统计趋势",
-        "description": "GET /api/statistics/hourly?stat_type=ua&target=Mozilla/5.0...&start_time=...&end_time=...",
-        "operationId": "get_hourly_statistics",
-        "parameters": [
-          {
-            "name": "stat_type",
-            "in": "query",
-            "description": "统计类型：\"ua\" 或 \"ip\"",
-            "required": true,
-            "schema": {
-              "type": "string"
+            "description": "成功返回细分赛道下载量增速排行（按 kind+tag 聚合）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
             }
-          },
-          {
-            "name": "target",
-            "in": "query",
-            "description": "目标：user_agent 或 ip_address",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "start_time",
-            "in": "query",
-            "description": "开始时间（RFC3339格式）",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "end_time",
-            "in": "query",
-            "description": "结束时间（RFC3339格式）",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "获取每小时统计趋势，按时间段查询指定UA或IP的访问趋势"
-          }
-        }
-      }
-    },
-    "/api/v0/statistics/summary": {
-      "get": {
-        "tags": [
-          "访问统计"
-        ],
-        "operationId": "get_statistics_summary",
-        "responses": {
-          "200": {
-            "description": "获取统计概览，包括总请求数、活跃UA和IP等汇总信息"
           }
         }
       }
@@ -1099,9 +1540,7 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": {
-
-              }
+              "schema": {}
             }
           },
           "required": true
@@ -1143,9 +1582,7 @@
           "description": "请求体可选，支持comment字段添加备注信息",
           "content": {
             "application/json": {
-              "schema": {
-
-              },
+              "schema": {},
               "example": {
                 "comment": "用户提交的备注信息"
               }
@@ -1165,13 +1602,14 @@
         "tags": [
           "专题查询"
         ],
-        "summary": "分页获取专题列表",
+        "summary": "分页获取专题列表\n分页获取专题列表",
+        "description": "路径参数 `page` 是 1-based；传入 `0` 会按第 1 页处理。",
         "operationId": "substance_list_paged",
         "parameters": [
           {
             "name": "page",
             "in": "path",
-            "description": "页码（从0开始）",
+            "description": "页码，1-based；0 会按第 1 页处理",
             "required": true,
             "schema": {
               "type": "integer",
@@ -1280,6 +1718,20 @@
   },
   "components": {
     "schemas": {
+      "AccessCountResponse": {
+        "type": "object",
+        "description": "访问次数响应",
+        "required": [
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "访问次数"
+          }
+        }
+      },
       "AccessLogQueryParams": {
         "type": "object",
         "description": "访问日志查询参数",
@@ -1364,14 +1816,14 @@
         "oneOf": [
           {
             "type": "string",
-            "description": "And 组合 (实际内容应为 Vec \u003CExperssion\u003E )\n这里为了防止 stack overflow, 不使用递归",
+            "description": "And 组合 (实际内容应为 Vec<Expression>)\n这里为了防止 stack overflow, 不使用递归",
             "enum": [
               "And"
             ]
           },
           {
             "type": "string",
-            "description": "Or 组合 (实际内容应为 Vec \u003CExperssion\u003E )\n同上",
+            "description": "Or 组合 (实际内容应为 Vec<Expression>)\n同上",
             "enum": [
               "Or"
             ]
@@ -1390,7 +1842,7 @@
             }
           }
         ],
-        "description": "搜索表达式（支持嵌套的 AND/OR 逻辑）\n(仅用于 openapi 生成文档, 无实际作用)\n\n# 示例 JSON\n\n单个条件:\n```json\n{ \"key\": \"name\", \"value\": \"test\", \"op\": \"like\" }\n```\n\nAND 组合:\n```json\n{ \"and\": [\n    { \"key\": \"name\", \"value\": \"test\", \"op\": \"like\" },\n    { \"key\": \"developer_name\", \"value\": \"华为\", \"op\": \"eq\" }\n]}\n```\n\nOR 组合:\n```json\n{ \"or\": [\n    { \"key\": \"name\", \"value\": \"test\", \"op\": \"like\" },\n    { \"key\": \"name\", \"value\": \"游戏\", \"op\": \"like\" }\n]}\n```\n\n嵌套组合 (A AND B) OR C:\n```json\n{ \"or\": [\n    { \"and\": [\n        { \"key\": \"name\", \"value\": \"test\", \"op\": \"like\" },\n        { \"key\": \"developer_name\", \"value\": \"华为\", \"op\": \"eq\" }\n    ]},\n    { \"key\": \"pkg_name\", \"value\": \"com.example\", \"op\": \"like\" }\n]}\n```"
+        "description": "搜索表达式（支持嵌套的 AND/OR 逻辑）\n(仅用于 openapi 生成文档, 无实际作用)\n\n# 示例 JSON\n\n单个条件:\n```json\n{ \"key\": \"name\", \"value\": \"test\", \"op\": \"like\" }\n```\n\nAND 组合:\n```json\n{ \"and\": [\n    { \"key\": \"name\", \"value\": \"test\", \"op\": \"like\" },\n    { \"key\": \"developer_name\", \"value\": \"华为\", \"op\": \"eq\" }\n]}\n```\n\nOR 组合:\n```json\n{ \"or\": [\n    { \"key\": \"name\", \"value\": \"test\", \"op\": \"like\" },\n    { \"key\": \"name\", \"value\": \"游戏\", \"op\": \"like\" }\n]}\n```\n\n嵌套组合 (A AND B) OR C:\n```json\n{ \"or\": [\n    { \"and\": [\n        { \"key\": \"name\", \"value\": \"test\", \"op\": \"like\" },\n        { \"key\": \"developer_name\", \"value\": \"华为\", \"op\": \"eq\" }\n    ]},\n    { \"key\": \"pkg_name\", \"value\": \"com.example\", \"op\": \"like\" }\n]}\n```\n\n数组字段包含查询:\n```json\n{ \"key\": \"main_device_codes\", \"value\": \"phone,tablet\", \"op\": \"array_contains\" }\n```\n\n数组字段交集查询（JSON 数组格式）:\n```json\n{ \"key\": \"main_device_codes\", \"value\": \"[\\\"phone\\\",\\\"tablet\\\"]\", \"op\": \"array_overlaps\" }\n```"
       },
       "AppCounts": {
         "type": "object",
@@ -1500,7 +1952,7 @@
           "id": {
             "type": "integer",
             "format": "int64",
-            "description": "视图生成的主键 ID"
+            "description": "查询层基于 app_id 和 report_date 派生的稳定 ID"
           },
           "pkg_name": {
             "type": "string",
@@ -1643,7 +2095,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "页码（从0开始）",
+            "description": "页码（1-based）",
             "minimum": 0
           },
           "page_size": {
@@ -1683,6 +2135,47 @@
           }
         }
       },
+      "CategoryGrowthQuery": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "统计窗口天数，默认 7",
+            "minimum": 0
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "返回限制，默认 50",
+            "minimum": 0
+          },
+          "min_apps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "最小赛道 APP 数，默认 1",
+            "minimum": 0
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "分页页码，1-based，默认 1",
+            "minimum": 0
+          }
+        }
+      },
       "CurrentStatisticsResponse": {
         "type": "object",
         "description": "当前统计响应",
@@ -1716,6 +2209,37 @@
               "$ref": "#/components/schemas/UaStatEntry"
             },
             "description": "UA 统计列表"
+          }
+        }
+      },
+      "DashboardConfig": {
+        "type": "object",
+        "required": [
+          "show_install_count",
+          "show_total_download_ranking",
+          "show_download_history",
+          "show_non_huawei_download_ranking",
+          "show_app_download_metrics",
+          "show_t_site"
+        ],
+        "properties": {
+          "show_app_download_metrics": {
+            "type": "boolean"
+          },
+          "show_download_history": {
+            "type": "boolean"
+          },
+          "show_install_count": {
+            "type": "boolean"
+          },
+          "show_non_huawei_download_ranking": {
+            "type": "boolean"
+          },
+          "show_t_site": {
+            "type": "boolean"
+          },
+          "show_total_download_ranking": {
+            "type": "boolean"
           }
         }
       },
@@ -1876,9 +2400,7 @@
           "charging": {
             "type": "boolean"
           },
-          "comment": {
-
-          },
+          "comment": {},
           "compile_sdk_version": {
             "type": "integer",
             "format": "int32"
@@ -2013,6 +2535,15 @@
           "new_features": {
             "type": "string"
           },
+          "new_screen_shots": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/NewScreenshot"
+            }
+          },
           "only_star_count": {
             "type": [
               "integer",
@@ -2068,6 +2599,15 @@
           "release_date": {
             "type": "integer",
             "format": "int64"
+          },
+          "screen_shots": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
           },
           "sha256": {
             "type": "string"
@@ -2271,6 +2811,7 @@
       },
       "IntervalParams": {
         "type": "object",
+        "description": "下载增量排行查询参数。\n\n当前统计截止日固定为上海时区“今天”，不会回退到最近一个有数据的 `metric_date`。\n因此如果今天还没有写入 `app_download_daily_states`，接口会返回空结果。",
         "properties": {
           "days": {
             "type": [
@@ -2278,7 +2819,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "天数间隔",
+            "description": "天数间隔；默认 `1`。不传 `days` / `months` 时比较“今天 vs 昨天”。",
             "minimum": 0
           },
           "exclude_atomic": {
@@ -2286,14 +2827,14 @@
               "boolean",
               "null"
             ],
-            "description": "是否排除原子化应用"
+            "description": "是否排除原子化应用，默认 `false`。"
           },
           "exclude_huawei": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "是否排除华为来源"
+            "description": "是否排除华为来源应用，默认 `false`。"
           },
           "limit": {
             "type": [
@@ -2301,7 +2842,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "返回限制",
+            "description": "返回限制，默认 `100`。",
             "minimum": 0
           },
           "listed_days": {
@@ -2310,7 +2851,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "已上架天数",
+            "description": "仅保留最近多少天内上架的应用。",
             "minimum": 0
           },
           "listed_months": {
@@ -2319,7 +2860,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "已上架月数",
+            "description": "仅保留最近多少月内上架的应用。",
             "minimum": 0
           },
           "months": {
@@ -2328,7 +2869,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "月数间隔",
+            "description": "月数间隔；与上海时区“今天”一起组成比较窗口，默认 `0`。",
             "minimum": 0
           },
           "page": {
@@ -2337,7 +2878,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "分页页码",
+            "description": "分页页码，1-based，默认 `1`。",
             "minimum": 0
           }
         }
@@ -2362,6 +2903,171 @@
           }
         }
       },
+      "NewAppGrowthQuery": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "统计窗口天数，默认 7",
+            "minimum": 0
+          },
+          "level": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "聚合粒度，可选 segment 或 category，默认 segment"
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "返回限制，默认 50",
+            "minimum": 0
+          },
+          "max_downloads": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "当前下载量上限，默认 100000，使用小于该值"
+          },
+          "min_apps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "最小赛道新 APP 数，默认 5",
+            "minimum": 0
+          },
+          "min_downloads": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "当前下载量下限，默认 1000"
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "分页页码，1-based，默认 1",
+            "minimum": 0
+          }
+        }
+      },
+      "NewScreenshot": {
+        "type": "object",
+        "description": "新版截图元数据。\n\n上游对象中的三个字段都是必填字段；缺少任意字段都会导致整条原始应用数据\n反序列化失败，避免把不完整对象写入 JSONB。",
+        "required": [
+          "url",
+          "resolution",
+          "rotated"
+        ],
+        "properties": {
+          "resolution": {
+            "type": "string"
+          },
+          "rotated": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "RankingGrowth": {
+        "type": "object",
+        "required": [
+          "rank_type",
+          "kind_id",
+          "kind_name",
+          "app_count",
+          "downloads_increase",
+          "avg_increase_per_app",
+          "growing_apps",
+          "growing_app_pct",
+          "no_baseline_apps",
+          "max_single_app_increase"
+        ],
+        "properties": {
+          "app_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "当前参与统计的 APP 数；新 APP 接口中表示新 APP 数"
+          },
+          "avg_increase_per_app": {
+            "type": "number",
+            "format": "double",
+            "description": "单 APP 平均下载量增量"
+          },
+          "downloads_increase": {
+            "type": "integer",
+            "format": "int64",
+            "description": "窗口内下载量增量"
+          },
+          "growing_app_pct": {
+            "type": "number",
+            "format": "double",
+            "description": "窗口内下载量有增长的 APP 占比"
+          },
+          "growing_apps": {
+            "type": "integer",
+            "format": "int64",
+            "description": "窗口内下载量有增长的 APP 数"
+          },
+          "kind_id": {
+            "type": "integer",
+            "format": "int32",
+            "description": "分类 ID"
+          },
+          "kind_name": {
+            "type": "string",
+            "description": "分类名称"
+          },
+          "max_single_app_increase": {
+            "type": "integer",
+            "format": "int64",
+            "description": "单个 APP 最大下载量增量"
+          },
+          "max_single_app_share_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "单个 APP 最大增量占该赛道总增量比例"
+          },
+          "no_baseline_apps": {
+            "type": "integer",
+            "format": "int64",
+            "description": "窗口开始日前没有基线下载量的 APP 数"
+          },
+          "rank_type": {
+            "type": "string",
+            "description": "排行类型：category 或 segment"
+          },
+          "segment_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "细分赛道名称；大分类排行中为 null"
+          }
+        }
+      },
       "RankingQuery": {
         "type": "object",
         "description": "用于排行API的查询参数",
@@ -2379,7 +3085,15 @@
               "null"
             ],
             "format": "int32",
-            "description": "最大返回数量",
+            "description": "最大返回数量 / 每页条数"
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "页码（1-based），为 None 时不分页",
             "minimum": 0
           },
           "time_range": {
@@ -2404,14 +3118,14 @@
           },
           "op": {
             "$ref": "#/components/schemas/SearchOp",
-            "description": "搜索操作符，默认为 like"
+            "description": "搜索操作符，默认为 ilike"
           },
           "value": {
             "type": [
               "string",
               "null"
             ],
-            "description": "搜索值（对于 is_null/is_not_null 可以为空）"
+            "description": "搜索值（对于 is_null/is_not_null 可以为空）\n\n对于数组操作符（`array_contains` / `array_overlaps` / `array_contained_by`），\n可以传入逗号分隔的字符串（`\"a,b,c\"`）或 JSON 数组字符串（`[\"a\",\"b\",\"c\"]`）。"
           }
         }
       },
@@ -2430,8 +3144,52 @@
           "gte",
           "lte",
           "is_null",
-          "is_not_null"
+          "is_not_null",
+          "array_contains",
+          "array_overlaps",
+          "array_contained_by"
         ]
+      },
+      "SegmentGrowthQuery": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "统计窗口天数，默认 7",
+            "minimum": 0
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "返回限制，默认 50",
+            "minimum": 0
+          },
+          "min_apps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "最小赛道 APP 数，默认 5",
+            "minimum": 0
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "分页页码，1-based，默认 1",
+            "minimum": 0
+          }
+        }
       },
       "ShortAppInfo": {
         "type": "object",
@@ -2549,7 +3307,7 @@
       },
       "StatisticsSummary": {
         "type": "object",
-        "description": "统计概览\n\nGET /api/statistics/summary",
+        "description": "统计概览",
         "required": [
           "total_ua_types",
           "total_ips",
@@ -2662,10 +3420,6 @@
     {
       "name": "专题查询",
       "description": "专题信息查询相关接口"
-    },
-    {
-      "name": "飞书集成",
-      "description": "飞书数据连接器集成(目前未实现)"
     },
     {
       "name": "访问统计",
