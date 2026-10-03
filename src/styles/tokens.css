@@ -1,0 +1,128 @@
+/* 设计令牌：配色 / 圆角 / 阴影 / 控件高度。改主题优先改这里，别在组件里写死色值 */
+
+:root {
+  /* 主色：标准蓝 */
+
+/* 语义色统一降低饱和度，只做小面积点缀 */
+
+/* 中性文字（slate 色阶） */
+
+/* 分隔线 / 填充 */
+
+/* 圆角与阴影 */
+
+/* 控件默认高度全局统一为 36px（原 32px），表单内外一致 */
+  
+  --el-color-primary: #2563eb;
+  --el-color-primary-light-3: #5b8cf0;
+  --el-color-primary-light-5: #92b3f5;
+  --el-color-primary-light-7: #c3d5fa;
+  --el-color-primary-light-8: #dbe6fc;
+  --el-color-primary-light-9: #eef4fe;
+  --el-color-primary-dark-2: #1d4ed8;
+
+  
+  --el-color-success: #2f9e63;
+  --el-color-success-light-3: #63b98a;
+  --el-color-success-light-5: #97d1b1;
+  --el-color-success-light-7: #c5e6d5;
+  --el-color-success-light-8: #d8efe3;
+  --el-color-success-light-9: #eaf7f0;
+  --el-color-success-dark-2: #268052;
+
+  --el-color-warning: #c88a2e;
+  --el-color-warning-light-3: #d6a763;
+  --el-color-warning-light-5: #e4c597;
+  --el-color-warning-light-7: #eddcc4;
+  --el-color-warning-light-8: #f2e7d7;
+  --el-color-warning-light-9: #f9f3ea;
+  --el-color-warning-dark-2: #a06e25;
+
+  --el-color-danger: #c94f4f;
+  --el-color-danger-light-3: #d97d7d;
+  --el-color-danger-light-5: #e4a6a6;
+  --el-color-danger-light-7: #edcdcd;
+  --el-color-danger-light-8: #f2dddd;
+  --el-color-danger-light-9: #f9eeee;
+  --el-color-danger-dark-2: #a14040;
+
+  --el-color-info: #64748b;
+  --el-color-info-light-3: #93a1b3;
+  --el-color-info-light-5: #b4bec9;
+  --el-color-info-light-7: #d3d9e0;
+  --el-color-info-light-8: #e2e6eb;
+  --el-color-info-light-9: #f1f3f6;
+  --el-color-info-dark-2: #4c5769;
+
+  
+  --el-text-color-primary: #0f172a;
+  --el-text-color-regular: #334155;
+  --el-text-color-secondary: #64748b;
+  --el-text-color-placeholder: #94a3b8;
+  --el-text-color-disabled: #cbd5e1;
+
+  
+  --el-border-color: #e2e8f0;
+  --el-border-color-light: #e8edf4;
+  --el-border-color-lighter: #eef2f7;
+  --el-border-color-extra-light: #f5f7fa;
+  --el-border-color-dark: #cbd5e1;
+  --el-fill-color: #f1f5f9;
+  --el-fill-color-light: #f5f7fa;
+  --el-fill-color-lighter: #f8fafc;
+  --el-bg-color-page: #f7f8fa;
+
+  
+  --el-border-radius-base: 10px;
+  --el-border-radius-small: 8px;
+  --el-box-shadow-light: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+  --el-box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --el-box-shadow-lighter: 0 1px 2px rgba(15, 23, 42, 0.05);
+
+  
+  --el-component-size: 36px;
+}
+
+html.dark {
+  /* 深色主题：冷灰底 + 明确的蓝色主色（不用偏紫的浅蓝紫） */
+  
+  --el-color-primary: #6ea8fe;
+  --el-color-primary-light-3: #5685cc;
+  --el-color-primary-light-5: #42669c;
+  --el-color-primary-light-7: #2f4a70;
+  --el-color-primary-light-8: #283e5d;
+  --el-color-primary-light-9: #213148;
+  --el-color-primary-dark-2: #8bbcfd;
+
+  --el-color-success: #57c98a;
+  --el-color-success-light-9: #1c2f25;
+  --el-color-warning: #dfb266;
+  --el-color-warning-light-9: #2f2718;
+  --el-color-danger: #e08a85;
+  --el-color-danger-light-9: #30201f;
+  --el-color-info: #94a3b8;
+  --el-color-info-light-9: #22262e;
+
+  --el-bg-color: #16181d;
+  --el-bg-color-page: #0f1115;
+  --el-bg-color-overlay: #1b1e24;
+  --el-fill-color: #1e2229;
+  --el-fill-color-light: #22262e;
+  --el-fill-color-lighter: #1a1d23;
+  --el-fill-color-extra-light: #171a1f;
+
+  --el-border-color: rgba(255, 255, 255, 0.14);
+  --el-border-color-light: rgba(255, 255, 255, 0.1);
+  --el-border-color-lighter: rgba(255, 255, 255, 0.08);
+  --el-border-color-extra-light: rgba(255, 255, 255, 0.05);
+  --el-border-color-dark: rgba(255, 255, 255, 0.2);
+
+  --el-text-color-primary: #f1f5f9;
+  --el-text-color-regular: #cbd5e1;
+  --el-text-color-secondary: #94a3b8;
+  --el-text-color-placeholder: #6b7280;
+  --el-text-color-disabled: #4b5563;
+
+  --el-box-shadow-light: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --el-box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}

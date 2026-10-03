@@ -1,10 +1,6 @@
 <template>
   <div class="admin-view database-admin">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3">数据管理</span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="数据管理" />
 
     <!-- 概览：文件大小 / 表数量 / 总行数 / 空闲空间 -->
     <div class="stat-grid" v-loading="loadingOverview">
@@ -200,8 +196,8 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   getDatabaseOverview,
@@ -215,8 +211,6 @@ import {
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
-const router = useRouter();
-const goBack = () => router.push('/');
 
 const isMobile = ref(window.innerWidth <= 768);
 window.addEventListener('resize', () => { isMobile.value = window.innerWidth <= 768; });

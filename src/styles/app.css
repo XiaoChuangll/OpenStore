@@ -1,0 +1,55 @@
+/* 跨页面复用的形态：表格操作列、图表浮层、拖拽状态等 */
+
+/* 后台列表页共用的筛选条与空状态 */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.table-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 0;
+  font-size: 13px;
+  color: var(--el-text-color-placeholder);
+}
+
+html .admin-view .el-table .action-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+/*
+ * ECharts tooltip 的公共图层：固定定位，所以隐藏后不会撑高文档，
+ * 层级与 ECharts 自身 tooltip（z-index: 9999999）保持一致，仍然浮在页面之上。
+ */
+.echarts-tooltip-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 9999999;
+  pointer-events: none;
+}
+
+/* 后台拖拽排序卡片时：整页保持抓取光标、禁止选中文字 */
+body.is-card-dragging,
+body.is-card-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+/*
+ * 加载遮罩不再压暗内容：深色模式下 Element Plus 的遮罩是一整块半透明黑，
+ * 页面看起来很脏；这里只保留转圈/骨架本身的加载态。
+ */
+html .el-loading-mask {
+  background-color: transparent !important;
+}

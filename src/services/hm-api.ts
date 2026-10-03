@@ -7,6 +7,9 @@ interface CacheItem<T> {
   timestamp: number;
 }
 
+/** 列表 / 榜单的缓存时长：够新，又能挡掉重复请求 */
+const LIST_TTL_MS = 45_000;
+
 interface HmApiClientConfig {
   baseUrl: string;
   /** 可选的备用线路；留空即只走主线路，不做任何降级（默认） */
@@ -105,13 +108,27 @@ class HmApiClient {
     }
   }
 
-  // 缓存时长按路径猜（毫秒），沿用原项目规则
+  /** 缓存时长（毫秒）：列表 / 榜单 45s，行情 2min，图表 5min，其余不缓存 */
   private guessTtlMs(path: string): number {
     if (path.includes('market_info')) return 120000; // 2 mins
     if (path.includes('charts/')) return 300000; // 5 mins
     // 注：/rankings/top-downloads 已在上游 0.9.0 移除，不再需要缓存规则
-    if (path.includes('apps/list')) return 30000; // 30 secs
+    // 列表 / 榜单：应用列表、按条件查询的应用集、各类榜单
+    if (path.includes('apps/list')) return LIST_TTL_MS;
+    if (path.includes('apps/query')) return LIST_TTL_MS;
+    if (path.includes('rankings/')) return LIST_TTL_MS;
     return 0; // 默认不缓存
+  }
+
+  /** 清缓存（不传参数 = 全清）；后台改内容后调用，不用干等 TTL 过期 */
+  public clearCache(match?: (key: string) => boolean) {
+    if (!match) {
+      this.cache.clear();
+      return;
+    }
+    for (const key of [...this.cache.keys()]) {
+      if (match(key)) this.cache.delete(key);
+    }
   }
 
   public async get<T>(path: string, params?: any, config?: AxiosRequestConfig): Promise<T> {

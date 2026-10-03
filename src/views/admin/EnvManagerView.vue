@@ -1,10 +1,6 @@
 <template>
   <div class="admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 环境变量管理 (.env) </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="环境变量管理 (.env)" />
 
     <div class="toolbar">
       <el-button type="primary" @click="openChangePwd">修改管理员密码</el-button>
@@ -89,8 +85,8 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { getEnvMap, setEnv, getEnvHistory, rollbackEnvByHistoryId, type EnvItem, changeAdminPassword } from '../../services/admin';
 import { validatePasswordComplexity } from '../../utils/password';
 import { ElMessage } from 'element-plus';
@@ -98,7 +94,6 @@ import { ElMessage } from 'element-plus';
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
 
-const router = useRouter();
 const envMap = ref<Record<string, EnvItem[]>>({});
 const labels: Record<string, string> = { database: '数据库', cache: '缓存', api: '第三方API', other: '其他' };
 
@@ -161,7 +156,6 @@ const rollback = async (id: number) => {
   fetchMap();
 };
 
-const goBack = () => router.push('/');
 </script>
 
 <style scoped>

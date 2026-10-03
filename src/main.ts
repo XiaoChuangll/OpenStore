@@ -14,8 +14,11 @@ import App from './App.vue'
 import router from './router'
 import './style.css'
 import { connectWS } from './services/ws'
+import { initContentRefresh } from './services/content-refresh'
 
 connectWS()
+// 后台保存内容后（WS 广播）清掉本地缓存并通知页面刷新
+initContentRefresh()
 
 const app = createApp(App)
 

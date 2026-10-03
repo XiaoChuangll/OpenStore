@@ -4,7 +4,7 @@
       <!-- 左侧：品牌 + 会看鼠标的几何角色 -->
       <aside ref="stageRef" class="stage" aria-hidden="true">
         <div class="stage-top">
-          <span class="brand-mark"></span>
+          <BrandMark class="brand-mark" :size="26" />
           <span class="brand-name">OpenStore</span>
           <span class="brand-badge">{{ isAdmin ? '控制台' : '登录' }}</span>
         </div>
@@ -180,6 +180,7 @@ import {
 import { useAuthStore } from '../stores/auth';
 import { loginAdmin } from '../services/admin';
 import { useThemeStore } from '../stores/theme';
+import BrandMark from '../components/BrandMark.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -655,14 +656,10 @@ html.dark .stage-top {
   color: #e8ebf0;
 }
 
-.brand-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background-color: currentColor;
-  -webkit-mask: url('/favicon.svg') no-repeat center center / contain;
-  mask: url('/favicon.svg') no-repeat center center / contain;
-}
+/*
+ * 角标是内联 SVG 组件（BrandMark）：圆环走 currentColor，所以直接继承上面
+ * .stage-top 的浅色/深色文字色即可，这里不再需要单独的配色规则。
+ */
 
 .brand-badge {
   padding: 1px 9px;

@@ -1,21 +1,16 @@
 <template>
   <div class="admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 文章管理 </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="文章管理" />
 
     <!-- 文章分类 / 标签管理：宽度够时并排，窄屏自动堆叠 -->
     <div class="meta-grid">
-    <div class="section-card">
-      <div class="section-head">
-        <div class="section-left">
-          <span class="section-title">文章分类</span>
-          <span class="section-count">{{ categories.length }} 个</span>
-        </div>
+    <AdminSection title="文章分类" variant="plain">
+      <template #meta>
+        <span class="section-count">{{ categories.length }} 个</span>
+      </template>
+      <template #actions>
         <el-button size="small" :icon="Plus" @click="openCreateCategory">新增分类</el-button>
-      </div>
+      </template>
       <div v-if="categories.length" class="meta-list">
         <div v-for="row in categories" :key="row.id" class="meta-item">
           <span class="meta-name">{{ row.name }}</span>
@@ -26,17 +21,16 @@
         </div>
       </div>
       <p v-else class="empty-hint">还没有分类，先建一个分类再写文章。</p>
-    </div>
+    </AdminSection>
 
     <!-- 标签管理 -->
-    <div class="section-card">
-      <div class="section-head">
-        <div class="section-left">
-          <span class="section-title">标签管理</span>
-          <span class="section-count">{{ tags.length }} 个</span>
-        </div>
+    <AdminSection title="标签管理" variant="plain">
+      <template #meta>
+        <span class="section-count">{{ tags.length }} 个</span>
+      </template>
+      <template #actions>
         <el-button size="small" :icon="Plus" @click="openCreateTag">新增标签</el-button>
-      </div>
+      </template>
       <div v-if="tags.length" class="meta-list">
         <div v-for="row in tags" :key="row.id" class="meta-item">
           <span class="tag-dot" :style="{ backgroundColor: row.color || 'var(--el-fill-color)' }"></span>
@@ -50,18 +44,17 @@
         </div>
       </div>
       <p v-else class="empty-hint">还没有标签。</p>
-    </div>
+    </AdminSection>
     </div>
 
     <!-- 文章列表 -->
-    <div class="section-card">
-      <div class="section-head">
-        <div class="section-left">
-          <span class="section-title">文章列表</span>
-          <span class="section-count">共 {{ total }} 篇</span>
-        </div>
+    <AdminSection title="文章列表" variant="plain">
+      <template #meta>
+        <span class="section-count">共 {{ total }} 篇</span>
+      </template>
+      <template #actions>
         <el-button type="primary" size="small" :icon="Plus" @click="openCreate">新增文章</el-button>
-      </div>
+      </template>
 
       <div class="filter-bar">
         <el-input
@@ -156,7 +149,7 @@
           @current-change="onPageChange"
         />
       </div>
-    </div>
+    </AdminSection>
 
     <el-dialog v-model="showDialog" :title="dialogTitle" :width="isMobile ? '100%' : '980px'" :fullscreen="isMobile || fullScreen" :class="['article-dialog', { 'is-editor-fullscreen': fullScreen || isMobile }]">
       <el-form label-position="top" :model="form" class="article-form">
@@ -482,26 +475,21 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, onMounted, computed, watch, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { getBlogCategories, createBlogCategory, updateBlogCategory, deleteBlogCategory, getBlogTags, createBlogTag, updateBlogTag, deleteBlogTag, getBlogs, createBlog, updateBlog, deleteBlog, publishBlog, offlineBlog, getBlogVersions, createBlogVersion, restoreBlogVersion, uploadFile, getApps, type BlogCategory, type BlogTag, type Blog, type BlogVersion, type AppItem } from '../../services/admin';
 import { searchApps as searchNextApps } from '../../services/next-api';
 import { QuillEditor } from '@vueup/vue-quill';
 import '@vueup/vue-quill/dist/vue-quill.snow.css';
-import MarkdownIt from 'markdown-it';
-import markdownItKatex from 'markdown-it-katex';
-import hljs from 'highlight.js';
+import AdminSection from '../../components/admin/AdminSection.vue';
+import { createMarkdownRenderer, preBlockHighlight } from '../../utils/markdown';
 import 'github-markdown-css/github-markdown-light.css';
-import 'highlight.js/styles/atom-one-light.css';
-import 'katex/dist/katex.min.css';
 import { useAuthStore } from '../../stores/auth';
 import { Picture, Plus, Edit, Delete, Search, Refresh } from '@element-plus/icons-vue';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
-const router = useRouter();
-const goBack = () => router.push('/admin');
 
 const authStore = useAuthStore();
 const isMobile = ref(false);
@@ -589,21 +577,8 @@ const form = ref<Partial<Blog>>({
 const articleHasPassword = ref(false);
 const removeArticlePassword = ref(false);
 
-const md = new MarkdownIt({
-  html: true,
-  linkify: true,
-  typographer: true,
-  breaks: true
-});
-md.set({
-  highlight: (str, lang) => {
-    if (lang && hljs.getLanguage(lang)) {
-      return `<pre class="hljs"><code>${hljs.highlight(str, { language: lang }).value}</code></pre>`;
-    }
-    return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`;
-  }
-});
-md.use(markdownItKatex);
+// 预览用 <pre class="hljs"> 输出，配合 atom-one-light 的 .hljs 底色
+const md = createMarkdownRenderer({ highlight: preBlockHighlight });
 
 const markdownPreview = computed(() => md.render(contentMarkdown.value || ''));
 const titleCount = computed(() => (form.value.title ? String(form.value.title).length : 0));
@@ -1334,7 +1309,6 @@ const openCompare = () => {
 </style>
 
 <style scoped>
-.mb-4 { margin-bottom: 20px; }
 .admin-view { padding-bottom: 12px; }
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -1448,14 +1422,6 @@ const openCompare = () => {
 /* ------------------------------------------------------------------
  * 列表区：分类 / 标签 / 文章列表
  * ------------------------------------------------------------------ */
-.section-card {
-  margin-bottom: 20px;
-  padding: 16px 18px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 12px;
-  background-color: var(--el-bg-color-overlay);
-}
-
 /* 分类 + 标签：一行放得下就并排，放不下自动堆叠（两栏等高） */
 .meta-grid {
   display: grid;
@@ -1473,27 +1439,6 @@ const openCompare = () => {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
   }
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.section-left {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
 }
 
 .section-count {
@@ -1549,14 +1494,6 @@ const openCompare = () => {
   color: var(--el-text-color-placeholder);
 }
 
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
 .filter-search { width: 240px; max-width: 100%; }
 .filter-select { width: 140px; }
 
@@ -1593,16 +1530,6 @@ const openCompare = () => {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-}
-
-.table-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 28px 0;
-  font-size: 13px;
-  color: var(--el-text-color-placeholder);
 }
 
 /* ------------------------------------------------------------------

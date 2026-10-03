@@ -1,10 +1,6 @@
 <template>
   <div class="admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 访客日志 </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="访客日志" />
 
     <div class="filter-toolbar mb-4">
       <!--
@@ -287,8 +283,8 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
-import { useRouter } from 'vue-router';
 import {
   getVisitorStats,
   getVisitorTrend,
@@ -314,7 +310,6 @@ import { onWS } from '../../services/ws';
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
 
-const router = useRouter();
 const items = ref<Visitor[]>([]);
 /** 刚刚通过 WS 追加进来的那一条：窄屏靠 TransitionGroup 冒出来，宽屏表格靠它整行闪一下 */
 const justAddedId = ref<number | null>(null);
@@ -938,9 +933,6 @@ const formatPath = (_row: any, _col: any, val: string) => {
 };
 
 
-const goBack = () => {
-  router.push('/');
-};
 
 const exportCsv = async () => {
   try {

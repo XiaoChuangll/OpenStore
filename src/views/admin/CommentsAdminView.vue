@@ -1,10 +1,6 @@
 <template>
   <div class="comments-admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 评论管理 </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="评论管理" />
 
     <el-card>
       <div class="toolbar mb-3">
@@ -140,14 +136,12 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { getComments, updateComment, deleteComment, deleteComments, updateCommentsStatus, getCommentBlogs, type Comment } from '../../services/admin';
 
 defineProps<{ embedded?: boolean }>();
-const router = useRouter();
-const goBack = () => router.push('/admin');
 
 const items = ref<Comment[]>([]);
 const blogs = ref<{ id: number; title: string }[]>([]);
@@ -324,7 +318,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.mb-4 { margin-bottom: 16px; }
 .mb-3 { margin-bottom: 12px; }
 .mt-3 { margin-top: 12px; }
 .pagination-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: nowrap; }

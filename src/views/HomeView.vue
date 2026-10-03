@@ -64,7 +64,8 @@
         </div>
       </div>
       <ActiveIncidents />
-      <el-row v-if="homeTab === 'system' && siteCards.length > 0" :gutter="20" class="site-cards-row">
+      <!-- 用 v-show：只切换显隐，组件不重建，切回来复用数据、不重复请求 -->
+      <el-row v-show="homeTab === 'system' && siteCards.length > 0" :gutter="20" class="site-cards-row">
         <el-col
           v-for="card in siteCards"
           :key="card.id"
@@ -183,22 +184,23 @@
         </el-col>
       </el-row>
 
-      <template v-if="homeTab === 'home'">
-        <!-- 板块顺序 / 显示与否由后台「首页配置 → 首页」的卡片列表决定 -->
-        <component
-          v-for="card in homeCards"
-          :is="HOME_SECTIONS[card.key]"
-          :key="card.key"
-          :rank-variant="card.rankVariant"
-          :rank-order="card.rankOrder"
-        />
-      </template>
+      <!-- 板块顺序 / 显示与否由后台「首页配置 → 首页」的卡片列表决定 -->
+      <component
+        v-for="card in homeCards"
+        :is="HOME_SECTIONS[card.key]"
+        :key="card.key"
+        v-show="homeTab === 'home'"
+        class="home-section"
+        :rank-variant="card.rankVariant"
+        :rank-order="card.rankOrder"
+        :active="card.key === 'topic-spotlight' ? homeTab === 'home' : undefined"
+      />
     </section>
   </main>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, onActivated, onDeactivated } from 'vue';
+import { onMounted, onUnmounted, ref, onActivated, onDeactivated, watch } from 'vue';
 import type { Component } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -228,6 +230,7 @@ import {
   type SiteCard,
 } from '../services/admin';
 import { getAppIconUrl } from '../utils/app-info';
+import { contentVersion } from '../services/content-refresh';
 
 const router = useRouter();
 const layoutStore = useLayoutStore();
@@ -267,13 +270,9 @@ const homeCards = ref<{ key: string; rankVariant: 'classic' | 'stacked' | 'both'
   HOME_CARD_FALLBACK.map((key) => ({ key, rankVariant: 'classic' as const, rankOrder: 'stacked' as const }))
 );
 
-/*
- * 首页/系统两个页签的卡片配置都是「改了后台要能看到」的小接口，
- * 但每切一次路由回来都重新拉一遍就太吵了（用户反馈：加载过的又加载一遍）。
- * 这里给配置加个 20 秒节流：短时间内切回来直接用上次的配置；
- * 系统页签那几个内容接口（公告/链接/群聊/应用）只在卡片组合真的变了时才重新拉。
- */
-const SITE_CONFIG_REFRESH_MS = 20_000;
+// 卡片配置重新拉取的底线：页面被 keep-alive 缓存，一分钟内切回来不重复请求；
+// 后台改配置会通过 WS 广播立刻刷新（见下面的 watch）
+const SITE_CONFIG_REFRESH_MS = 60_000;
 let homeCardsFetchedAt = 0;
 let homeCardsLoaded = false;
 
@@ -489,6 +488,16 @@ onActivated(() => {
   }
 });
 
+// 后台保存内容 → WS 广播让 contentVersion +1：作废本地节流并重新取数
+watch(contentVersion, () => {
+  siteCardsFetchedAt = 0;
+  homeCardsFetchedAt = 0;
+  // 卡片组合可能变了（比如刚开启「公告」卡片），清掉比对记录强制重拉那份内容
+  loadedContentKeys = '';
+  loadSiteCards(true);
+  loadHomeCards(true);
+});
+
 onDeactivated(() => {
   // Hide custom header when leaving HomeView
   isActiveHome.value = false;
@@ -575,6 +584,14 @@ onUnmounted(() => {
 
 .mt-4 {
   margin-top: 20px;
+}
+
+/*
+ * 板块间距统一在这里兜底：各板块原来一半用 margin-top、一半用 margin-bottom，
+ * 后台任意调序时会出现两张贴死。统一补下边距，边距折叠保证不会翻倍。
+ */
+.home-view :deep(.home-section) {
+  margin-bottom: 20px;
 }
 
 /* 统一探索页面所有卡片的圆角样式，与后台管理控制的 site-card 保持一致 (16px) */

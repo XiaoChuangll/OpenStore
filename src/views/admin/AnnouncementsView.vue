@@ -1,20 +1,15 @@
 <template>
   <div class="admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 公告管理 </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="公告管理" />
 
     <!-- 公告分类：数量少，用紧凑的行列表代替表格 -->
-    <div class="section-card">
-      <div class="section-head">
-        <div class="section-left">
-          <span class="section-title">公告分类</span>
-          <span class="section-count">{{ categories.length }} 个</span>
-        </div>
+    <AdminSection title="公告分类" variant="plain">
+      <template #meta>
+        <span class="section-count">{{ categories.length }} 个</span>
+      </template>
+      <template #actions>
         <el-button size="small" :icon="Plus" @click="openCreateCategory">新增分类</el-button>
-      </div>
+      </template>
       <div v-if="categories.length" class="category-list">
         <div v-for="row in categories" :key="row.id" class="category-item">
           <span class="category-name">{{ row.name }}</span>
@@ -26,17 +21,16 @@
         </div>
       </div>
       <p v-else class="empty-hint">还没有分类，先建一个分类再发布公告。</p>
-    </div>
+    </AdminSection>
 
     <!-- 公告列表 -->
-    <div class="section-card">
-      <div class="section-head">
-        <div class="section-left">
-          <span class="section-title">公告列表</span>
-          <span class="section-count">共 {{ total }} 条</span>
-        </div>
+    <AdminSection title="公告列表" variant="plain">
+      <template #meta>
+        <span class="section-count">共 {{ total }} 条</span>
+      </template>
+      <template #actions>
         <el-button type="primary" size="small" :icon="Plus" @click="openCreate">新增公告</el-button>
-      </div>
+      </template>
 
       <div class="filter-bar">
         <el-input
@@ -132,7 +126,7 @@
           @current-change="onPageChange"
         />
       </div>
-    </div>
+    </AdminSection>
 
     <!-- 公告编辑对话框 -->
     <el-dialog
@@ -262,24 +256,20 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, onMounted, watch, computed, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Edit, Delete, Search, Refresh } from '@element-plus/icons-vue';
-import { useRouter } from 'vue-router';
 import { getAnnouncementCategories, createAnnouncementCategory, updateAnnouncementCategory, deleteAnnouncementCategory, getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, publishAnnouncement, offlineAnnouncement, type AnnouncementCategory, type Announcement } from '../../services/admin';
-import MarkdownIt from 'markdown-it';
-import markdownItKatex from 'markdown-it-katex';
-import hljs from 'highlight.js';
+import { createMarkdownRenderer } from '../../utils/markdown';
 import 'github-markdown-css/github-markdown-light.css';
-import 'highlight.js/styles/atom-one-light.css';
-import 'katex/dist/katex.min.css';
 import { QuillEditor } from '@vueup/vue-quill';
 import '@vueup/vue-quill/dist/vue-quill.snow.css';
+import AdminSection from '../../components/admin/AdminSection.vue';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
 
-const router = useRouter();
 
 const categories = ref<AnnouncementCategory[]>([]);
 const items = ref<Announcement[]>([]);
@@ -297,21 +287,7 @@ const editingId = ref<number | null>(null);
 const scheduled = ref<string | null>(null);
 const form = ref<Partial<Announcement>>({ title: '', content_html: '', status: 'draft', category_id: null, scheduled_at: null });
 const markdownMode = ref<boolean>(false);
-const md = new MarkdownIt({
-  html: true,
-  linkify: true,
-  typographer: true,
-  breaks: true,
-  highlight: function (str, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(str, { language: lang }).value;
-      } catch (__) {}
-    }
-    return ''; // use external default escaping
-  }
-});
-md.use(markdownItKatex);
+const md = createMarkdownRenderer();
   const contentMarkdown = ref<string>('');
   const markdownPreview = computed(() => md.render(contentMarkdown.value || ''));
   // 移动端适配：检测窗口宽度
@@ -527,41 +503,9 @@ const removeCategory = (row: AnnouncementCategory) => {
     .catch(() => {});
 };
 
-const goBack = () => router.push('/');
 </script>
 
 <style scoped>
-.mb-4 { margin-bottom: 20px; }
-
-/* ---------- 区块卡片 ---------- */
-.section-card {
-  margin-bottom: 20px;
-  padding: 16px 18px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 12px;
-  background-color: var(--el-bg-color-overlay);
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.section-left {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
 
 .section-count {
   font-size: 12px;
@@ -605,14 +549,6 @@ const goBack = () => router.push('/');
 }
 
 /* ---------- 过滤条 ---------- */
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
 .filter-search { width: 240px; max-width: 100%; }
 .filter-select { width: 140px; }
 
@@ -647,16 +583,6 @@ const goBack = () => router.push('/');
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-}
-
-.table-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 28px 0;
-  font-size: 13px;
-  color: var(--el-text-color-placeholder);
 }
 
 .empty-hint {

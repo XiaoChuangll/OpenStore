@@ -1,6 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const defaultSiteCards = require('./lib/site-card-defaults.cjs');
+const { DEFAULT_TECH_STACK, DEFAULT_SOCIAL_LINKS } = require('./lib/about-defaults.cjs');
 
 const dbPath = path.resolve(__dirname, 'visitors.db');
 const db = new sqlite3.Database(dbPath, (err) => {
@@ -438,13 +439,28 @@ db.serialize(() => {
     author_github TEXT,
     github_repo TEXT,
     version TEXT,
+    site_name TEXT,
+    tagline TEXT,
+    tech_stack TEXT,
+    social_links TEXT,
+    contributors TEXT,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
   // Seed about_page
   db.get(`SELECT id FROM about_page WHERE id = 1`, [], (err, row) => {
     if (!row) {
-      db.run(`INSERT INTO about_page (id, content_html, author_name, version) VALUES (1, '', 'ChuEng', '1.0.0')`);
+      db.run(
+        `INSERT INTO about_page
+           (id, content_html, author_name, version, site_name, tagline, tech_stack, social_links)
+         VALUES (1, '', 'ChuEng', '1.0.0', ?, ?, ?, ?)`,
+        [
+          'OpenStore',
+          '鸿蒙应用数据探索与分析平台',
+          JSON.stringify(DEFAULT_TECH_STACK),
+          JSON.stringify(DEFAULT_SOCIAL_LINKS),
+        ]
+      );
     }
   });
 
@@ -490,6 +506,12 @@ db.serialize(() => {
   ensureColumn('incidents', 'icon', 'TEXT');
   ensureColumn('about_page', 'author_github', 'TEXT');
   ensureColumn('about_page', 'content_markdown', 'TEXT');
+  // 关于页面 Hero 与可配置内容：站点名、一句话简介、技术栈 / 社交链接（JSON 字符串）
+  ensureColumn('about_page', 'site_name', 'TEXT');
+  ensureColumn('about_page', 'tagline', 'TEXT');
+  ensureColumn('about_page', 'tech_stack', 'TEXT');
+  ensureColumn('about_page', 'social_links', 'TEXT');
+  ensureColumn('about_page', 'contributors', 'TEXT');
   ensureColumn('app_submissions', 'review_note', 'TEXT');
   ensureColumn('blogs', 'content_markdown', 'TEXT');
   ensureColumn('blogs', 'summary', 'TEXT');

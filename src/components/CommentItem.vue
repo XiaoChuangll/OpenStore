@@ -41,7 +41,7 @@
 
 <script setup lang="ts">
 import { ChatDotRound } from '@element-plus/icons-vue';
-import MarkdownIt from 'markdown-it';
+import { createMarkdownRenderer } from '../utils/markdown';
 import 'github-markdown-css/github-markdown-light.css';
 
 // Interface matching the one in CommentSection (should ideally be shared)
@@ -65,11 +65,8 @@ defineEmits<{
 }>();
 
 // Markdown setup
-const md = new MarkdownIt({
-  html: false,
-  linkify: true,
-  breaks: true
-});
+// 用户提交的内容：不允许内联 HTML，也不做智能标点
+const md = createMarkdownRenderer({ allowHtml: false, katex: false, typographer: false, highlight: false });
 
 const renderMarkdown = (text: string) => {
   return md.render(text);

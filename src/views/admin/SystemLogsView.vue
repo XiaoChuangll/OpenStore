@@ -1,19 +1,13 @@
 <template>
   <div class="admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 系统日志 </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="系统日志" />
 
-    <div class="section-card">
-      <!-- 头部：统计 + 实时开关 -->
-      <div class="section-head">
-        <div class="section-left">
-          <span class="section-title">操作日志</span>
-          <span class="section-count">共 {{ total }} 条</span>
-          <span class="meta-chip">今日 {{ todayCount }} 条</span>
-        </div>
+    <AdminSection title="操作日志">
+      <template #meta>
+        <span class="section-count">共 {{ total }} 条</span>
+        <span class="meta-chip">今日 {{ todayCount }} 条</span>
+      </template>
+      <template #actions>
         <div class="head-right">
           <el-tooltip :content="realtime ? '新日志会自动插到列表顶部，点击暂停' : '已暂停接收，点击恢复'" placement="top">
             <button
@@ -28,7 +22,7 @@
           </el-tooltip>
           <el-button size="small" :icon="Refresh" :loading="loading" @click="fetchList">刷新</el-button>
         </div>
-      </div>
+      </template>
 
       <!-- 过滤条 -->
       <div class="filter-bar">
@@ -213,22 +207,22 @@
           @current-change="onPageChange"
         />
       </div>
-    </div>
+    </AdminSection>
   </div>
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { getSystemLogs, deleteSystemLogs, type SystemLog } from '../../services/admin';
 import { onWS } from '../../services/ws';
 import { Delete, Refresh, Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import AdminSection from '../../components/admin/AdminSection.vue';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
 
-const router = useRouter();
 const items = ref<SystemLog[]>([]);
 const total = ref(0);
 const todayCount = ref(0);
@@ -433,9 +427,6 @@ const payloadBrief = (payload?: string | null) => {
   return text.length > 120 ? `${text.slice(0, 120)}…` : text;
 };
 
-const goBack = () => {
-  router.push('/admin');
-};
 
 onMounted(() => {
   window.addEventListener('resize', checkMobile);
@@ -465,41 +456,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.mb-4 { margin-bottom: 20px; }
-
-.section-card {
-  padding: 16px 18px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 12px;
-  background-color: var(--el-bg-color-overlay);
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  /* 标题与右侧按钮保持同一行，空间不够时压缩左侧信息 */
-  flex-wrap: nowrap;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-
-.section-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  white-space: nowrap;
-}
 
 .section-count,
 .meta-chip {
@@ -560,14 +516,6 @@ onUnmounted(() => {
 .live-toggle.is-on .live-dot {
   background-color: var(--el-color-success);
   box-shadow: 0 0 0 3px var(--el-color-success-light-8);
-}
-
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
 }
 
 .filter-search { width: 260px; max-width: 100%; }
@@ -767,16 +715,6 @@ onUnmounted(() => {
   color: var(--el-text-color-regular);
   white-space: pre-wrap;
   word-break: break-all;
-}
-
-.table-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 28px 0;
-  font-size: 13px;
-  color: var(--el-text-color-placeholder);
 }
 
 .pagination {

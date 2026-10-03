@@ -50,7 +50,7 @@
             @click="activeDevice = device.key"
             :style="{ width: `${100 / devices.length}%` }"
           >
-            <el-icon><component :is="device.icon" /></el-icon>
+            <el-icon><component :is="device.icon" v-bind="device.iconProps" /></el-icon>
             <span class="tab-label">{{ device.label }}</span>
             <span v-if="deviceStats[device.key]" class="count-badge">{{ deviceStats[device.key] }}</span>
           </div>
@@ -178,12 +178,7 @@ import { CATEGORY_ICON_MAP } from '../utils/category-icons';
 import { useRouter, useRoute } from 'vue-router';
 import { getCategories, searchApps, getDevices, DEVICE_MAP, getAppsByCategory } from '../services/next-api';
 import AppCard from '../components/AppCard.vue';
-// 设备页签图标：设计给的 24×24 图形，统一做成 currentColor 的组件
-import PhoneDeviceIcon from '../components/PhoneDeviceIcon.vue';
-import TvDeviceIcon from '../components/TvDeviceIcon.vue';
-import TabletDeviceIcon from '../components/TabletDeviceIcon.vue';
-import WatchDeviceIcon from '../components/WatchDeviceIcon.vue';
-import PcDeviceIcon from '../components/PcDeviceIcon.vue';
+import DeviceIcon from '../components/DeviceIcon.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -230,11 +225,11 @@ const deviceStats = ref<Record<string, number | string>>({
 
 const devices = [
   { key: 'all', label: '全部', icon: Menu },
-  { key: 'phone', label: '手机', icon: PhoneDeviceIcon },
-  { key: 'tv', label: '智慧屏', icon: TvDeviceIcon },
-  { key: 'tablet', label: '平板', icon: TabletDeviceIcon },
-  { key: 'watch', label: '手表', icon: WatchDeviceIcon },
-  { key: 'pc', label: '电脑', icon: PcDeviceIcon }
+  { key: 'phone', label: '手机', icon: DeviceIcon, iconProps: { kind: 'phone' } },
+  { key: 'tv', label: '智慧屏', icon: DeviceIcon, iconProps: { kind: 'tv' } },
+  { key: 'tablet', label: '平板', icon: DeviceIcon, iconProps: { kind: 'tablet' } },
+  { key: 'watch', label: '手表', icon: DeviceIcon, iconProps: { kind: 'watch' } },
+  { key: 'pc', label: '电脑', icon: DeviceIcon, iconProps: { kind: 'pc' } }
 ];
 
 const DEVICE_KEYS = new Set(devices.map((device) => device.key));

@@ -1,0 +1,601 @@
+
+/* Element Plus 组件皮肤：选择器统一带 html 前缀抬高优先级；可调值见 tokens.css */
+
+/* ---------- 表单控件 ---------- */
+
+html .el-input__wrapper,
+html .el-select__wrapper,
+html .el-textarea__inner {
+  border-radius: 10px;
+  transition: box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+html .el-input__wrapper,
+html .el-select__wrapper {
+  padding: 1px 12px;
+}
+
+html .el-textarea__inner {
+  padding: 10px 12px;
+  line-height: 1.65;
+  resize: vertical;
+}
+
+html .el-input__wrapper.is-focus,
+html .el-select__wrapper.is-focused,
+html .el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset,
+    0 0 0 3px var(--el-color-primary-light-9) !important;
+}
+
+html .el-input__inner::placeholder,
+html .el-textarea__inner::placeholder {
+  color: var(--el-text-color-placeholder);
+}
+
+html .el-form-item__label {
+  font-weight: 500;
+  color: var(--el-text-color-regular);
+  letter-spacing: 0.01em;
+}
+
+html .el-form-item {
+  margin-bottom: 20px;
+}
+
+html .el-form--label-top .el-form-item__label {
+  padding-bottom: 6px;
+  margin-bottom: 0;
+  line-height: 1.4;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--el-text-color-regular);
+}
+
+html .el-form-item__error {
+  padding-top: 3px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+html .el-form .el-textarea__inner {
+  min-height: 84px;
+}
+
+/* 选择器的高度由 wrapper 决定，单独对齐到与输入框一致 */
+
+html .el-select:not(.el-select--small):not(.el-select--large) .el-select__wrapper {
+  min-height: var(--el-component-size);
+}
+
+/* 开关旁的说明文字统一字号与颜色 */
+
+html .el-switch__label {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+/* 下拉选项：改成悬浮圆角项，和整体观感一致 */
+
+html .el-select-dropdown {
+  border-radius: 12px;
+  padding: 4px;
+}
+
+html .el-select-dropdown__list {
+  padding: 0;
+  /*
+   * select-v2 的虚拟列表会把宽度写成「整个下拉的宽度」（含下面这 4px 内边距），
+   * 于是每项都比内容区宽 8px，选中/hover 高亮会顶出下拉的圆角。
+   * 交回 100%（父层 el-vl__wrapper 已经是内容宽度），普通 select 不受影响。
+   */
+  width: 100% !important;
+}
+
+html .el-select-dropdown__item {
+  height: 34px;
+  line-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+}
+
+html .el-select-dropdown__item.is-selected {
+  font-weight: 600;
+}
+
+/* ---------- 按钮 ---------- */
+
+html .el-button {
+  border-radius: 8px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: all 0.16s ease;
+}
+
+html .el-button--large {
+  border-radius: 10px;
+}
+
+/* 默认尺寸按钮与输入框同高（行内 small 按钮、链接按钮不受影响） */
+
+html .el-button:not(.el-button--small):not(.el-button--large):not(.is-link):not(.is-text):not(.el-button--text) {
+  min-height: var(--el-component-size);
+}
+
+/* 圆形按钮：Element Plus 把宽度写死为 32px，而本项目把控件高度统一为 36px，会被拉成椭圆；
+   这里让宽度跟随控件高度，同时不覆盖页面里自定义的更大尺寸。 */
+
+html .el-button.is-circle:not(.el-button--small):not(.el-button--large):not(.is-link):not(.is-text) {
+  min-width: var(--el-component-size);
+}
+
+html .el-button--primary {
+  box-shadow: 0 1px 2px rgba(76, 110, 245, 0.24);
+}
+
+/*
+ * 次要/危险操作改为"浅底 + 同色文字"的安静按钮：
+ * 避免满屏实心彩色按钮，只保留主操作为实心
+ */
+
+html .el-button--success {
+  --el-button-text-color: var(--el-color-success);
+  --el-button-bg-color: var(--el-color-success-light-9);
+  --el-button-border-color: var(--el-color-success-light-7);
+  --el-button-hover-text-color: var(--el-color-success-dark-2);
+  --el-button-hover-bg-color: var(--el-color-success-light-8);
+  --el-button-hover-border-color: var(--el-color-success-light-5);
+  --el-button-active-text-color: var(--el-color-success-dark-2);
+  --el-button-active-bg-color: var(--el-color-success-light-7);
+  --el-button-active-border-color: var(--el-color-success);
+}
+
+html .el-button--warning {
+  --el-button-text-color: var(--el-color-warning);
+  --el-button-bg-color: var(--el-color-warning-light-9);
+  --el-button-border-color: var(--el-color-warning-light-7);
+  --el-button-hover-text-color: var(--el-color-warning-dark-2);
+  --el-button-hover-bg-color: var(--el-color-warning-light-8);
+  --el-button-hover-border-color: var(--el-color-warning-light-5);
+  --el-button-active-text-color: var(--el-color-warning-dark-2);
+  --el-button-active-bg-color: var(--el-color-warning-light-7);
+  --el-button-active-border-color: var(--el-color-warning);
+}
+
+html .el-button--danger {
+  --el-button-text-color: var(--el-color-danger);
+  --el-button-bg-color: var(--el-color-danger-light-9);
+  --el-button-border-color: var(--el-color-danger-light-7);
+  --el-button-hover-text-color: var(--el-color-danger-dark-2);
+  --el-button-hover-bg-color: var(--el-color-danger-light-8);
+  --el-button-hover-border-color: var(--el-color-danger-light-5);
+  --el-button-active-text-color: var(--el-color-danger-dark-2);
+  --el-button-active-bg-color: var(--el-color-danger-light-7);
+  --el-button-active-border-color: var(--el-color-danger);
+}
+
+html .el-button--info {
+  --el-button-text-color: var(--el-text-color-regular);
+  --el-button-bg-color: var(--el-fill-color-light);
+  --el-button-border-color: var(--el-border-color-lighter);
+  --el-button-hover-text-color: var(--el-text-color-primary);
+  --el-button-hover-bg-color: var(--el-fill-color);
+  --el-button-hover-border-color: var(--el-border-color);
+}
+
+/*
+ * 链接按钮（el-button link）：默认渲染成纯文字，容易被当成正文、看不出可点击，
+ * hover 还会把文字调浅。这里给「带文字标签」的 link 按钮统一换成浅底胶囊，
+ * 沿用次要按钮的安静语言：很淡的同色底 + 圆角，hover 只加深一档底色。
+ *
+ * 只挑「标签是纯文字」的按钮，判断依据是 Element Plus 的渲染结构：
+ * 文字标签会被包进 > span；若 span 里直接躺着 .el-icon，说明这是个图标按钮
+ * （顶部返回箭头、区块展开箭头、表格里的编辑/删除图标），保持原样不动——
+ * 给一个孤零零的图标套个圆角底色反而显得多余。
+ */
+html .el-button.is-link:has(> span):not(:has(> span > .el-icon)) {
+  --chip-accent: var(--el-text-color-regular);
+  --chip-bg: var(--el-fill-color-light);
+  --chip-bg-hover: var(--el-fill-color);
+  height: auto;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background-color: var(--chip-bg);
+  color: var(--chip-accent);
+}
+
+html .el-button.is-link.el-button--primary:has(> span):not(:has(> span > .el-icon)) {
+  --chip-accent: var(--el-color-primary);
+  --chip-bg: var(--el-color-primary-light-9);
+  --chip-bg-hover: var(--el-color-primary-light-8);
+}
+
+html .el-button.is-link.el-button--success:has(> span):not(:has(> span > .el-icon)) {
+  --chip-accent: var(--el-color-success);
+  --chip-bg: var(--el-color-success-light-9);
+  --chip-bg-hover: var(--el-color-success-light-8);
+}
+
+html .el-button.is-link.el-button--warning:has(> span):not(:has(> span > .el-icon)) {
+  --chip-accent: var(--el-color-warning);
+  --chip-bg: var(--el-color-warning-light-9);
+  --chip-bg-hover: var(--el-color-warning-light-8);
+}
+
+html .el-button.is-link.el-button--danger:has(> span):not(:has(> span > .el-icon)) {
+  --chip-accent: var(--el-color-danger);
+  --chip-bg: var(--el-color-danger-light-9);
+  --chip-bg-hover: var(--el-color-danger-light-8);
+}
+
+html .el-button.is-link.el-button--info:has(> span):not(:has(> span > .el-icon)) {
+  --chip-accent: var(--el-color-info);
+  --chip-bg: var(--el-color-info-light-9);
+  --chip-bg-hover: var(--el-color-info-light-8);
+}
+
+/* hover / active 只把底色加深一档、文字保持同色，避免文字忽然变白或变淡 */
+html .el-button.is-link:has(> span):not(:has(> span > .el-icon)):not(.is-disabled):hover,
+html .el-button.is-link:has(> span):not(:has(> span > .el-icon)):not(.is-disabled):active {
+  background-color: var(--chip-bg-hover);
+  color: var(--chip-accent);
+}
+
+/* ---------- 卡片 / 弹窗 / 表格 ---------- */
+
+html .el-card {
+  border-radius: 12px;
+  border-color: var(--el-border-color-lighter);
+}
+
+html .el-dialog {
+  border-radius: 16px;
+  padding: 4px;
+}
+
+html .el-dialog__header {
+  padding: 18px 20px 12px;
+  margin-right: 0;
+}
+
+html .el-dialog__title {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+html .el-dialog__body {
+  padding: 8px 20px 4px;
+}
+
+html .el-dialog__footer {
+  padding: 12px 20px 18px;
+}
+
+html .el-table {
+  --el-table-border-color: var(--el-border-color-lighter);
+  --el-table-header-bg-color: transparent;
+  --el-table-header-text-color: var(--el-text-color-secondary);
+  --el-table-row-hover-bg-color: var(--el-fill-color-light);
+  background-color: transparent;
+  font-size: 13px;
+}
+
+/*
+ * 表格皮肤：行卡片化
+ * 去掉表格的网格线，把每一行做成浅底圆角块，与全站的卡片语言保持一致
+ */
+
+html .el-table__body {
+  border-collapse: separate;
+  border-spacing: 0 6px;
+}
+
+html .el-table__body tr > td.el-table__cell {
+  background-color: var(--el-fill-color);
+  border-bottom: 1px solid var(--el-border-color-extra-light);
+  border-top: 1px solid var(--el-border-color-extra-light);
+}
+
+html .el-table__body tr > td.el-table__cell:first-child {
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+  border-left: 1px solid var(--el-border-color-extra-light);
+}
+
+html .el-table__body tr > td.el-table__cell:last-child {
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+  border-right: 1px solid var(--el-border-color-extra-light);
+}
+
+html .el-table__body tr:hover > td.el-table__cell {
+  background-color: var(--el-fill-color-light);
+}
+
+html .el-table thead th.el-table__cell,
+html .el-table__header-wrapper th.el-table__cell {
+  border-bottom: 1px solid var(--el-border-color-extra-light) !important;
+}
+
+html .el-table th.el-table__cell {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--el-text-color-secondary);
+  background-color: var(--el-fill-color-light);
+  padding: 11px 0;
+  border-top: 1px solid var(--el-border-color-extra-light);
+  border-bottom: 1px solid var(--el-border-color-extra-light);
+}
+
+/* 表头也做成一条独立的圆角横条，与行卡片呼应 */
+
+html .el-table thead th.el-table__cell:first-child {
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+  border-left: 1px solid var(--el-border-color-extra-light);
+}
+
+html .el-table thead th.el-table__cell:last-child {
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+  border-right: 1px solid var(--el-border-color-extra-light);
+}
+
+html .el-table .el-table__cell {
+  padding: 12px 0;
+}
+
+html .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background-color: var(--el-fill-color-lighter);
+}
+
+html .el-table__body tr:hover > td.el-table__cell {
+  background-color: var(--el-fill-color-light);
+}
+
+/* 表格内的行内操作：改为文字按钮 + hover 底色（国际化后台常见做法） */
+
+html .el-table .el-button:not(.is-link):not(.is-text) {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--el-text-color-regular);
+}
+
+html .el-table .el-button:not(.is-link):not(.is-text):hover {
+  background-color: var(--el-fill-color);
+  border-color: transparent;
+  color: var(--el-text-color-primary);
+}
+
+html .el-table .el-button--primary:not(.is-link):not(.is-text) {
+  color: var(--el-color-primary);
+}
+
+html .el-table .el-button--primary:not(.is-link):not(.is-text):hover {
+  background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+html .el-table .el-button--danger:not(.is-link):not(.is-text) {
+  color: var(--el-color-danger);
+}
+
+html .el-table .el-button--danger:not(.is-link):not(.is-text):hover {
+  background-color: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+}
+
+/* ---------- 分页器：轻量按钮（朴素变体与 background 变体都覆盖）---------- */
+
+html .el-pagination .el-pager li,
+html .el-pagination .btn-prev,
+html .el-pagination .btn-next {
+  min-width: 30px;
+  height: 30px;
+  margin: 0 2px;
+  line-height: 30px;
+  border: none;
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+html .el-pagination .el-pager li:hover,
+html .el-pagination .btn-prev:hover:not(:disabled),
+html .el-pagination .btn-next:hover:not(:disabled) {
+  background-color: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+}
+
+html .el-pagination .el-pager li.is-active {
+  background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+
+html .el-pagination .btn-prev:disabled,
+html .el-pagination .btn-next:disabled {
+  background-color: transparent;
+  color: var(--el-text-color-disabled);
+}
+
+html .el-pagination__total,
+html .el-pagination__jump {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+/* 窄屏：分页控件统一收到 26px，否则「上一页 / 页码 / 下一页」在 320~380px
+   的设备上会换行或者横向溢出。所有使用了 el-pagination 的页面一起生效。 */
+@media (max-width: 480px) {
+  html .el-pagination {
+    gap: 4px;
+  }
+
+  html .el-pagination .el-pager li,
+  html .el-pagination .btn-prev,
+  html .el-pagination .btn-next {
+    min-width: 26px;
+    height: 26px;
+    margin: 0;
+    line-height: 26px;
+    font-size: 12px;
+  }
+}
+
+html .el-tag {
+  border-radius: 6px;
+  font-weight: 500;
+  border-color: transparent;
+}
+
+html .el-tag--success {
+  background-color: var(--el-color-success-light-9);
+  color: var(--el-color-success);
+}
+
+html .el-tag--warning {
+  background-color: var(--el-color-warning-light-9);
+  color: var(--el-color-warning);
+}
+
+html .el-tag--danger {
+  background-color: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+}
+
+html .el-tag--info {
+  background-color: var(--el-fill-color);
+  color: var(--el-text-color-secondary);
+}
+
+/* 表格/卡片里"可点击的标签"（开发者、分类等）：静止时安静，hover 才浮现 */
+
+.clickable-tag {
+  cursor: pointer;
+}
+
+.clickable-tag.el-tag {
+  background-color: transparent;
+  border-color: var(--el-border-color-lighter);
+  color: var(--el-text-color-regular);
+  font-weight: 400;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.clickable-tag.el-tag:hover {
+  background-color: var(--el-fill-color-light);
+  border-color: var(--el-border-color);
+  color: var(--el-color-primary);
+}
+
+/* ---------- 折叠面板：从"默认列表行"改成卡片式 ---------- */
+
+html .el-collapse {
+  border: none;
+  --el-collapse-header-bg-color: transparent;
+  --el-collapse-content-bg-color: transparent;
+  --el-collapse-border-color: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+html .el-collapse-item {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-bg-color);
+  overflow: hidden;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+html .el-collapse-item:hover {
+  border-color: var(--el-border-color);
+}
+
+html .el-collapse-item.is-active {
+  border-color: var(--el-color-primary-light-7);
+  box-shadow: var(--el-box-shadow-light);
+}
+
+/*
+ * Element Plus 为「连体式」折叠面板给最后一项加了 margin-bottom: -1px，
+ * 但我们是卡片式（每项独立边框），这个负边距会把最后一格的底边挤出容器而被裁掉
+ */
+
+html .el-collapse-item:last-child {
+  margin-bottom: 0;
+}
+
+html .el-collapse-item__header {
+  height: 52px;
+  padding: 0 16px;
+  border-bottom: none;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--el-text-color-primary);
+  background: transparent;
+  transition: background-color 0.16s ease;
+}
+
+html .el-collapse-item__header:hover {
+  background: var(--el-fill-color-lighter);
+}
+
+html .el-collapse-item__wrap {
+  border-bottom: none;
+  background: transparent;
+}
+
+html .el-collapse-item__content {
+  padding: 4px 16px 16px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--el-text-color-regular);
+}
+
+html .el-collapse-item__arrow {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+}
+
+html .el-message,
+html .el-notification {
+  border-radius: 10px;
+}
+
+/* 分段控件（radio-button）更接近国际化产品的观感 */
+
+html .el-radio-button__inner {
+  border-radius: 8px !important;
+  border: 1px solid var(--el-border-color) !important;
+  font-weight: 500;
+  transition: all 0.16s ease;
+}
+
+html .el-radio-button:not(:first-child) .el-radio-button__inner {
+  margin-left: 6px;
+}
+
+html .el-radio-button__original-radio:checked + .el-radio-button__inner {
+  border-color: var(--el-color-primary) !important;
+  box-shadow: none;
+}
+
+/* Prevent layout shift when dialog opens (Element Plus adds padding-right to body) */
+
+html.el-popup-parent--hidden,
+body.el-popup-parent--hidden {
+  padding-right: 0 !important;
+  margin-right: 0 !important;
+  overflow: hidden !important;
+  width: 100% !important;
+}
+/* 后台表格：操作列的按钮始终单行右对齐（列宽不足时压缩其它列，不换行） */

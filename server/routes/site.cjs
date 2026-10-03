@@ -123,22 +123,94 @@ router.get('/api/public/site-cards', (req, res) => {
 });
 
 // About Page
+const { DEFAULT_TECH_STACK, DEFAULT_SOCIAL_LINKS, DEFAULT_CONTRIBUTORS } = require('../lib/about-defaults.cjs');
+
+/**
+ * 把 about_page 里的 JSON 文本列还原成数组。
+ * tech_stack / social_links 允许存空数组（= 后台刻意清空），
+ * 所以只有「从没存过」（NULL / 空串 / 解析失败）才回落到默认值。
+ */
+const parseJsonList = (raw, fallback) => {
+  if (raw === null || raw === undefined || raw === '') return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const shapeAboutRow = (row) => {
+  if (!row) return {};
+  return {
+    ...row,
+    tech_stack: parseJsonList(row.tech_stack, DEFAULT_TECH_STACK),
+    social_links: parseJsonList(row.social_links, DEFAULT_SOCIAL_LINKS),
+    contributors: parseJsonList(row.contributors, DEFAULT_CONTRIBUTORS),
+  };
+};
+
+/** 前端可能传数组，也可能直接传 JSON 字符串；统一成待落库的文本 */
+const serializeList = (value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return JSON.stringify(value);
+  return null;
+};
+
 router.get('/api/about', (req, res) => {
   db.get(`SELECT * FROM about_page WHERE id = 1`, [], (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
-    res.json(row || {});
+    res.json(shapeAboutRow(row));
   });
 });
 
 router.put('/api/about', requireAuth, (req, res) => {
-  const { content_html, content_markdown, author_name, author_avatar, author_github, github_repo, version } = req.body;
+  const body = req.body || {};
+
+  /*
+   * 只更新请求里带的字段：
+   * 后台的各个分区可能分开保存，缺字段不能把这个字段清成 NULL。
+   */
+  const columns = ['content_html', 'content_markdown', 'author_name', 'author_avatar', 'author_github', 'github_repo', 'version', 'site_name', 'tagline'];
+  const fields = [];
+  const values = [];
+
+  columns.forEach((column) => {
+    if (body[column] === undefined) return;
+    fields.push(`${column} = ?`);
+    values.push(body[column]);
+  });
+
+  if (body.tech_stack !== undefined) {
+    fields.push('tech_stack = ?');
+    values.push(serializeList(body.tech_stack));
+  }
+  if (body.social_links !== undefined) {
+    fields.push('social_links = ?');
+    values.push(serializeList(body.social_links));
+  }
+  if (body.contributors !== undefined) {
+    fields.push('contributors = ?');
+    values.push(serializeList(body.contributors));
+  }
+
+  if (!fields.length) return res.status(400).json({ error: 'nothing to update' });
+
   db.run(
-    `UPDATE about_page SET content_html=?, content_markdown=?, author_name=?, author_avatar=?, author_github=?, github_repo=?, version=?, updated_at=CURRENT_TIMESTAMP WHERE id=1`,
-    [content_html, content_markdown, author_name, author_avatar, author_github, github_repo, version],
+    `UPDATE about_page SET ${fields.join(', ')}, updated_at=CURRENT_TIMESTAMP WHERE id=1`,
+    values,
     function(err) {
       if (err) return res.status(500).json({ error: err.message });
-      logAction(req.user?.username, 'update', 'about_page', 1);
-      res.json({ changed: this.changes });
+      logAction(req.user?.username, 'update', 'about_page', 1, { fields: columns.filter((c) => body[c] !== undefined) });
+      // 更新后回读一次：前台和后台都拿解析好的数组，不用各自再解析
+      db.get(`SELECT * FROM about_page WHERE id = 1`, [], (e2, row) => {
+        if (e2) return res.json({ changed: this.changes });
+        const item = shapeAboutRow(row);
+        // 前台「关于」页据此作废缓存并重新拉取（保存即生效）
+        broadcast('about:update', item);
+        res.json({ changed: this.changes, item });
+      });
     }
   );
 });

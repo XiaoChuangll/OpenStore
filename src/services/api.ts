@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { translateAppsListCall } from './upstream-compat';
+import type { Contributor, SocialLinkItem, TechStackItem } from '../utils/about';
 
 // Use same-origin relative base URL; Nginx/BT 反向代理到后端
 const API_URL = '/api';
@@ -542,6 +543,16 @@ export interface AboutPage {
   author_github?: string;
   github_repo?: string;
   version?: string;
+  /** Hero 上的站点名 */
+  site_name?: string;
+  /** Hero 上的一句话简介 */
+  tagline?: string;
+  /** 技术栈标签，服务端已从 JSON 文本解析成数组 */
+  tech_stack?: TechStackItem[];
+  /** 作者的社交入口，服务端已从 JSON 文本解析成数组 */
+  social_links?: SocialLinkItem[];
+  /** 鸣谢名单，服务端已从 JSON 文本解析成数组 */
+  contributors?: Contributor[];
 }
 export const getAboutPage = async (): Promise<AboutPage> => {
   const response = await apiClient.get('/about');

@@ -7,6 +7,7 @@ import { usePlayerStore } from './stores/player';
 import { useRouter, useRoute } from 'vue-router';
 import PlayerBar from './components/PlayerBar.vue';
 import RankNavigation from './components/RankNavigation.vue';
+import BrandMark from './components/BrandMark.vue';
 import { waitForRouteChange } from './utils/route-change';
 import { morphNavigate } from './utils/player-morph';
 import { Moon, Sunny, ArrowLeft, Compass, Menu, Refresh, Collection, Close, Monitor, Edit, InfoFilled, CaretRight, Document } from '@element-plus/icons-vue';
@@ -485,7 +486,7 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
         <!-- 登录入口放在左侧品牌区：未登录点击进后台登录，已登录点开后台菜单 -->
         <el-dropdown v-else-if="isAuthed" trigger="click" @command="handleAdminCommand">
           <div class="logo-container is-clickable" role="button" tabindex="0">
-            <div class="logo-icon mr-2" role="img" aria-label="Logo"></div>
+            <BrandMark class="logo-icon mr-2" :size="28" />
             <span
               class="app-title"
               :class="{ 'is-hidden-on-mobile': layoutStore.showCustomTitle }"
@@ -509,7 +510,7 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
           @keydown.enter.prevent="goAdminLogin"
           @keydown.space.prevent="goAdminLogin"
         >
-          <div class="logo-icon mr-2" role="img" aria-label="Logo"></div>
+          <BrandMark class="logo-icon mr-2" :size="28" />
           <span
             class="app-title"
             :class="{ 'is-hidden-on-mobile': layoutStore.showCustomTitle }"
@@ -952,13 +953,13 @@ const handleAdminCommand = async (command: 'dashboard' | 'logout') => {
   }
 }
 
+/*
+ * 角标是内联 SVG 组件（BrandMark）：圆环走 currentColor，横线固定品牌蓝。
+ * 这里只负责给圆环指定颜色和过渡；尺寸由组件的 size 属性给。
+ */
 .logo-icon {
-  width: 28px;
-  height: 28px;
-  background-color: var(--el-text-color-primary);
-  -webkit-mask: url('/favicon.svg') no-repeat center center / contain;
-  mask: url('/favicon.svg') no-repeat center center / contain;
-  transition: background-color 0.3s;
+  color: var(--el-text-color-primary);
+  transition: color 0.3s;
 }
 
 .mr-2 {

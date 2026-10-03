@@ -1,10 +1,6 @@
 <template>
   <div class="admin-view">
-    <el-page-header v-if="!embedded" @back="goBack" class="mb-4">
-      <template #content>
-        <span class="text-large font-600 mr-3"> 友情链接管理 </span>
-      </template>
-    </el-page-header>
+    <AdminPageHeader :embedded="embedded" title="友情链接管理" />
 
     <div class="toolbar">
       <el-button type="primary" :icon="Plus" @click="openCreate">新增链接</el-button>
@@ -73,15 +69,14 @@
 </template>
 
 <script setup lang="ts">
+import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import { ref, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { Plus } from '@element-plus/icons-vue';
 import { getFriendLinks, createFriendLink, updateFriendLink, deleteFriendLink, batchFriendLinks, type FriendLink } from '../../services/admin';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
 
-const router = useRouter();
 const items = ref<FriendLink[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -163,11 +158,9 @@ const onPageChange = (p: number) => {
   page.value = p;
   fetchList();
 };
-const goBack = () => router.push('/');
 </script>
 
 <style scoped>
-.mb-4 { margin-bottom: 20px; }
 .toolbar {
   display: flex;
   gap: 10px;

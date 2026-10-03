@@ -77,12 +77,8 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import MarkdownIt from 'markdown-it';
-import markdownItKatex from 'markdown-it-katex';
-import hljs from 'highlight.js';
 import 'github-markdown-css/github-markdown-light.css';
-import 'highlight.js/styles/atom-one-light.css';
-import 'katex/dist/katex.min.css';
+import { createMarkdownRenderer } from '../utils/markdown';
 import { getPublicBlogBySlug, type Blog } from '../services/api';
 import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
@@ -103,23 +99,7 @@ const fullAppDetails = ref<Record<string, any>>({});
 const error = ref('');
 const passwordRequired = ref(false);
 
-const md = new MarkdownIt({
-  html: true,
-  linkify: true,
-  typographer: true,
-  breaks: true
-});
-md.set({
-  highlight: function (str, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(str, { language: lang }).value;
-      } catch (__) {}
-    }
-    return ''; // use external default escaping
-  }
-});
-md.use(markdownItKatex);
+const md = createMarkdownRenderer();
 
 const renderedContent = computed(() => {
   if (!article.value) return '';

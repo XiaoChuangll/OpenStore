@@ -7,12 +7,11 @@
 
     <div class="settings-grid">
       <!-- 颜色变量 -->
-      <section class="section-card">
-        <div class="section-head">
-          <div class="section-left">
-            <span class="section-title">颜色变量</span>
-            <span class="meta-chip">{{ TOKENS.length }} 项</span>
-          </div>
+      <AdminSection title="颜色变量">
+        <template #meta>
+          <span class="meta-chip">{{ TOKENS.length }} 项</span>
+        </template>
+        <template #actions>
           <div class="head-right">
             <span v-if="isDirty" class="meta-chip is-dirty">未保存</span>
             <el-button size="small" :icon="RefreshLeft" :disabled="!hasCustomColor" @click="resetTheme">
@@ -22,7 +21,7 @@
               保存配置
             </el-button>
           </div>
-        </div>
+        </template>
 
         <ul class="token-list">
           <li v-for="token in TOKENS" :key="token.key" class="token-row">
@@ -69,16 +68,13 @@
             <span class="preset-name">{{ preset.name }}</span>
           </button>
         </div>
-      </section>
+      </AdminSection>
 
       <!-- 组件预览：把颜色放进一段真实的后台片段里，比单摆控件更接近实际观感 -->
-      <section class="section-card preview-card" :style="previewVars">
-        <div class="section-head">
-          <div class="section-left">
-            <span class="section-title">组件预览</span>
-            <span class="meta-chip">跟随左侧数值</span>
-          </div>
-        </div>
+      <AdminSection title="组件预览" class="preview-card" :style="previewVars">
+        <template #meta>
+          <span class="meta-chip">跟随左侧数值</span>
+        </template>
 
         <div class="preview-panel">
           <!-- 工具条 -->
@@ -125,7 +121,7 @@
 
           <el-alert type="success" :closable="false" show-icon title="配色保存后立即对全站生效" />
         </div>
-      </section>
+      </AdminSection>
     </div>
   </div>
 </template>
@@ -137,9 +133,10 @@ import { Check, Delete, Plus, RefreshLeft, Search } from '@element-plus/icons-vu
 import { getSystemSettings, updateSystemSettings } from '../../services/admin';
 import { useThemeStore } from '../../stores/theme';
 import { buildColorVars, THEME_COLOR_TOKENS } from '../../utils/theme-color';
+import AdminSection from '../../components/admin/AdminSection.vue';
 
 /**
- * 站点设计系统的默认配色（见 src/style.css）。
+ * 站点设计系统的默认配色（见 src/styles/tokens.css）。
  * 注意：明暗两套默认色不一样（深色下主色是 #6ea8fe 而不是 #2563EB），
  * 所以「恢复默认」不能写死这组色值，而是清空自定义、交还给样式表里的默认值。
  */
@@ -311,39 +308,6 @@ onMounted(() => {
   .settings-grid {
     grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr);
   }
-}
-
-.section-card {
-  padding: 16px 18px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 12px;
-  background-color: var(--el-bg-color-overlay);
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: nowrap;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-
-.section-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  white-space: nowrap;
 }
 
 .meta-chip {
