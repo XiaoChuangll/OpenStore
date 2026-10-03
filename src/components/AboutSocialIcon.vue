@@ -11,7 +11,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { ChatDotRound, Document, HomeFilled, Link, Message, Star, VideoPlay } from '@element-plus/icons-vue';
+import { ChatDotRound, Document, HomeFilled, Link, Message, Star, User, VideoPlay } from '@element-plus/icons-vue';
 import type { SocialIconName } from '../utils/about';
 
 const props = defineProps<{ name: SocialIconName }>();
@@ -24,6 +24,7 @@ const ICONS: Record<Exclude<SocialIconName, 'github'>, unknown> = {
   video: VideoPlay,
   home: HomeFilled,
   star: Star,
+  user: User,
 };
 
 const iconComponent = computed(() => ICONS[props.name as Exclude<SocialIconName, 'github'>] ?? Link);

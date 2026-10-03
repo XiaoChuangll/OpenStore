@@ -261,12 +261,8 @@ import { ref, onMounted, watch, computed, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Edit, Delete, Search, Refresh } from '@element-plus/icons-vue';
 import { getAnnouncementCategories, createAnnouncementCategory, updateAnnouncementCategory, deleteAnnouncementCategory, getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, publishAnnouncement, offlineAnnouncement, type AnnouncementCategory, type Announcement } from '../../services/admin';
-import MarkdownIt from 'markdown-it';
-import markdownItKatex from 'markdown-it-katex';
-import hljs from 'highlight.js';
+import { createMarkdownRenderer } from '../../utils/markdown';
 import 'github-markdown-css/github-markdown-light.css';
-import 'highlight.js/styles/atom-one-light.css';
-import 'katex/dist/katex.min.css';
 import { QuillEditor } from '@vueup/vue-quill';
 import '@vueup/vue-quill/dist/vue-quill.snow.css';
 import AdminSection from '../../components/admin/AdminSection.vue';
@@ -291,21 +287,7 @@ const editingId = ref<number | null>(null);
 const scheduled = ref<string | null>(null);
 const form = ref<Partial<Announcement>>({ title: '', content_html: '', status: 'draft', category_id: null, scheduled_at: null });
 const markdownMode = ref<boolean>(false);
-const md = new MarkdownIt({
-  html: true,
-  linkify: true,
-  typographer: true,
-  breaks: true,
-  highlight: function (str, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(str, { language: lang }).value;
-      } catch (__) {}
-    }
-    return ''; // use external default escaping
-  }
-});
-md.use(markdownItKatex);
+const md = createMarkdownRenderer();
   const contentMarkdown = ref<string>('');
   const markdownPreview = computed(() => md.render(contentMarkdown.value || ''));
   // 移动端适配：检测窗口宽度
@@ -567,14 +549,6 @@ const removeCategory = (row: AnnouncementCategory) => {
 }
 
 /* ---------- 过滤条 ---------- */
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
 .filter-search { width: 240px; max-width: 100%; }
 .filter-select { width: 140px; }
 
@@ -609,16 +583,6 @@ const removeCategory = (row: AnnouncementCategory) => {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-}
-
-.table-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 28px 0;
-  font-size: 13px;
-  color: var(--el-text-color-placeholder);
 }
 
 .empty-hint {

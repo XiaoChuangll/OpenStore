@@ -14,12 +14,17 @@ export interface TechStackItem {
   color: TagColor;
 }
 
-export type SocialIconName = 'github' | 'link' | 'mail' | 'chat' | 'doc' | 'video' | 'home' | 'star';
+export type SocialIconName = 'github' | 'link' | 'mail' | 'chat' | 'doc' | 'video' | 'home' | 'star' | 'user';
+
+/** 自动取值的入口：地址/文字由当前配置决定，不用手填 */
+export type SocialAutoKind = 'stars' | 'repo' | 'author';
 
 export interface SocialLinkItem {
   label: string;
   url: string;
   icon: SocialIconName;
+  /** 设了就按 auto 自动解析（见 resolveSocialLinks） */
+  auto?: SocialAutoKind;
 }
 
 /**
@@ -52,6 +57,14 @@ export const SOCIAL_ICON_OPTIONS: { value: SocialIconName; label: string }[] = [
   { value: 'video', label: '视频' },
   { value: 'home', label: '主页' },
   { value: 'star', label: '收藏' },
+  { value: 'user', label: '作者' },
+];
+
+/** 「社交入口」里可直接添加的自动项 */
+export const SOCIAL_AUTO_OPTIONS: { value: SocialAutoKind; label: string; icon: SocialIconName; hint: string }[] = [
+  { value: 'stars', label: '星标', icon: 'star', hint: '自动取仓库星数' },
+  { value: 'repo', label: '仓库', icon: 'link', hint: '自动取仓库地址' },
+  { value: 'author', label: '作者', icon: 'user', hint: '自动取作者名称' },
 ];
 
 /** 服务端没给数据时的前端兜底（与服务端 about-defaults.cjs 保持一致） */
@@ -68,6 +81,9 @@ export const DEFAULT_TECH_STACK: TechStackItem[] = [
 ];
 
 export const DEFAULT_SOCIAL_LINKS: SocialLinkItem[] = [
+  { label: '', url: '', icon: 'star', auto: 'stars' },
+  { label: '', url: '', icon: 'link', auto: 'repo' },
+  { label: '', url: '', icon: 'user', auto: 'author' },
   { label: 'GitHub', url: 'https://github.com/XiaoChuangll', icon: 'github' },
 ];
 
@@ -94,14 +110,59 @@ export const normalizeTechStack = (value: unknown): TechStackItem[] => {
 export const normalizeSocialLinks = (value: unknown): SocialLinkItem[] => {
   if (!Array.isArray(value)) return [];
   const icons = SOCIAL_ICON_OPTIONS.map((option) => option.value);
+  const autos = SOCIAL_AUTO_OPTIONS.map((option) => option.value);
   return value
     .map((item) => {
       const raw = item as Partial<SocialLinkItem> | null;
       const url = String(raw?.url ?? '').trim();
-      if (!/^https?:\/\//i.test(url)) return null;
+      const auto = autos.includes(raw?.auto as SocialAutoKind) ? (raw!.auto as SocialAutoKind) : undefined;
+      // 自动项允许留空（前台按当前配置补），手填项必须有合法地址
+      if (!auto && !/^https?:\/\//i.test(url)) return null;
       const label = String(raw?.label ?? '').trim() || url.replace(/^https?:\/\//i, '');
       const icon = icons.includes(raw?.icon as SocialIconName) ? (raw!.icon as SocialIconName) : 'link';
-      return { label, url, icon };
+      return auto ? { label, url, icon, auto } : { label, url, icon };
+    })
+    .filter((item): item is SocialLinkItem => item !== null);
+};
+
+/** 解析自动项所需的当前配置 */
+export interface SocialResolveContext {
+  authorName?: string;
+  authorGithub?: string;
+  /** owner/repo */
+  repoName?: string;
+  repoStars?: number | null;
+}
+
+/**
+ * 把配置好的社交入口解析成可直接渲染的列表。
+ * 自动项按当前配置补上地址与默认文案；所需数据缺失的自动项直接丢掉，不留半成品。
+ */
+export const resolveSocialLinks = (
+  value: unknown,
+  context: SocialResolveContext
+): SocialLinkItem[] => {
+  const list = normalizeSocialLinks(value);
+  const repo = (context.repoName || '').replace(/^\/+/, '');
+  const repoUrl = repo ? `https://github.com/${repo}` : '';
+  const repoLabel = repo ? repo.split('/').pop() || repo : '';
+
+  return list
+    .map((item) => {
+      if (!item.auto) return item;
+      if (item.auto === 'stars') {
+        if (!repoUrl) return null;
+        const label = item.label || (context.repoStars != null ? String(context.repoStars) : '星标');
+        return { ...item, label, url: `${repoUrl}/stargazers` };
+      }
+      if (item.auto === 'repo') {
+        if (!repoUrl) return null;
+        return { ...item, label: item.label || repoLabel, url: repoUrl };
+      }
+      // author：没有主页时仍展示名字（渲染成不可点的胶囊）
+      const author = (context.authorName || '').trim();
+      if (!author) return null;
+      return { ...item, label: item.label || author, url: (context.authorGithub || '').trim() };
     })
     .filter((item): item is SocialLinkItem => item !== null);
 };

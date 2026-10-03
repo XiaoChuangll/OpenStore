@@ -33,7 +33,7 @@
           v-loading="loadingRecords"
           :data="records"
           size="small"
-          :height="tableHeight"
+          :max-height="tableHeight"
           class="guard-table is-expandable"
           @row-click="toggleRow"
         >
@@ -335,7 +335,10 @@ const isMobile = computed(() => viewport.w < 768);
 const isNarrow = computed(() => viewport.w < 1120);
 
 // 手机全屏、窄屏几乎占满，宽屏固定 880px
-const dialogWidth = computed(() => (isMobile.value ? '92vw' : isNarrow.value ? '94vw' : '880px'));
+// 桌面给足宽度：记录表最小列宽合计约 970px，比它窄就会把各列压成省略号
+const dialogWidth = computed(() =>
+  isMobile.value ? '92vw' : isNarrow.value ? '94vw' : 'min(1120px, 92vw)'
+);
 
 // 记录表高度跟着视口走：太高会顶出弹窗，太矮又看不全几行
 const tableHeight = computed(() => Math.max(240, Math.min(420, viewport.h - 380)));

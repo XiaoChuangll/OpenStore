@@ -536,14 +536,6 @@ onUnmounted(() => {
   background-color: var(--el-color-danger-light-9);
 }
 
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
 .filter-search { width: 240px; max-width: 100%; }
 .filter-select { width: 140px; }
 
@@ -583,16 +575,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-}
-
-.table-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 28px 0;
-  font-size: 13px;
-  color: var(--el-text-color-placeholder);
 }
 
 /* ---------- 窄屏卡片 ---------- */

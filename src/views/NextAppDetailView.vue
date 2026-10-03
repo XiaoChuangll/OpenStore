@@ -131,7 +131,7 @@
                     :title="item.label"
                     :aria-label="item.label"
                   >
-                    <el-icon><component :is="item.icon" /></el-icon>
+                    <el-icon><DeviceIcon :kind="item.kind" /></el-icon>
                   </span>
                 </dd>
               </div>
@@ -164,11 +164,7 @@ import { computed, nextTick, onActivated, onMounted, onUnmounted, ref, watch } f
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowDown, Picture } from '@element-plus/icons-vue';
 import HarmonyShareIcon from '../components/HarmonyShareIcon.vue';
-import PhoneDeviceIcon from '../components/PhoneDeviceIcon.vue';
-import TvDeviceIcon from '../components/TvDeviceIcon.vue';
-import TabletDeviceIcon from '../components/TabletDeviceIcon.vue';
-import WatchDeviceIcon from '../components/WatchDeviceIcon.vue';
-import PcDeviceIcon from '../components/PcDeviceIcon.vue';
+import DeviceIcon, { type DeviceKind } from '../components/DeviceIcon.vue';
 import { ElMessage } from 'element-plus';
 import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
@@ -184,12 +180,12 @@ const appDetail = ref<any>(null);
 const newFeatures = computed(() => appDetail.value?.new_features || appDetail.value?.upgrade_msg || '');
 
 /** 设备码 → 名称 + 图标（与应用页设备页签同一套图标；7 = 手表） */
-const DEVICE_CODE_META: Record<string, { key: string; label: string; icon: any }> = {
-  '0': { key: 'phone', label: '手机', icon: PhoneDeviceIcon },
-  '3': { key: 'tv', label: '智慧屏', icon: TvDeviceIcon },
-  '4': { key: 'tablet', label: '平板', icon: TabletDeviceIcon },
-  '7': { key: 'watch', label: '手表', icon: WatchDeviceIcon },
-  '15': { key: 'pc', label: '电脑', icon: PcDeviceIcon }
+const DEVICE_CODE_META: Record<string, { key: string; label: string; kind: DeviceKind }> = {
+  '0': { key: 'phone', label: '手机', kind: 'phone' },
+  '3': { key: 'tv', label: '智慧屏', kind: 'tv' },
+  '4': { key: 'tablet', label: '平板', kind: 'tablet' },
+  '7': { key: 'watch', label: '手表', kind: 'watch' },
+  '15': { key: 'pc', label: '电脑', kind: 'pc' }
 };
 
 /** 支持的设备：main_device_codes -> 手机 / 平板 / 手表 … */

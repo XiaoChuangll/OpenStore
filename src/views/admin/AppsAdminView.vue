@@ -511,14 +511,6 @@ const beforeUpload = (rawFile: File) => {
 .toolbar { display: flex; gap: 10px; margin-bottom: 12px; }
 
 /* ---------- 顶部过滤条 ---------- */
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
 .filter-search { width: 260px; max-width: 100%; }
 .filter-status { width: 120px; }
 
@@ -631,16 +623,6 @@ const beforeUpload = (rawFile: File) => {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-}
-
-.table-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 28px 0;
-  font-size: 13px;
-  color: var(--el-text-color-placeholder);
 }
 
 /* ---------- 弹窗表单 ---------- */

@@ -54,7 +54,9 @@
             </el-form-item>
           </el-form>
 
-          <p class="section-tip">卡片底部的星标 / 仓库 / 作者取自下方「关于作者」，社交入口在本分区底部维护。</p>
+          <p class="section-tip">
+            卡片底部的胶囊都来自下方「社交入口」；星标 / 仓库 / 作者是自动项，删掉就不显示。
+          </p>
 
           <!-- 社交入口：渲染在页面头部卡片底部的胶囊 -->
           <div class="sub-block">
@@ -65,14 +67,30 @@
               </div>
               <div class="head-right">
                 <el-button size="small" :icon="MagicStick" @click="restoreSocialLinks">恢复默认</el-button>
-                <el-button size="small" type="primary" plain :icon="Plus" @click="addSocialLink">添加</el-button>
+                <el-dropdown trigger="click" @command="addSocialItem">
+                  <el-button size="small" type="primary" plain :icon="Plus">添加</el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="custom">自定义链接</el-dropdown-item>
+                      <el-dropdown-item
+                        v-for="(opt, i) in SOCIAL_AUTO_OPTIONS"
+                        :key="opt.value"
+                        :command="opt.value"
+                        :divided="i === 0"
+                      >
+                        {{ opt.label }}（{{ opt.hint }}）
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
               </div>
             </div>
 
             <div v-if="socialLinkItems.length" class="item-list">
               <div v-for="(item, index) in socialLinkItems" :key="index" class="item-row is-social">
-                <el-input v-model="item.label" placeholder="名称" class="item-label" />
-                <el-input v-model="item.url" placeholder="https://..." class="item-grow" />
+                <el-input v-model="item.label" placeholder="名称（留空取默认）" class="item-label" />
+                <el-input v-if="!item.auto" v-model="item.url" placeholder="https://..." class="item-grow" />
+                <span v-else class="item-grow auto-source">{{ autoOption(item)?.hint }}</span>
                 <el-select v-model="item.icon" class="item-icon">
                   <el-option v-for="opt in SOCIAL_ICON_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value">
                     <span class="icon-option">
@@ -343,10 +361,11 @@ import {
   View,
 } from '@element-plus/icons-vue';
 import { getAboutPage, updateAboutPage, type AboutPage } from '../../services/admin';
-import type { SocialLinkItem, TechStackItem } from '../../utils/about';
+import type { SocialAutoKind, SocialLinkItem, TechStackItem } from '../../utils/about';
 import {
   DEFAULT_SOCIAL_LINKS,
   DEFAULT_TECH_STACK,
+  SOCIAL_AUTO_OPTIONS,
   SOCIAL_ICON_OPTIONS,
   TECH_COLOR_OPTIONS,
   githubAvatarUrl,
@@ -363,12 +382,8 @@ import {
   renderNameplateSheet,
   type NameplateTheme,
 } from '../../utils/about-nameplate';
-import MarkdownIt from 'markdown-it';
-import markdownItKatex from 'markdown-it-katex';
-import hljs from 'highlight.js';
+import { createMarkdownRenderer } from '../../utils/markdown';
 import 'github-markdown-css/github-markdown-light.css';
-import 'highlight.js/styles/atom-one-light.css';
-import 'katex/dist/katex.min.css';
 import { QuillEditor } from '@vueup/vue-quill';
 import '@vueup/vue-quill/dist/vue-quill.snow.css';
 
@@ -417,21 +432,7 @@ const exporting = ref(false);
 /** 回填时正文是否非空：用来拦住「把已有正文存成空」的误操作 */
 const loadedHadContent = ref(false);
 
-const md = new MarkdownIt({
-  html: true,
-  linkify: true,
-  typographer: true,
-  breaks: true,
-  highlight: function (str, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(str, { language: lang }).value;
-      } catch (__) {}
-    }
-    return '';
-  },
-});
-md.use(markdownItKatex);
+const md = createMarkdownRenderer();
 
 const renderedMarkdown = computed(() => md.render(contentMarkdown.value || ''));
 
@@ -566,15 +567,16 @@ const exportNameplate = async (command: 'light' | 'dark' | 'sheet') => {
       repoName: cleanRepo(form.value.github_repo),
     };
     const stamp = new Date().toISOString().slice(0, 10);
+    let mode: 'download' | 'open' = 'download';
     if (command === 'sheet') {
-      downloadCanvas(await renderNameplateSheet(data), `openstore-nameplate-${stamp}.png`);
+      mode = await downloadCanvas(await renderNameplateSheet(data), `openstore-nameplate-${stamp}.png`);
     } else {
-      downloadCanvas(
+      mode = await downloadCanvas(
         await renderNameplate(data, command as NameplateTheme),
         `openstore-nameplate-${command}-${stamp}.png`
       );
     }
-    ElMessage.success('图片已生成');
+    ElMessage.success(mode === 'open' ? '图片已在新标签打开，长按即可保存' : '图片已生成');
   } catch {
     ElMessage.error('生成图片失败');
   } finally {
@@ -639,7 +641,18 @@ const moveContributor = (index: number, delta: number) => {
 const contributorInitial = (item: Contributor) =>
   (item.name || item.github || '?').trim().slice(0, 1).toUpperCase();
 
-const addSocialLink = () => socialLinkItems.value.push({ label: '', url: '', icon: 'link' });
+/** 「添加」下拉：自定义链接，或星标 / 仓库 / 作者这类自动项 */
+const autoOption = (item: SocialLinkItem) => SOCIAL_AUTO_OPTIONS.find((opt) => opt.value === item.auto);
+
+const addSocialItem = (command: 'custom' | SocialAutoKind) => {
+  if (command === 'custom') {
+    socialLinkItems.value.push({ label: '', url: '', icon: 'link' });
+    return;
+  }
+  const option = SOCIAL_AUTO_OPTIONS.find((opt) => opt.value === command);
+  if (option) socialLinkItems.value.push({ label: '', url: '', icon: option.icon, auto: option.value });
+};
+
 const restoreSocialLinks = () => {
   socialLinkItems.value = DEFAULT_SOCIAL_LINKS.map((item) => ({ ...item }));
 };
@@ -656,6 +669,7 @@ const validate = () => {
     if (!item.name.trim()) return '技术栈里还有没填名称的标签';
   }
   for (const item of socialLinkItems.value) {
+    if (item.auto) continue; // 自动项的地址由前台按当前配置补
     const url = item.url.trim();
     if (!url) return '社交链接里还有没填地址的条目';
     if (!/^https?:\/\//i.test(url)) return `社交链接「${item.label || url}」需要以 http:// 或 https:// 开头`;
@@ -786,7 +800,8 @@ onBeforeRouteLeave(async () => {
 
 .manage-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  /* 预览栏给宽一点：Hero 卡片在里面才不会横向挤成两行 */
+  grid-template-columns: minmax(0, 1fr) 430px;
   gap: 20px;
   align-items: start;
 }
@@ -972,6 +987,18 @@ onBeforeRouteLeave(async () => {
   min-width: 0;
 }
 
+/* 自动项的地址列：只显示取值来源 */
+.auto-source {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
 .item-label {
   flex: 0 0 130px;
   width: 130px;
@@ -1137,7 +1164,8 @@ onBeforeRouteLeave(async () => {
   background-color: transparent;
 }
 
-@media (max-width: 1100px) {
+/* 预览栏变宽后，窄一点就改成单列（预览走「预览」按钮的抽屉），避免表单被挤扁 */
+@media (max-width: 1240px) {
   .manage-layout {
     grid-template-columns: minmax(0, 1fr);
   }

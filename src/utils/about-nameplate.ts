@@ -8,9 +8,12 @@
  *   卡片本身结构很简单（圆角底 + 渐变 + 贡献图纹理 + logo + 两行文字 + 几个胶囊），
  *   用 Canvas 2D 直接画反而更可控、也不会把页面的样式依赖带进来。
  *
- * 纹理复刻的是 Hero 卡的实现：底纹与绿格各是一张 SVG，经 createPattern 平铺，
- * 再用 destination-in 叠一道横向渐变，做出「只在右侧、向左淡出」的效果。
+ * 纹理复刻的是 Hero 卡的实现：底纹和绿格都按格子坐标画，再用 destination-in
+ * 叠一道横向渐变，做出「只在右侧、向左淡出」的效果；绿格用的是 utils/hero-grid 里
+ * 同一份哈希规则，页面和导出图片观感一致。
  */
+
+import { GREEN_COLOR, greenCellOpacity } from './hero-grid';
 
 export interface NameplateData {
   siteName?: string;
@@ -108,11 +111,24 @@ const buildTexture = async (s: number, ink: string) => {
    * 当 canvas pattern 用会把白格子画到白底上，什么也看不见。
    * 这里格子形状极简，自己画反而更直接、也少一次图片请求。
    */
+  /*
+   * 与页面 .hero-grid 同一套规则：按卡片尺寸取整数行列，格子尺寸随卡片算，
+   * 纹理整列整行铺满，不会在边缘切出半格。
+   */
+  const cols = Math.max(1, Math.round(W / PITCH));
+  const rows = Math.max(1, Math.round(H / PITCH));
+  const stepX = W / cols;
+  const stepY = H / rows;
+  const cell = Math.min(stepX, stepY) * (CELL / PITCH);
+  const cellRadius = CELL_RADIUS * (cell / CELL);
+
   t.globalAlpha = GRID_ALPHA;
   t.fillStyle = ink;
-  for (let y = 0; y < H; y += PITCH) {
-    for (let x = 0; x < W; x += PITCH) {
-      roundRectPath(t, x, y, CELL, CELL, CELL_RADIUS);
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const x = c * stepX + (stepX - cell) / 2;
+      const y = r * stepY + (stepY - cell) / 2;
+      roundRectPath(t, x, y, cell, cell, cellRadius);
       t.fill();
     }
   }
@@ -122,12 +138,18 @@ const buildTexture = async (s: number, ink: string) => {
    * 作为 pattern 铺出来天然带上深浅分布，不用另外造数据。
    * 单元比卡片宽，铺一次即可覆盖。
    */
-  const accentImg = await loadImage('/hero-grid-accent.svg');
-  const accentPattern = t.createPattern(accentImg, 'repeat');
-  if (accentPattern) {
-    t.globalAlpha = ACCENT_ALPHA;
-    t.fillStyle = accentPattern;
-    t.fillRect(0, 0, W, H);
+  // 绿色格：与页面同一份哈希规则（见 utils/hero-grid），两处观感一致
+  t.fillStyle = GREEN_COLOR;
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const opacity = greenCellOpacity(c, r);
+      if (!opacity) continue;
+      const x = c * stepX + (stepX - cell) / 2;
+      const y = r * stepY + (stepY - cell) / 2;
+      t.globalAlpha = ACCENT_ALPHA * opacity;
+      roundRectPath(t, x, y, cell, cell, cellRadius);
+      t.fill();
+    }
   }
 
   /*
@@ -203,12 +225,21 @@ export const renderNameplate = async (
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
 
-  // 右上角光斑（对应 CSS 里的 .hero-glow）
-  const glow = ctx.createRadialGradient(W - 60, -40, 0, W - 60, -40, 260);
-  glow.addColorStop(0, 'rgba(37, 99, 235, 0.14)');
+  /*
+   * 右上角的淡主色洗色，与 CSS 里 .about-hero 的 radial-gradient 同一组参数
+   *（横向 65%、纵向 330%，到卡片底部仍保留约一半）。
+   * canvas 的径向渐变是正圆，这里先把坐标系拉成椭圆再画。
+   */
+  ctx.save();
+  ctx.translate(W, 0);
+  ctx.scale(W * 0.65, H * 3.3);
+  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+  glow.addColorStop(0, 'rgba(37, 99, 235, 0.08)');
+  glow.addColorStop(0.6, 'rgba(37, 99, 235, 0)');
   glow.addColorStop(1, 'rgba(37, 99, 235, 0)');
   ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(-1, -1, 2, 2);
+  ctx.restore();
 
   ctx.drawImage(texture, 0, 0, W, H);
 
@@ -261,12 +292,6 @@ export const renderNameplate = async (
 
   ctx.restore();
 
-  // 描边（跟着圆角走，所以要单独画一遍路径）
-  roundRectPath(ctx, 0.5, 0.5, W - 1, H - 1, RADIUS);
-  ctx.strokeStyle = theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
   return canvas;
 };
 
@@ -291,16 +316,37 @@ export const renderNameplateSheet = async (
 };
 
 /** 触发浏览器下载 */
-export const downloadCanvas = (canvas: HTMLCanvasElement, filename: string) => {
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }, 'image/png');
+/** iOS / iPadOS（含桌面 UA 的 iPad） */
+const isIosSafari = () =>
+  /iP(hone|ad|od)/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+/**
+ * 导出画布为 PNG。
+ * 返回 'download' 表示浏览器直接下载了文件，'open' 表示在 iOS 上改成了新标签打开图片
+ *（苹果对 blob: 链接的 download 支持不好，只能让用户长按保存）。
+ */
+export const downloadCanvas = async (
+  canvas: HTMLCanvasElement,
+  filename: string
+): Promise<'download' | 'open'> => {
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('画布导出为空');
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  const ios = isIosSafari();
+  if (ios) link.target = '_blank';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  /*
+   * 不能立刻 revoke：iOS 会走「打开图片」而不是直接下载，
+   * 地址一旦失效图片就打不开了（表现为「生成失败」）。
+   */
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+
+  return ios ? 'open' : 'download';
 };

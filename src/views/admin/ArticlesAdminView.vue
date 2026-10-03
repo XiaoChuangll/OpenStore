@@ -483,12 +483,8 @@ import { searchApps as searchNextApps } from '../../services/next-api';
 import { QuillEditor } from '@vueup/vue-quill';
 import '@vueup/vue-quill/dist/vue-quill.snow.css';
 import AdminSection from '../../components/admin/AdminSection.vue';
-import MarkdownIt from 'markdown-it';
-import markdownItKatex from 'markdown-it-katex';
-import hljs from 'highlight.js';
+import { createMarkdownRenderer, preBlockHighlight } from '../../utils/markdown';
 import 'github-markdown-css/github-markdown-light.css';
-import 'highlight.js/styles/atom-one-light.css';
-import 'katex/dist/katex.min.css';
 import { useAuthStore } from '../../stores/auth';
 import { Picture, Plus, Edit, Delete, Search, Refresh } from '@element-plus/icons-vue';
 
@@ -581,21 +577,8 @@ const form = ref<Partial<Blog>>({
 const articleHasPassword = ref(false);
 const removeArticlePassword = ref(false);
 
-const md = new MarkdownIt({
-  html: true,
-  linkify: true,
-  typographer: true,
-  breaks: true
-});
-md.set({
-  highlight: (str, lang) => {
-    if (lang && hljs.getLanguage(lang)) {
-      return `<pre class="hljs"><code>${hljs.highlight(str, { language: lang }).value}</code></pre>`;
-    }
-    return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`;
-  }
-});
-md.use(markdownItKatex);
+// 预览用 <pre class="hljs"> 输出，配合 atom-one-light 的 .hljs 底色
+const md = createMarkdownRenderer({ highlight: preBlockHighlight });
 
 const markdownPreview = computed(() => md.render(contentMarkdown.value || ''));
 const titleCount = computed(() => (form.value.title ? String(form.value.title).length : 0));
@@ -1511,14 +1494,6 @@ const openCompare = () => {
   color: var(--el-text-color-placeholder);
 }
 
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
 .filter-search { width: 240px; max-width: 100%; }
 .filter-select { width: 140px; }
 
@@ -1555,16 +1530,6 @@ const openCompare = () => {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-}
-
-.table-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 28px 0;
-  font-size: 13px;
-  color: var(--el-text-color-placeholder);
 }
 
 /* ------------------------------------------------------------------

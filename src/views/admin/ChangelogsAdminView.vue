@@ -108,12 +108,8 @@ import { Edit, Delete } from '@element-plus/icons-vue';
 import { getChangelogs, createChangelog, updateChangelog, deleteChangelog } from '../../services/admin';
 import { onWS } from '../../services/ws';
 import type { Changelog } from '../../services/api';
-import MarkdownIt from 'markdown-it';
-import markdownItKatex from 'markdown-it-katex';
-import hljs from 'highlight.js';
+import { createMarkdownRenderer } from '../../utils/markdown';
 import 'github-markdown-css/github-markdown-light.css';
-import 'highlight.js/styles/atom-one-light.css';
-import 'katex/dist/katex.min.css';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
@@ -136,21 +132,7 @@ const getNowLocalString = () => {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
-const md = new MarkdownIt({
-  html: true,
-  linkify: true,
-  typographer: true,
-  breaks: true,
-  highlight: function (str, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(str, { language: lang }).value;
-      } catch (__) {}
-    }
-    return ''; // use external default escaping
-  }
-});
-md.use(markdownItKatex);
+const md = createMarkdownRenderer();
 
 const markdownPreview = computed(() => md.render(contentMarkdown.value || ''));
 

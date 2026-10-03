@@ -8,6 +8,7 @@
       :tagline="aboutData.tagline"
       :version="siteVersion"
       :author-name="aboutData.author_name"
+      :author-github="aboutData.author_github"
       :repo-name="repoName"
       :repo-stars="repoStars"
       :social-links="socialLinks"
@@ -364,7 +365,7 @@ import {
 } from '@element-plus/icons-vue';
 import { getAboutPage, getPublicChangelogs, submitFeedback, getFeedbackProgressByHash, getFeedbackSuccessList, type AboutPage, type Changelog, type FeedbackSummary } from '../services/api';
 import axios from 'axios';
-import MarkdownIt from 'markdown-it';
+import { createMarkdownRenderer } from '../utils/markdown';
 import '@vueup/vue-quill/dist/vue-quill.snow.css'; // Import Quill styles for content rendering
 import 'github-markdown-css/github-markdown.css';
 import { useAuthStore } from '../stores/auth';
@@ -430,12 +431,7 @@ const changelogsLoading = ref(false);
 const changelogsExpanded = ref(false);
 const changelogsFetched = ref(false);
 
-const md = new MarkdownIt({
-  html: false,
-  linkify: true,
-  typographer: true,
-  breaks: true,
-});
+const md = createMarkdownRenderer({ allowHtml: false, katex: false, highlight: false });
 
 /** 技术栈：后台没配置过就用默认值，保证首屏不空 */
 const techStack = computed<TechStackItem[]>(() => {
@@ -444,22 +440,8 @@ const techStack = computed<TechStackItem[]>(() => {
 });
 
 /** 社交入口：后台清了就退回作者的 GitHub / 仓库地址，避免 Hero 底部整块消失 */
-const socialLinks = computed<SocialLinkItem[]>(() => {
-  const list = normalizeSocialLinks(aboutData.value.social_links);
-  if (list.length) return list;
-  const fallback: SocialLinkItem[] = [];
-  if (aboutData.value.author_github) {
-    fallback.push({ label: 'GitHub', url: aboutData.value.author_github, icon: 'github' });
-  }
-  if (aboutData.value.github_repo) {
-    fallback.push({
-      label: '仓库',
-      url: `https://github.com/${getRepoName(aboutData.value.github_repo)}`,
-      icon: 'star',
-    });
-  }
-  return fallback;
-});
+/** 后台配置了什么就显示什么（自动项由 AboutHero 按当前配置解析） */
+const socialLinks = computed<SocialLinkItem[]>(() => normalizeSocialLinks(aboutData.value.social_links));
 
 const repoName = computed(() => (aboutData.value.github_repo ? getRepoName(aboutData.value.github_repo) : ''));
 

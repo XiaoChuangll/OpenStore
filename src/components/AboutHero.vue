@@ -1,8 +1,26 @@
 <template>
-  <section class="about-hero">
-    <!-- 背景纹理：GitHub 贡献图式的圆角格子 -->
-    <div class="hero-grid" aria-hidden="true"></div>
-    <div class="hero-glow" aria-hidden="true"></div>
+  <section class="about-hero" :style="gridVars">
+    <!-- 背景纹理：GitHub 贡献图式的圆角格子，缓慢向左滚动 -->
+    <div ref="gridRef" class="hero-grid" aria-hidden="true">
+      <div class="hero-grid-scroll">
+        <svg
+          class="hero-grid-accent"
+          :viewBox="`0 0 ${gridCols + GREEN_PERIOD_COLS} ${gridRows}`"
+          preserveAspectRatio="none"
+        >
+          <rect
+            v-for="cell in greenCells"
+            :key="cell.key"
+            :x="cell.x + GREEN_CELL_INSET"
+            :y="cell.y + GREEN_CELL_INSET"
+            :width="GREEN_CELL_SIZE"
+            :height="GREEN_CELL_SIZE"
+            :rx="GREEN_CELL_RX"
+            :fill-opacity="cell.opacity"
+          />
+        </svg>
+      </div>
+    </div>
 
     <div class="hero-body">
       <!--
@@ -21,52 +39,29 @@
       </div>
     </div>
 
-    <!--
-      星标 / 仓库 / 作者 / 社交入口统一收在这条虚线下面。
-      以前前三者是贴在标题底下的，和标题、简介挤在一屏里；挪下来之后「文字信息在上、
-      链接与出处在下」层次更清楚，也不会把标题行撑宽。
-    -->
-    <div v-if="hasLinks" class="hero-links">
-      <a
-        v-if="showStars"
-        :href="`${repoUrl}/stargazers`"
-        target="_blank"
-        rel="noopener"
-        class="hero-chip is-link"
+    <!-- 底部胶囊全部由「社交入口」配置决定（星标 / 仓库 / 作者是其中的自动项） -->
+    <div v-if="chips.length" class="hero-links">
+      <component
+        :is="chip.url ? 'a' : 'span'"
+        v-for="chip in chips"
+        :key="chip.key"
+        v-bind="chip.url ? { href: chip.url, target: '_blank', rel: 'noopener' } : {}"
+        class="hero-chip hero-social-chip"
+        :class="{ 'is-link': !!chip.url }"
+        :title="chip.label"
       >
-        <el-icon><StarFilled /></el-icon>
-        <span>{{ repoStars }}</span>
-      </a>
-      <a v-if="repoUrl" :href="repoUrl" target="_blank" rel="noopener" class="hero-chip is-link">
-        <el-icon><Link /></el-icon>
-        <span>{{ repoLabel }}</span>
-      </a>
-      <span v-if="authorName" class="hero-chip">
-        <el-icon><User /></el-icon>
-        <span>{{ authorName }}</span>
-      </span>
-
-      <a
-        v-for="link in socialLinks"
-        :key="link.url"
-        :href="link.url"
-        target="_blank"
-        rel="noopener"
-        class="hero-chip is-link hero-social-chip"
-        :title="link.label"
-      >
-        <AboutSocialIcon :name="link.icon" />
-        <span class="hero-social-label">{{ link.label }}</span>
-      </a>
+        <AboutSocialIcon :name="chip.icon" />
+        <span class="hero-social-label">{{ chip.label }}</span>
+      </component>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { Link, StarFilled, User } from '@element-plus/icons-vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AboutSocialIcon from './AboutSocialIcon.vue';
-import type { SocialLinkItem } from '../utils/about';
+import { resolveSocialLinks, type SocialLinkItem } from '../utils/about';
+import { GREEN_COLOR, GREEN_PERIOD_COLS, greenCellOpacity } from '../utils/hero-grid';
 
 const props = withDefaults(
   defineProps<{
@@ -74,9 +69,10 @@ const props = withDefaults(
     tagline?: string;
     version?: string;
     authorName?: string;
+    authorGithub?: string;
     /** 已经清洗成 owner/repo 的仓库路径 */
     repoName?: string;
-    /** 没取到星标时传 null，直接不显示这个 chip */
+    /** 没取到星标时传 null */
     repoStars?: number | null;
     socialLinks?: SocialLinkItem[];
   }>(),
@@ -91,42 +87,107 @@ const displayName = computed(() => props.siteName?.trim() || 'OpenStore');
  */
 const displayVersion = computed(() => (props.version || '').trim().replace(/^v/i, ''));
 
-const repoUrl = computed(() => {
-  if (!props.repoName) return '';
-  return `https://github.com/${props.repoName.replace(/^\/+/, '')}`;
-});
+/*
+ * 底部胶囊完全由「社交入口」配置决定：星标 / 仓库 / 作者是其中的自动项，
+ * 没有配置就不渲染，保证「后台删掉 = 前台不显示」。
+ */
+const chips = computed(() =>
+  resolveSocialLinks(props.socialLinks, {
+    authorName: props.authorName,
+    authorGithub: props.authorGithub,
+    repoName: props.repoName,
+    repoStars: props.repoStars
+  }).map((item, index) => ({ ...item, key: `${item.icon}-${index}` }))
+);
 
-/** 仓库 chip 上只显示 repo 名，owner 放到 title 里，窄屏更省地方 */
-const repoLabel = computed(() => {
-  const parts = (props.repoName || '').split('/');
-  return parts[parts.length - 1] || props.repoName || '';
-});
+/** 期望的格子步长（实际会按卡片尺寸微调，保证行列都是整数） */
+const GRID_TARGET_CELL = 14;
+/** 底纹向左滚动的速度（px/秒），实际时长按滚动一个周期的距离换算 */
+const GRID_DRIFT_SPEED = 5;
+/** 格子内部的留白与圆角（单位是「格」，和 hero-grid.svg 的 2.5/14、9/14、2/14 对齐） */
+const GREEN_CELL_INSET = 2.5 / 14;
+const GREEN_CELL_SIZE = 9 / 14;
+const GREEN_CELL_RX = 2 / 14;
 
-/** 星标要拿到数字、且得有仓库地址才能点进 stargazers */
-const showStars = computed(() => props.repoStars !== null && !!repoUrl.value);
+const gridRef = ref<HTMLElement | null>(null);
+const gridVars = ref<Record<string, string>>({});
+const gridCols = ref(0);
+const gridRows = ref(0);
+let resizeObserver: ResizeObserver | null = null;
 
 /*
- * 虚线下面那一行只要有任何一项就渲染。
- * 注意不能再用 socialLinks.length 当条件：社交入口为空时星标/仓库/作者仍然要显示，
- * 而那条虚线正是它们的分隔线，整行没了就会连分隔线一起消失。
+ * 格子自适应卡片：按卡片尺寸取整数行列，格子尺寸 = 卡片尺寸 / 行列数，
+ * 于是纹理总是整列整行铺满，不会在边缘切出半格。
+ * 量的是纹理层自身（内边距盒），不是卡片外框 —— 用外框量会多算 1px 边框，
+ * 最后一列/行被多切一点，上下（左右）缝隙就不一样宽了。
  */
-const hasLinks = computed(
-  () =>
-    showStars.value ||
-    !!repoUrl.value ||
-    !!(props.authorName || '').trim() ||
-    props.socialLinks.length > 0
-);</script>
+const measureGrid = () => {
+  const el = gridRef.value;
+  if (!el) return;
+  const { width, height } = el.getBoundingClientRect();
+  if (width <= 0 || height <= 0) return;
+
+  const cols = Math.max(1, Math.round(width / GRID_TARGET_CELL));
+  const rows = Math.max(1, Math.round(height / GRID_TARGET_CELL));
+  gridCols.value = cols;
+  gridRows.value = rows;
+  const cellW = width / cols;
+  const cellH = height / rows;
+  gridVars.value = {
+    '--hero-grid-green': GREEN_COLOR,
+    '--grid-cell-w': `${cellW}px`,
+    '--grid-cell-h': `${cellH}px`,
+    // 滚动一个周期（128 列）的距离
+    '--grid-drift': `${cellW * GREEN_PERIOD_COLS}px`,
+    // 按同一速度换算时长，卡片大小变化时观感一致
+    '--grid-drift-duration': `${Math.round((cellW * GREEN_PERIOD_COLS) / GRID_DRIFT_SPEED)}s`
+  };
+};
+
+/*
+ * 点亮格：按 (列, 行) 哈希生成，滚动范围要比可见区多出一个周期。
+ * 坐标用「格」为单位（viewBox 也是格数），SVG 拉伸后正好落在底纹的格点上。
+ */
+const greenCells = computed(() => {
+  const cells: { key: string; x: number; y: number; opacity: number }[] = [];
+  const totalCols = gridCols.value + GREEN_PERIOD_COLS;
+  for (let row = 0; row < gridRows.value; row += 1) {
+    for (let col = 0; col < totalCols; col += 1) {
+      const opacity = greenCellOpacity(col, row);
+      if (opacity > 0) cells.push({ key: `${col}-${row}`, x: col, y: row, opacity });
+    }
+  }
+  return cells;
+});
+
+onMounted(() => {
+  measureGrid();
+  if (typeof ResizeObserver === 'undefined' || !gridRef.value) return;
+  resizeObserver = new ResizeObserver(measureGrid);
+  resizeObserver.observe(gridRef.value);
+});
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
+  resizeObserver = null;
+});
+</script>
 
 <style scoped>
 .about-hero {
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--el-border-color-lighter);
+  /* 不描边：默认那圈浅色边在深色下会显得像一条"白边" */
+  border: 1px solid transparent;
   border-radius: 18px;
   padding: 26px 24px 22px;
+  /*
+   * 右上角只有一层很淡的主色洗色，不加单独的光斑。
+   * 椭圆半径按参考图量的：横向到卡片 35% 处基本消失，纵向到卡片底部仍保留约一半，
+   * 这样上下不会出现"上面偏蓝、下面偏绿"的割裂感。
+   */
   background:
-    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--el-color-primary) 14%, transparent) 0%, transparent 55%),
+    radial-gradient(65% 330% at 100% 0%, color-mix(in srgb, var(--el-color-primary) 8%, transparent) 0%, transparent 60%),
     linear-gradient(180deg, var(--el-bg-color-overlay) 0%, var(--el-fill-color-lighter) 100%);
   box-shadow: var(--el-box-shadow-lighter);
 }
@@ -146,6 +207,7 @@ const hasLinks = computed(
 .hero-grid {
   position: absolute;
   inset: 0;
+  overflow: hidden;
   pointer-events: none;
   /* 渐隐位置：40% 之前完全没有，到 78% 才铺满 */
   --hero-grid-fade: linear-gradient(
@@ -155,51 +217,68 @@ const hasLinks = computed(
     #000 78%,
     #000 100%
   );
+  /* 渐隐放在外层：滚动的是它里面的纹理，淡出位置固定不动 */
+  -webkit-mask-image: var(--hero-grid-fade);
+  mask-image: var(--hero-grid-fade);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
 }
 
-.hero-grid::before,
-.hero-grid::after {
+/* 滚动层：比容器多出一个周期，向左平移一个周期后无缝衔接 */
+.hero-grid-scroll {
+  position: absolute;
+  inset: 0;
+  /* 多出一个周期的宽度，滚动到尽头时右侧仍有内容 */
+  right: calc(-1 * var(--grid-drift, 1022px));
+  animation: hero-grid-drift var(--grid-drift-duration, 200s) linear infinite;
+  will-change: transform;
+}
+
+.hero-grid-scroll::before {
   content: '';
   position: absolute;
   inset: 0;
-  -webkit-mask-repeat: repeat, no-repeat;
-  mask-repeat: repeat, no-repeat;
-  -webkit-mask-composite: source-in;
-  mask-composite: intersect;
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
 }
 
 /* 均匀底纹 */
-.hero-grid::before {
+.hero-grid-scroll::before {
   background-color: var(--el-text-color-primary);
   opacity: 0.06;
-  -webkit-mask-image: url('/hero-grid.svg'), var(--hero-grid-fade);
-  mask-image: url('/hero-grid.svg'), var(--hero-grid-fade);
-  -webkit-mask-size: 14px 14px, auto;
-  mask-size: 14px 14px, auto;
+  -webkit-mask-image: url('/hero-grid.svg');
+  mask-image: url('/hero-grid.svg');
+  /* 格子尺寸由卡片尺寸算出（见 measureGrid），因此总能整列整行铺满 */
+  -webkit-mask-size: var(--grid-cell-w, 14px) var(--grid-cell-h, 14px);
+  mask-size: var(--grid-cell-w, 14px) var(--grid-cell-h, 14px);
 }
 
-/* 绿色贡献格：SVG 里每格 fill-opacity 不同，经 mask 转成不同强度，形成浓淡分布 */
-.hero-grid::after {
-  background-color: #39d353;
-  opacity: 0.28;
-  -webkit-mask-image: url('/hero-grid-accent.svg'), var(--hero-grid-fade);
-  mask-image: url('/hero-grid-accent.svg'), var(--hero-grid-fade);
-  /* 尺寸与 SVG 一致；这个单元比卡片还宽（卡片 max-width 960），横向不会重复，
-     否则同一簇绿点会在卡片上出现好几遍、一眼看出周期 */
-  -webkit-mask-size: 1022px 420px, auto;
-  mask-size: 1022px 420px, auto;
-}
-
-/* 装饰光斑：纯视觉，不参与布局也不吃指针事件 */
-.hero-glow {
+/* 绿色贡献格：由 greenCells 按坐标哈希生成，深浅由每格 fill-opacity 决定 */
+.hero-grid-accent {
   position: absolute;
-  top: -70px;
-  right: -50px;
-  width: 220px;
-  height: 220px;
-  border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--el-color-primary) 26%, transparent) 0%, transparent 70%);
-  pointer-events: none;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: var(--hero-grid-green, #39d353);
+  opacity: 0.28;
+}
+
+/* 向左滚动一个周期（128 列），图案按周期重复，所以衔接处无缝 */
+@keyframes hero-grid-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-1 * var(--grid-drift, 1022px)));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-grid-scroll {
+    animation: none;
+  }
 }
 
 .hero-body {

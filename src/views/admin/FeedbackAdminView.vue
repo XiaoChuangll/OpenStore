@@ -618,13 +618,6 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.table-empty {
-  padding: 28px 0;
-  text-align: center;
-  font-size: 13px;
-  color: var(--el-text-color-placeholder);
-}
-
 .dialog-row.is-full {
   grid-column: 1 / -1;
 }
