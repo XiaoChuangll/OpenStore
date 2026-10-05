@@ -13,7 +13,7 @@
     >
       <template #extra>
         <el-button type="primary" @click="fetchDetail">重试</el-button>
-        <el-button @click="router.back()">返回</el-button>
+        <el-button @click="goBackOrHome(router, '/topics')">返回</el-button>
       </template>
     </el-result>
 
@@ -110,6 +110,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { getTopicDetail, type FullSubstanceInfo } from '../services/api';
 import AppCard from '../components/AppCard.vue';
 import { useLayoutStore } from '../stores/layout';
+import { goBackOrHome } from '../utils/route-scroll';
 import { clearPageShareMeta, setPageShareMeta } from '../utils/page-share';
 import { Calendar, Collection, Picture, User } from '@element-plus/icons-vue';
 
@@ -215,7 +216,8 @@ const fetchDetail = async () => {
 
     const title = data.title || '专题详情';
     // 顶栏不显示标题（正文里有），只保留返回按钮；浏览器标签标题照旧
-    layoutStore.setPageInfo('', true, () => router.back());
+    // 深链接直接进来时没有上一页，兜底回专题列表
+    layoutStore.setPageInfo('', true, () => goBackOrHome(router, '/topics'));
     document.title = `OpenStore | ${title}`;
 
     /*

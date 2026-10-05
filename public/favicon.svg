@@ -139,18 +139,18 @@
 
   <!-- 中央发光圆环 -->
   <g filter="url(#glowColor)" opacity="0.9">
-    <circle cx="120" cy="90" r="42"
+    <circle cx="120" cy="100" r="42"
             fill="none" stroke="#F5F5F5" stroke-width="14"
             filter="url(#glow)" />
   </g>
 
-  <circle cx="120" cy="90" r="35"
+  <circle cx="120" cy="100" r="35"
           fill="none" stroke="#FFFFFF" stroke-width="1.5" opacity="0.25" />
-  <circle cx="120" cy="90" r="49"
+  <circle cx="120" cy="100" r="49"
           fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.08" />
 
   <!-- 底部短横线：改为鸿蒙蓝 -->
-  <rect x="96" y="150" width="48" height="8" rx="4" fill="#0A59F7" />
+  <rect x="96" y="160" width="48" height="8" rx="4" fill="#0A59F7" />
 
   <!-- 产品名：字体更圆润温和 -->
   <text x="120" y="196" text-anchor="middle"

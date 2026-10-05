@@ -112,9 +112,18 @@ router.put('/api/site-cards/:id', requireAuth, (req, res) => {
 // Public Site Cards
 router.get('/api/public/site-cards', (req, res) => {
   const page = typeof req.query.page === 'string' && req.query.page.trim() ? req.query.page.trim() : '';
-  const sql = page
-    ? `SELECT * FROM site_cards WHERE enabled=1 AND page = ? ORDER BY sort_order ASC, id ASC`
-    : `SELECT * FROM site_cards WHERE enabled=1 ORDER BY page ASC, sort_order ASC, id ASC`;
+  /*
+   * 关于页的卡片是固定模板，前端要按后台配置隐藏「已关闭」的卡片，
+   * 所以这里允许显式要求返回全部卡片（含未启用），带上 enabled 让前端自己判断显隐。
+   * 首页 / 系统页仍走默认的 enabled=1 过滤。
+   */
+  const includeDisabled = req.query.include_disabled === '1' || req.query.include_disabled === 'true';
+  const clauses = [];
+  if (!includeDisabled) clauses.push('enabled=1');
+  if (page) clauses.push('page = ?');
+  const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
+  const order = page ? 'sort_order ASC, id ASC' : 'page ASC, sort_order ASC, id ASC';
+  const sql = `SELECT * FROM site_cards${where} ORDER BY ${order}`;
 
   db.all(sql, page ? [page] : [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -172,7 +181,7 @@ router.put('/api/about', requireAuth, (req, res) => {
    * 只更新请求里带的字段：
    * 后台的各个分区可能分开保存，缺字段不能把这个字段清成 NULL。
    */
-  const columns = ['content_html', 'content_markdown', 'author_name', 'author_avatar', 'author_github', 'github_repo', 'version', 'site_name', 'tagline'];
+  const columns = ['content_html', 'content_markdown', 'author_name', 'author_avatar', 'author_github', 'github_repo', 'version', 'site_name', 'tagline', 'hero_grid_text'];
   const fields = [];
   const values = [];
 

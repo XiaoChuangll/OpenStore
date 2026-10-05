@@ -266,9 +266,42 @@ const HOME_SECTIONS: Record<string, Component> = {
   'app-list': AppListSection,
 };
 const HOME_CARD_FALLBACK = ['system-status', 'overview', 'topic-spotlight', 'rank-overview', 'chart-distribution', 'app-list'];
-const homeCards = ref<{ key: string; rankVariant: 'classic' | 'stacked' | 'both'; rankOrder: 'stacked' | 'classic' }[]>(
-  HOME_CARD_FALLBACK.map((key) => ({ key, rankVariant: 'classic' as const, rankOrder: 'stacked' as const }))
-);
+type HomeCardConfig = { key: string; rankVariant: 'classic' | 'stacked' | 'both'; rankOrder: 'stacked' | 'classic' };
+
+const fallbackHomeCards = (): HomeCardConfig[] =>
+  HOME_CARD_FALLBACK.map((key) => ({ key, rankVariant: 'classic' as const, rankOrder: 'stacked' as const }));
+
+/*
+ * 上次拿到的板块配置。
+ * 配置是异步取的：如果首屏先用"全部板块"兜底渲染，后台关掉的那几个会先冒出来、
+ * 等接口回来才消失。存一份首屏直接用，接口回来再覆盖（关于页同理）。
+ */
+const HOME_CARDS_CACHE_KEY = 'openstore:home-cards';
+
+const readCachedHomeCards = (): HomeCardConfig[] => {
+  try {
+    const raw = localStorage.getItem(HOME_CARDS_CACHE_KEY);
+    if (!raw) return fallbackHomeCards();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return fallbackHomeCards();
+    // 过滤掉已经不认得的 key（版本升级删掉板块后残留的）
+    const valid = parsed.filter((item) => item && typeof item.key === 'string' && HOME_SECTIONS[item.key]);
+    return valid.length ? (valid as HomeCardConfig[]) : fallbackHomeCards();
+  } catch {
+    return fallbackHomeCards();
+  }
+};
+
+const cacheHomeCards = (value: HomeCardConfig[]) => {
+  try {
+    localStorage.setItem(HOME_CARDS_CACHE_KEY, JSON.stringify(value));
+  } catch {
+    /* 隐私模式 / 配额满：存不下就算了，只是会退回原来的闪烁 */
+  }
+};
+
+/** 首屏直接用上次的配置渲染，接口回来再覆盖 */
+const homeCards = ref<HomeCardConfig[]>(readCachedHomeCards());
 
 // 卡片配置重新拉取的底线：页面被 keep-alive 缓存，一分钟内切回来不重复请求；
 // 后台改配置会通过 WS 广播立刻刷新（见下面的 watch）
@@ -284,8 +317,10 @@ const loadHomeCards = async (force = false) => {
     homeCards.value = cards
       .filter((card) => HOME_SECTIONS[card.key])
       .map((card) => ({ key: card.key, rankVariant: rankVariantOf(card), rankOrder: rankOrderOf(card) }));
+    cacheHomeCards(homeCards.value);
   } catch {
-    homeCards.value = HOME_CARD_FALLBACK.map((key) => ({ key, rankVariant: 'classic' as const, rankOrder: 'stacked' as const }));
+    // 拉不到就沿用上次的配置（没有缓存时才是"全部板块"兜底）
+    homeCards.value = readCachedHomeCards();
   } finally {
     homeCardsLoaded = true;
     homeCardsFetchedAt = Date.now();

@@ -2,8 +2,11 @@
   <div class="about-manage-view">
     <AdminPageHeader :embedded="embedded" title="关于页面管理" />
 
-    <!-- 操作条：保存状态 + 预览 / 保存。嵌进后台时固定在这块面板顶部 -->
-    <div class="manage-toolbar">
+    <!-- 哨兵：贴在这条之上，滚出视口即代表操作条已吸顶 -->
+    <div ref="toolbarSentinel" class="toolbar-sentinel" aria-hidden="true"></div>
+
+    <!-- 操作条：保存状态 + 预览 / 保存。向下滚动时吸附在顶栏下面，随时可保存 -->
+    <div class="manage-toolbar" :class="{ 'is-stuck': toolbarStuck }">
       <div class="toolbar-left">
         <el-tag :type="dirty ? 'warning' : 'success'" effect="light" round size="small">
           {{ dirty ? '有未保存的修改' : '已保存' }}
@@ -52,68 +55,79 @@
             <el-form-item label="一句话简介">
               <el-input v-model="form.tagline" placeholder="页面头部标题下面的一句话" maxlength="80" show-word-limit />
             </el-form-item>
+
+            <el-form-item label="背景绿格文字">
+              <el-input
+                v-model="form.hero_grid_text"
+                placeholder="留空 = 原来的随机贡献图；填了就用手头的绿色格子拼出这段文字"
+                maxlength="24"
+                show-word-limit
+                clearable
+              />
+            </el-form-item>
           </el-form>
 
           <p class="section-tip">
-            卡片底部的胶囊都来自下方「社交入口」；星标 / 仓库 / 作者是自动项，删掉就不显示。
+            星标 / 仓库 / 作者是自动项，删掉就不显示；背景绿格文字用英文/数字最清楚，留空即恢复原来的滚动随机格子。
+            卡片底部那排胶囊在下面的「联系我们」卡片里配置（名称留空就只显示图标）。
           </p>
+        </AdminSection>
 
-          <!-- 社交入口：渲染在页面头部卡片底部的胶囊 -->
-          <div class="sub-block">
-            <div class="sub-head">
-              <div class="sub-left">
-                <span class="sub-title">社交入口</span>
-                <span class="meta-chip">{{ socialLinkItems.length }} 个</span>
-              </div>
-              <div class="head-right">
-                <el-button size="small" :icon="MagicStick" @click="restoreSocialLinks">恢复默认</el-button>
-                <el-dropdown trigger="click" @command="addSocialItem">
-                  <el-button size="small" type="primary" plain :icon="Plus">添加</el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item command="custom">自定义链接</el-dropdown-item>
-                      <el-dropdown-item
-                        v-for="(opt, i) in SOCIAL_AUTO_OPTIONS"
-                        :key="opt.value"
-                        :command="opt.value"
-                        :divided="i === 0"
-                      >
-                        {{ opt.label }}（{{ opt.hint }}）
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
+        <!-- 联系我们：前台「页面头部」卡片底部那排胶囊 -->
+        <AdminSection title="联系我们" head-wrap>
+          <template #meta>
+            <span class="meta-chip">对应前台「页面头部」底部的胶囊</span>
+            <span class="meta-chip">{{ socialLinkItems.length }} 个</span>
+          </template>
+          <template #actions>
+            <div class="head-right">
+              <el-button size="small" :icon="MagicStick" @click="restoreSocialLinks">恢复默认</el-button>
+              <el-dropdown trigger="click" @command="addSocialItem">
+                <el-button size="small" type="primary" plain :icon="Plus">添加</el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="custom">自定义链接</el-dropdown-item>
+                    <el-dropdown-item
+                      v-for="(opt, i) in SOCIAL_AUTO_OPTIONS"
+                      :key="opt.value"
+                      :command="opt.value"
+                      :divided="i === 0"
+                    >
+                      {{ opt.label }}（{{ opt.hint }}）
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </template>
+
+          <div v-if="socialLinkItems.length" class="item-list">
+            <div v-for="(item, index) in socialLinkItems" :key="index" class="item-row is-social">
+              <el-input v-model="item.label" placeholder="名称（留空只显示图标）" class="item-label" />
+              <el-input v-if="!item.auto" v-model="item.url" placeholder="https://..." class="item-grow" />
+              <span v-else class="item-grow auto-source">{{ autoOption(item)?.hint }}</span>
+              <el-select v-model="item.icon" class="item-icon">
+                <el-option v-for="opt in SOCIAL_ICON_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value">
+                  <span class="icon-option">
+                    <AboutSocialIcon :name="opt.value" />
+                    {{ opt.label }}
+                  </span>
+                </el-option>
+              </el-select>
+              <div class="item-actions">
+                <el-button :icon="ArrowUp" text size="small" :disabled="index === 0" @click="moveSocialLink(index, -1)" />
+                <el-button
+                  :icon="ArrowDown"
+                  text
+                  size="small"
+                  :disabled="index === socialLinkItems.length - 1"
+                  @click="moveSocialLink(index, 1)"
+                />
+                <el-button :icon="Delete" text type="danger" size="small" @click="socialLinkItems.splice(index, 1)" />
               </div>
             </div>
-
-            <div v-if="socialLinkItems.length" class="item-list">
-              <div v-for="(item, index) in socialLinkItems" :key="index" class="item-row is-social">
-                <el-input v-model="item.label" placeholder="名称（留空取默认）" class="item-label" />
-                <el-input v-if="!item.auto" v-model="item.url" placeholder="https://..." class="item-grow" />
-                <span v-else class="item-grow auto-source">{{ autoOption(item)?.hint }}</span>
-                <el-select v-model="item.icon" class="item-icon">
-                  <el-option v-for="opt in SOCIAL_ICON_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value">
-                    <span class="icon-option">
-                      <AboutSocialIcon :name="opt.value" />
-                      {{ opt.label }}
-                    </span>
-                  </el-option>
-                </el-select>
-                <div class="item-actions">
-                  <el-button :icon="ArrowUp" text size="small" :disabled="index === 0" @click="moveSocialLink(index, -1)" />
-                  <el-button
-                    :icon="ArrowDown"
-                    text
-                    size="small"
-                    :disabled="index === socialLinkItems.length - 1"
-                    @click="moveSocialLink(index, 1)"
-                  />
-                  <el-button :icon="Delete" text type="danger" size="small" @click="socialLinkItems.splice(index, 1)" />
-                </div>
-              </div>
-            </div>
-            <p v-else class="empty-tip">还没有社交入口，点「添加」或「恢复默认」开始。</p>
           </div>
+          <p v-else class="empty-tip">还没有联系我们，点「添加」或「恢复默认」开始。</p>
         </AdminSection>
 
         <!-- 页面内容 -->
@@ -404,6 +418,7 @@ const form = ref<AboutPage>({
   github_repo: '',
   site_name: '',
   tagline: '',
+  hero_grid_text: '',
   content_html: '',
   content_markdown: '',
 });
@@ -477,6 +492,7 @@ const cleanRepo = (input?: string) => {
 const buildPayload = (): Partial<AboutPage> => ({
   site_name: (form.value.site_name || '').trim(),
   tagline: (form.value.tagline || '').trim(),
+  hero_grid_text: (form.value.hero_grid_text || '').trim(),
   version: (form.value.version || '').trim(),
   author_name: (form.value.author_name || '').trim(),
   author_github: (form.value.author_github || '').trim(),
@@ -495,6 +511,7 @@ const previewProps = computed(() => {
   return {
     siteName: payload.site_name,
     tagline: payload.tagline,
+    gridText: payload.hero_grid_text,
     version: payload.version,
     authorName: payload.author_name,
     authorGithub: payload.author_github,
@@ -736,14 +753,52 @@ const onBeforeUnload = (event: BeforeUnloadEvent) => {
   event.returnValue = '';
 };
 
+/**
+ * 悬浮操作条是否已经吸顶。
+ * 用一个贴在操作条上方的哨兵元素来判断：哨兵滚出视口顶部 = 操作条已经贴住。
+ * 比直接读操作条自身的 getBoundingClientRect().top 可靠 —— 吸顶后它的 top
+ * 恰好等于设定的阈值，浮点数误差会让状态在临界点反复抖动。
+ */
+const toolbarStuck = ref(false);
+const toolbarSentinel = ref<HTMLElement | null>(null);
+let sentinelObserver: IntersectionObserver | null = null;
+
+/** 操作条吸顶的位置：必须和 CSS 里的 top 保持一致（窄屏导航栏也吸顶，要让开它） */
+const TOOLBAR_STICKY_TOP = () => (window.matchMedia('(max-width: 900px)').matches ? 130 : 76);
+
+const observeToolbar = () => {
+  sentinelObserver?.disconnect();
+  const sentinel = toolbarSentinel.value;
+  if (!sentinel || typeof IntersectionObserver === 'undefined') return;
+  sentinelObserver = new IntersectionObserver(
+    ([entry]) => {
+      toolbarStuck.value = !entry.isIntersecting;
+    },
+    // 顶部留出操作条要吸附的那段距离，哨兵一越过它就算吸顶
+    { rootMargin: `-${TOOLBAR_STICKY_TOP()}px 0px 0px 0px`, threshold: 0 }
+  );
+  sentinelObserver.observe(sentinel);
+};
+
+/** 跨过 900px 断点时 top 会变，要按新阈值重新观察 */
+let stuckMedia: MediaQueryList | null = null;
+const onStickyBreakpointChange = () => observeToolbar();
+
 onMounted(() => {
   window.addEventListener('keydown', onKeydown);
   window.addEventListener('beforeunload', onBeforeUnload);
+  observeToolbar();
+  stuckMedia = window.matchMedia('(max-width: 900px)');
+  stuckMedia.addEventListener('change', onStickyBreakpointChange);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   window.removeEventListener('beforeunload', onBeforeUnload);
+  stuckMedia?.removeEventListener('change', onStickyBreakpointChange);
+  stuckMedia = null;
+  sentinelObserver?.disconnect();
+  sentinelObserver = null;
   if (hydrateTimer !== null) window.clearTimeout(hydrateTimer);
 });
 
@@ -764,6 +819,15 @@ onBeforeRouteLeave(async () => {
 </script>
 
 <style scoped>
+/* 零高度哨兵：只用来判断操作条有没有吸顶，不占版面、不接收事件 */
+.toolbar-sentinel {
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+}
+
 .manage-toolbar {
   display: flex;
   align-items: center;
@@ -775,6 +839,23 @@ onBeforeRouteLeave(async () => {
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 12px;
   background-color: var(--el-bg-color-overlay);
+  /*
+    悬浮：页面上下滚动时这排保存操作始终停在顶栏下面，不用滚回顶部才能保存。
+    站点顶栏高 60px，这里再让出一点间隙；z-index 必须低于 Element Plus 弹层
+    的基础层级（2000），否则「添加」下拉菜单会被这条操作条压住。
+  */
+  position: sticky;
+  top: 76px;
+  z-index: 10;
+  /* 滚上来时和下方内容区分开，静止时不显多余阴影 */
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, background-color 0.25s ease;
+}
+
+/* 吸顶时才起阴影 + 不透明底：否则悬浮在正文上会透出下面的字 */
+.manage-toolbar.is-stuck {
+  border-color: var(--el-border-color);
+  background-color: var(--el-bg-color-overlay);
+  box-shadow: 0 6px 16px -8px rgba(15, 23, 42, 0.5);
 }
 
 .toolbar-left {
@@ -791,11 +872,73 @@ onBeforeRouteLeave(async () => {
   color: var(--el-text-color-secondary);
 }
 
+/*
+  手机：隐藏「上次保存 …」「Ctrl / ⌘ + S 保存」这两条辅助信息 ——
+  手机上既没有 Ctrl/⌘ 键，而且它们会把操作条挤成两三行，吸顶时占掉小半个屏幕。
+  状态标签和三个按钮（含文字）都保留。
+*/
+@media (max-width: 900px) {
+  .toolbar-meta,
+  .toolbar-tip {
+    display: none;
+  }
+
+  /*
+    窄屏导航栏自己也是吸顶的（top: 70px，见 AdminDashboardView），
+    所以操作条要停在它下面，否则会被导航栏盖住。
+    导航栏吸顶时的高 = padding 7+7 + 胶囊行 32 + 上下边框 1+1 = 48px，
+    70 + 48 = 118，再留 12px 间隙 => 130px。
+  */
+  .manage-toolbar {
+    top: 130px;
+    /* 窄屏内边距和间距都收一点，把横向空间让给按钮上的文字 */
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  /* 状态标签不参与收缩 */
+  .toolbar-left {
+    flex: 0 0 auto;
+  }
+
+  .manage-toolbar :deep(.toolbar-right .el-button + .el-button) {
+    margin-left: 0;
+  }
+}
+
+/* 更窄的手机：内边距再收一点，让「重新加载 / 预览 / 保存更改」三个按钮连同文字排得下 */
+@media (max-width: 560px) {
+  .manage-toolbar {
+    padding: 8px 10px;
+  }
+
+  .manage-toolbar :deep(.toolbar-right .el-button) {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+
 .toolbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-left: auto;
+}
+
+/*
+  窄屏按钮靠右。
+  放在基础 .toolbar-right 之后：同优先级下靠后的规则才生效，
+  否则上面基础规则的 gap 会把这里盖掉。
+  flex: 1 1 auto 让这一组占满剩余宽度，justify-content: flex-end 把按钮推到右端；
+  margin-left: auto 保留，万一换行到第二行也仍然贴右，不会跑到左边。
+*/
+@media (max-width: 900px) {
+  .toolbar-right {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-left: auto;
+  }
 }
 
 .manage-layout {
@@ -851,41 +994,6 @@ onBeforeRouteLeave(async () => {
   font-size: 12px;
   line-height: 1.6;
   color: var(--el-text-color-secondary);
-}
-
-/* 页面头部分区里嵌的「社交入口」子块 */
-.sub-block {
-  margin-top: 14px;
-  padding: 14px 14px 12px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 10px;
-  background-color: var(--el-fill-color-lighter);
-}
-
-.sub-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding-bottom: 10px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-
-.sub-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  white-space: nowrap;
-}
-
-/* 子块标题行（同 .section-left，作用域留在本组件内） */
-.sub-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
 }
 
 /* 数据驱动的卡片：一行一张，只做说明与跳转 */
@@ -1127,7 +1235,15 @@ onBeforeRouteLeave(async () => {
 /* 右侧预览 */
 .preview-panel {
   position: sticky;
-  top: 76px;
+  /*
+    必须停在顶部悬浮操作条下面，否则两者都是 sticky + top:76px，
+    「实时预览 / 简化效果 / 生成图片」这一行会被操作条盖住。
+    操作条吸顶时高 50px（内容行 24 + 上下内边距 12+12 + 上下边框 1+1），
+    76 + 50 = 126，再留 10px 间隙 => 136px。
+  */
+  top: 136px;
+  /* 低于操作条的 z-index: 10：万一两者仍有重叠，被压住的应该是预览栏 */
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1152,7 +1268,13 @@ onBeforeRouteLeave(async () => {
 }
 
 .preview-frame {
-  max-height: calc(100vh - 160px);
+  /*
+    可用高度 = 视口 − 顶部让位 − 底部呼吸空间。
+    顶部：136px（操作条 50 + 间隙 10 的吸顶位）+ 预览标题行约 24 + 栏内间距 10 = 170
+    底部：留 24px
+    合计 194px，取 200 免得贴边。
+  */
+  max-height: calc(100vh - 200px);
   overflow: auto;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 14px;

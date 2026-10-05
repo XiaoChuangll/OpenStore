@@ -23,6 +23,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { getPublicApps } from '../services/admin';
 import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
+import { goBackOrHome } from '../utils/route-scroll';
 import AppDetailCard from '../components/AppDetailCard.vue';
 
 defineOptions({
@@ -55,7 +56,8 @@ const fetchApps = async () => {
 };
 
 const goBack = () => {
-  router.back();
+  // 深链接直接进来时没有上一页，兜底回首页，别让返回按钮点了没反应
+  goBackOrHome(router);
 };
 
 // Scroll Handler

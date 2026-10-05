@@ -4,7 +4,7 @@
       <div class="card-header" @click="toggleCollapse">
         <span class="card-title">总应用评分分布</span>
         <div class="header-side">
-          <span v-if="average" class="avg-chip">均分 {{ average }}</span>
+          <span v-if="average" class="chip">均分 {{ average }}</span>
           <el-icon class="collapse-icon" :class="{ 'is-collapsed': isCollapsed }">
             <ArrowDown />
           </el-icon>
@@ -292,17 +292,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.avg-chip {
-  padding: 1px 9px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 999px;
-  background: var(--el-fill-color-light);
-  font-size: 11.5px;
-  color: var(--el-text-color-secondary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .collapse-icon {

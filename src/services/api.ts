@@ -547,9 +547,11 @@ export interface AboutPage {
   site_name?: string;
   /** Hero 上的一句话简介 */
   tagline?: string;
+  /** Hero 背景的绿色格子拼出的文字；留空 = 原来的随机格子 */
+  hero_grid_text?: string | null;
   /** 技术栈标签，服务端已从 JSON 文本解析成数组 */
   tech_stack?: TechStackItem[];
-  /** 作者的社交入口，服务端已从 JSON 文本解析成数组 */
+  /** 作者的联系我们，服务端已从 JSON 文本解析成数组 */
   social_links?: SocialLinkItem[];
   /** 鸣谢名单，服务端已从 JSON 文本解析成数组 */
   contributors?: Contributor[];

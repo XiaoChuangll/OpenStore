@@ -12,7 +12,7 @@ module.exports = [
   { page: 'home', key: 'topic-spotlight', title: '精选专题', sort_order: 30 },
   { page: 'home', key: 'rank-overview', title: '榜单排行', sort_order: 40 },
   { page: 'home', key: 'chart-distribution', title: '评分与 SDK 分布', sort_order: 50 },
-  { page: 'home', key: 'app-list', title: '应用列表', sort_order: 60 },
+  { page: 'home', key: 'app-list', title: '应用搜索', sort_order: 60 },
 
   // 首页 · 系统页签
   { page: 'system', key: 'music', title: '在线播放', sort_order: 10, style: { span: 24, accent: 'bg-red' } },
@@ -24,6 +24,7 @@ module.exports = [
   // 关于页面
   { page: 'about', key: 'hero', title: '页面头部', sort_order: 5 },
   { page: 'about', key: 'content', title: '页面内容', sort_order: 10 },
+  { page: 'about', key: 'social', title: '联系我们', sort_order: 15 },
   { page: 'about', key: 'author', title: '关于作者', sort_order: 20 },
   { page: 'about', key: 'tech-stack', title: '技术栈', sort_order: 30 },
   { page: 'about', key: 'contributors', title: '鸣谢', sort_order: 35 },

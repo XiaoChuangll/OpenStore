@@ -9,6 +9,7 @@ import PlayerBar from './components/PlayerBar.vue';
 import RankNavigation from './components/RankNavigation.vue';
 import BrandMark from './components/BrandMark.vue';
 import { waitForRouteChange } from './utils/route-change';
+import { goBackOrHome } from './utils/route-scroll';
 import { morphNavigate } from './utils/player-morph';
 import { Moon, Sunny, ArrowLeft, Compass, Menu, Refresh, Collection, Close, Monitor, Edit, InfoFilled, CaretRight, Document } from '@element-plus/icons-vue';
 import { useAuthStore } from './stores/auth';
@@ -396,11 +397,12 @@ watch(
     const isRoot = ['/', '/apps', '/updates', '/topics', '/submit', '/articles', '/about'].includes(route.path);
     /*
      * 榜单页之间可以互相跳（顶部那排页签），这时浏览器历史里前一条就是「上一个榜单」，
-     * 直接 router.back() 会退回上一个榜单而不是主页 —— 用户明确要求回主页，
-     * 所以 /rank/* 一律返回首页；其它页面维持原来的「回上一页」。
+     * 直接后退会退回上一个榜单而不是主页 —— 用户明确要求回主页，所以 /rank/* 一律返回首页。
+     * 其它页面走 goBackOrHome：优先回上一页，直接输 URL / 刷新进来（没有上一页）时回首页；
+     * 之前这里是裸的 router.back()，深链接进来时它什么都不做，返回按钮就失灵了。
      */
     const isRankPage = route.path.startsWith('/rank');
-    layoutStore.setPageInfo(title, !isRoot, isRankPage ? () => router.push('/') : () => router.back());
+    layoutStore.setPageInfo(title, !isRoot, isRankPage ? () => router.push('/') : () => goBackOrHome(router));
     // 换页后滚动位置会重置，顶栏毛玻璃状态跟着重新算一次
     nextTick(syncHeaderScrolled);
   },

@@ -43,13 +43,23 @@ const markBackNavigation = () => {
   backMarkedAt = performance.now();
 };
 
-export const goBackOrHome = (router: { back: () => void; push: (to: string) => unknown }): void => {
-  const state = window.history.state as { back?: string | null } | null;
+export const goBackOrHome = (
+  router: { back: () => void; push: (to: string) => unknown },
+  fallback = '/'
+): void => {
+  /*
+   * vue-router 会把「应用内的上一页」记在 history.state.back 里。
+   * 直接打开 / 刷新 / 从站外链接进来时它是空的，这时 router.back() 什么都不会发生，
+   * 用户就卡在当前页 —— 所以没有上一页时改成跳转 fallback（默认回首页）。
+   */
+  const state = typeof window !== 'undefined'
+    ? (window.history.state as { back?: string | null } | null)
+    : null;
   if (state && state.back) {
     markBackNavigation();
     router.back();
   } else {
-    void router.push('/');
+    void router.push(fallback);
   }
 };
 

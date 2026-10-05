@@ -8,14 +8,23 @@
       :site-name="siteName"
       :tagline="tagline"
       :version="version"
-      :author-name="authorName"
-      :repo-name="repoName"
-      :repo-stars="null"
-      :social-links="socialLinks"
+      :grid-text="gridText"
     />
 
     <div v-if="contentHtml" class="preview-card">
       <div class="preview-content markdown-body" v-html="contentHtml"></div>
+    </div>
+
+    <!-- 联系我们：和前台一样单独一张卡片 -->
+    <div v-if="socialLinks.length" class="preview-card">
+      <div class="preview-card-title">联系我们</div>
+      <AboutSocialLinks
+        :links="socialLinks"
+        :author-name="authorName"
+        :author-github="authorGithub"
+        :repo-name="repoName"
+        :repo-stars="null"
+      />
     </div>
 
     <div v-if="authorName || authorGithub || repoName" class="preview-card">
@@ -71,6 +80,7 @@
 
 <script setup lang="ts">
 import AboutHero from './AboutHero.vue';
+import AboutSocialLinks from './AboutSocialLinks.vue';
 import { githubAvatarUrl, githubLoginFrom, type Contributor, type SocialLinkItem, type TechStackItem } from '../utils/about';
 
 withDefaults(
@@ -82,6 +92,8 @@ withDefaults(
     authorGithub?: string;
     repoName?: string;
     socialLinks?: SocialLinkItem[];
+    /** Hero 背景绿格要拼的文字（和前台同一份配置） */
+    gridText?: string | null;
     techStack?: TechStackItem[];
     contributors?: Contributor[];
     contentHtml?: string;

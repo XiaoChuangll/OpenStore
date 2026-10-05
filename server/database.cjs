@@ -509,6 +509,8 @@ db.serialize(() => {
   // 关于页面 Hero 与可配置内容：站点名、一句话简介、技术栈 / 社交链接（JSON 字符串）
   ensureColumn('about_page', 'site_name', 'TEXT');
   ensureColumn('about_page', 'tagline', 'TEXT');
+  // Hero 背景那个「绿色贡献格」要拼的文字；留空 = 用原来的随机格子
+  ensureColumn('about_page', 'hero_grid_text', 'TEXT');
   ensureColumn('about_page', 'tech_stack', 'TEXT');
   ensureColumn('about_page', 'social_links', 'TEXT');
   ensureColumn('about_page', 'contributors', 'TEXT');
