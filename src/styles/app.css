@@ -1,5 +1,37 @@
 /* 跨页面复用的形态：表格操作列、图表浮层、拖拽状态等 */
 
+/*
+ * 小胶囊（卡片头部那类"最多 SDK 12"、入口按钮都用它）：
+ * 需要可点击时加 .is-button，带 hover 反馈与手型光标。
+ * 之前这套样式在几个图表组件里各写了一遍（.avg-chip），这里抽成公共类。
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 999px;
+  background: var(--el-fill-color-light);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chip.is-button {
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.chip.is-button:hover {
+  background: var(--el-fill-color);
+  border-color: var(--el-border-color);
+  color: var(--el-text-color-primary);
+}
+
 /* 后台列表页共用的筛选条与空状态 */
 .filter-bar {
   display: flex;

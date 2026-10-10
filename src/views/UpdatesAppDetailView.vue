@@ -98,6 +98,7 @@ import { ArrowDown, Clock, Picture } from '@element-plus/icons-vue';
 import HarmonyShareIcon from '../components/HarmonyShareIcon.vue';
 import { hmApi } from '../services/hm-api';
 import { useLayoutStore } from '../stores/layout';
+import { goBackOrHome } from '../utils/route-scroll';
 import { buildAppShareMeta, clearPageShareMeta, setPageShareMeta, shareCurrentPage } from '../utils/page-share';
 
 const route = useRoute();
@@ -301,7 +302,8 @@ const fetchDetail = async () => {
     appDetail.value = { ...info, rating: ratingRaw };
 
     const title = appDetail.value?.name || '应用更新详情';
-    layoutStore.setPageInfo(title, true, () => router.back());
+    // 深链接直接进来时没有上一页，兜底回更新列表
+    layoutStore.setPageInfo(title, true, () => goBackOrHome(router, '/updates'));
     document.title = `OpenStore | ${title}`;
     // 分享卡片带上这个应用自己的图标和文字
     setPageShareMeta(buildAppShareMeta(appDetail.value));

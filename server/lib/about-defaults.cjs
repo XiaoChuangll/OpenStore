@@ -3,7 +3,7 @@
  *
  * 建库种子、后台「恢复默认」和前端兜底都以这份为准：
  *   techStack     技术栈标签，color 对应 Element Plus 的标签色（primary/success/warning/danger/info）
- *   socialLinks   作者的社交入口，icon 是前端图标名（见 src/utils/about.ts 的映射表）
+ *   socialLinks   作者的联系我们，icon 是前端图标名（见 src/utils/about.ts 的映射表）
  *   contributors  鸣谢名单，github 存的是 GitHub 用户名（头像由前端按用户名拼地址取）
  *
  * 三者都以 JSON 字符串存在 about_page 表里，改这里的默认值不会覆盖后台已经保存过的内容。

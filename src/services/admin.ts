@@ -498,9 +498,11 @@ export interface AboutPage {
   version?: string;
   site_name?: string;
   tagline?: string;
+  /** Hero 背景的绿色格子拼出的文字；留空 = 原来的随机格子 */
+  hero_grid_text?: string | null;
   /** 技术栈标签（服务端已解析成数组） */
   tech_stack?: TechStackItem[];
-  /** 作者社交入口（服务端已解析成数组） */
+  /** 作者联系我们（服务端已解析成数组） */
   social_links?: SocialLinkItem[];
   /** 鸣谢名单（服务端已解析成数组） */
   contributors?: Contributor[];
@@ -761,8 +763,14 @@ export const resetSiteCards = async (page: string) => {
   return data.items as SiteCard[];
 };
 
-export const getPublicSiteCards = async (page?: string) => {
-  const { data } = await axios.get('/api/public/site-cards', { params: page ? { page } : undefined });
+export const getPublicSiteCards = async (page?: string, options?: { includeDisabled?: boolean }) => {
+  const params: Record<string, string> = {};
+  if (page) params.page = page;
+  // 关于页需要拿到「已关闭」的卡片才能按配置隐藏，其它页面保持只取启用卡片
+  if (options?.includeDisabled) params.include_disabled = '1';
+  const { data } = await axios.get('/api/public/site-cards', {
+    params: Object.keys(params).length ? params : undefined,
+  });
   return data.items as SiteCard[];
 };
 

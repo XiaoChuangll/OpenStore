@@ -7,11 +7,7 @@
       :site-name="aboutData.site_name"
       :tagline="aboutData.tagline"
       :version="siteVersion"
-      :author-name="aboutData.author_name"
-      :author-github="aboutData.author_github"
-      :repo-name="repoName"
-      :repo-stars="repoStars"
-      :social-links="socialLinks"
+      :grid-text="aboutData.hero_grid_text || ''"
     />
 
     <el-card
@@ -26,10 +22,26 @@
       ></div>
     </el-card>
 
+    <!-- 联系我们：单独的卡片（以前贴在页面头部底部，后台可单独排序 / 隐藏） -->
+    <el-card v-if="socialLinks.length" class="about-card is-full" :style="cardStyle('social')">
+      <template #header>
+        <div class="card-header">
+          <span class="card-title">联系我们</span>
+        </div>
+      </template>
+      <AboutSocialLinks
+        :links="socialLinks"
+        :author-name="aboutData.author_name"
+        :author-github="aboutData.author_github"
+        :repo-name="repoName"
+        :repo-stars="repoStars"
+      />
+    </el-card>
+
     <el-card class="about-card is-half" :style="cardStyle('author')">
       <template #header>
         <div class="card-header">
-          <span class="card-title"><el-icon><User /></el-icon>关于作者</span>
+          <span class="card-title">关于作者</span>
         </div>
       </template>
       <div class="info-list">
@@ -76,7 +88,7 @@
     <el-card class="about-card is-half" :style="cardStyle('tech-stack')">
       <template #header>
         <div class="card-header">
-          <span class="card-title"><el-icon><Cpu /></el-icon>技术栈</span>
+          <span class="card-title">技术栈</span>
         </div>
       </template>
       <div v-if="techStack.length" class="tech-stack">
@@ -97,7 +109,7 @@
     <el-card v-if="contributors.length" class="about-card is-full" :style="cardStyle('contributors')">
       <template #header>
         <div class="card-header">
-          <span class="card-title"><el-icon><Medal /></el-icon>鸣谢</span>
+          <span class="card-title">鸣谢</span>
         </div>
       </template>
       <p class="contributors-intro">感谢以下贡献者对 OpenStore 的支持：</p>
@@ -131,7 +143,6 @@
       <template #header>
         <div class="card-header is-toggle" @click="toggleChangelogs">
           <span class="card-title">
-            <el-icon><Histogram /></el-icon>
             更新日志
             <el-tag size="small" effect="light" type="primary" round>{{ latestChangelogVersion }}</el-tag>
           </span>
@@ -162,7 +173,6 @@
       <template #header>
         <div class="card-header is-toggle" @click="toggleCommits">
           <span class="card-title">
-            <el-icon><Connection /></el-icon>
             最近提交
             <span class="card-count">{{ repoName }}</span>
           </span>
@@ -196,7 +206,7 @@
     <el-card class="about-card is-full" :style="cardStyle('feedback')">
       <template #header>
         <div class="card-header is-toggle" @click="toggleFeedback">
-          <span class="card-title"><el-icon><ChatDotRound /></el-icon>意见反馈</span>
+          <span class="card-title">意见反馈</span>
           <el-icon class="toggle-icon" :class="{ 'rotate-90': feedbackExpanded }"><ArrowRight /></el-icon>
         </div>
       </template>
@@ -356,12 +366,6 @@ import {
   CircleCheck,
   CircleCheckFilled,
   Clock,
-  User,
-  Cpu,
-  ChatDotRound,
-  Histogram,
-  Medal,
-  Connection,
 } from '@element-plus/icons-vue';
 import { getAboutPage, getPublicChangelogs, submitFeedback, getFeedbackProgressByHash, getFeedbackSuccessList, type AboutPage, type Changelog, type FeedbackSummary } from '../services/api';
 import axios from 'axios';
@@ -372,6 +376,7 @@ import { useAuthStore } from '../stores/auth';
 import { getPublicSiteCards } from '../services/admin';
 import { contentVersion } from '../services/content-refresh';
 import AboutHero from '../components/AboutHero.vue';
+import AboutSocialLinks from '../components/AboutSocialLinks.vue';
 import { DEFAULT_TECH_STACK, githubAvatarUrl, githubProfileUrl, normalizeContributors, normalizeSocialLinks, normalizeTechStack, type Contributor, type SocialLinkItem, type TechStackItem } from '../utils/about';
 
 /*
@@ -379,24 +384,59 @@ import { DEFAULT_TECH_STACK, githubAvatarUrl, githubProfileUrl, normalizeContrib
  * 卡片都留在模板原位，用 grid order + display 调整，避免大改结构。
  * hero 是后加的卡片，老库启动时会被种子数据补上，没补上时按模板顺序落在最前面。
  */
-const aboutCards = ref<Record<string, { enabled: boolean; order: number }>>({});
-const ABOUT_CARD_FALLBACK = ['hero', 'content', 'author', 'tech-stack', 'contributors', 'changelogs', 'commits', 'feedback'];
+const ABOUT_CARD_FALLBACK = ['hero', 'content', 'social', 'author', 'tech-stack', 'contributors', 'changelogs', 'commits', 'feedback'];
+
+/*
+ * 上一次拿到的卡片配置。
+ * 配置是异步取的，如果首屏先用空对象渲染，模板里的卡片会全冒出来，
+ * 等接口回来才把关掉的那几张藏起来 —— 刷新时就能看见"先显示再消失"。
+ * 所以把上次的结果存一份，首屏直接拿它渲染，配置回来再覆盖。
+ */
+const ABOUT_CARDS_CACHE_KEY = 'openstore:about-cards';
+
+const readCachedAboutCards = (): Record<string, { enabled: boolean; order: number }> => {
+  try {
+    const raw = localStorage.getItem(ABOUT_CARDS_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const cacheAboutCards = (value: Record<string, { enabled: boolean; order: number }>) => {
+  try {
+    localStorage.setItem(ABOUT_CARDS_CACHE_KEY, JSON.stringify(value));
+  } catch {
+    /* 隐私模式 / 配额满：存不下就算了，只是会退回原来的闪烁 */
+  }
+};
+
+/** 首屏直接用上次的配置渲染，接口回来再覆盖（见上面注释） */
+const aboutCards = ref<Record<string, { enabled: boolean; order: number }>>(readCachedAboutCards());
 
 const loadAboutCards = async () => {
-  let keys = ABOUT_CARD_FALLBACK;
-  try {
-    const cards = await getPublicSiteCards('about');
-    keys = cards.map((card) => card.key);
-  } catch {
-    keys = ABOUT_CARD_FALLBACK;
-  }
-
   const next: Record<string, { enabled: boolean; order: number }> = {};
-  keys.forEach((key, index) => {
-    if (!ABOUT_CARD_FALLBACK.includes(key)) return;
-    next[key] = { enabled: true, order: index + 1 };
-  });
+  try {
+    /*
+     * 必须带上 includeDisabled：关于页的卡片是固定模板，
+     * 光拿启用列表的话，被关闭的卡片就没有配置项（cardStyle 返回 {}），
+     * 结果反而是照着模板顺序显示在最前面，跟后台配置相反。
+     */
+    const cards = await getPublicSiteCards('about', { includeDisabled: true });
+    cards.forEach((card, index) => {
+      if (!ABOUT_CARD_FALLBACK.includes(card.key)) return;
+      next[card.key] = { enabled: !!card.enabled, order: index + 1 };
+    });
+  } catch {
+    // 配置拉不到时按模板顺序全部显示，保证首屏不空
+    ABOUT_CARD_FALLBACK.forEach((key, index) => {
+      next[key] = { enabled: true, order: index + 1 };
+    });
+  }
   aboutCards.value = next;
+  cacheAboutCards(next);
 };
 
 const cardStyle = (key: string) => {
@@ -439,7 +479,7 @@ const techStack = computed<TechStackItem[]>(() => {
   return list.length ? list : DEFAULT_TECH_STACK;
 });
 
-/** 社交入口：后台清了就退回作者的 GitHub / 仓库地址，避免 Hero 底部整块消失 */
+/** 联系我们：后台清了就退回作者的 GitHub / 仓库地址，避免 Hero 底部整块消失 */
 /** 后台配置了什么就显示什么（自动项由 AboutHero 按当前配置解析） */
 const socialLinks = computed<SocialLinkItem[]>(() => normalizeSocialLinks(aboutData.value.social_links));
 
@@ -983,15 +1023,11 @@ onUnmounted(() => {
 .card-title {
   display: inline-flex;
   align-items: center;
+  /* 标题后面还跟着版本号标签 / 仓库名这类小挂件，靠 gap 拉开 */
   gap: 7px;
   font-size: 15px;
   font-weight: 600;
   color: var(--el-text-color-primary);
-}
-
-.card-title .el-icon {
-  color: var(--el-color-primary);
-  font-size: 16px;
 }
 
 .card-count {

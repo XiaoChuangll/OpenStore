@@ -168,6 +168,7 @@ import DeviceIcon, { type DeviceKind } from '../components/DeviceIcon.vue';
 import { ElMessage } from 'element-plus';
 import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
+import { goBackOrHome } from '../utils/route-scroll';
 import { buildAppShareMeta, clearPageShareMeta, setPageShareMeta, shareCurrentPage } from '../utils/page-share';
 
 const route = useRoute();
@@ -387,7 +388,8 @@ const fetchDetail = async () => {
 
     if (appDetail.value) {
       const title = appDetail.value.name || '应用详情';
-      layoutStore.setPageInfo(title, true, () => router.back());
+      // 深链接直接进来时没有上一页，兜底回应用列表
+      layoutStore.setPageInfo(title, true, () => goBackOrHome(router, '/apps'));
       document.title = `OpenStore | ${title}`;
       // 分享卡片带上这个应用自己的图标和文字
       setPageShareMeta(buildAppShareMeta(appDetail.value));

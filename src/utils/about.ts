@@ -3,7 +3,7 @@
  *
  * 前台关于页、后台「关于页面」管理、以及服务端兜底都围绕这几个结构：
  *   TechStackItem  技术栈标签（color 直接用 Element Plus 的标签色名）
- *   SocialLinkItem 作者的社交入口（icon 是稳定的字符串名，由 AboutSocialIcon 负责渲染）
+ *   SocialLinkItem 作者的联系我们（icon 是稳定的字符串名，由 AboutSocialIcon 负责渲染）
  *
  * 图标存名字而不是存 SVG：换图标只要改这里的映射，已经保存过的数据不用动。
  */
@@ -14,17 +14,31 @@ export interface TechStackItem {
   color: TagColor;
 }
 
-export type SocialIconName = 'github' | 'link' | 'mail' | 'chat' | 'doc' | 'video' | 'home' | 'star' | 'user';
+/*
+ * 社交图标：前一组是 Element Plus 自带的通用图标，
+ * 后一组是品牌图标（GitHub / X / Telegram…），Element Plus 没有，
+ * 由 AboutSocialIcon.vue 内联 simple-icons 的官方 path 渲染。
+ */
+export type SocialIconName =
+  | 'link' | 'mail' | 'chat' | 'doc' | 'video' | 'home' | 'star' | 'user'
+  | 'github' | 'x' | 'telegram' | 'youtube' | 'wechat' | 'qq'
+  | 'bilibili' | 'weibo' | 'douyin' | 'discord' | 'reddit';
 
 /** 自动取值的入口：地址/文字由当前配置决定，不用手填 */
 export type SocialAutoKind = 'stars' | 'repo' | 'author';
 
 export interface SocialLinkItem {
+  /** 展示名。**留空即只渲染图标**（不显示文字，但悬浮仍用 hint 提示） */
   label: string;
   url: string;
   icon: SocialIconName;
   /** 设了就按 auto 自动解析（见 resolveSocialLinks） */
   auto?: SocialAutoKind;
+  /**
+   * 只读：留给「留空只显示图标」时的悬浮提示。
+   * 不会存回数据库，由 resolveSocialLinks 按当前配置临时算出来。
+   */
+  hint?: string;
 }
 
 /**
@@ -50,6 +64,16 @@ export const TECH_COLOR_OPTIONS: { value: TagColor; label: string }[] = [
 /** 社交图标可选值 */
 export const SOCIAL_ICON_OPTIONS: { value: SocialIconName; label: string }[] = [
   { value: 'github', label: 'GitHub' },
+  { value: 'x', label: 'X / 推特' },
+  { value: 'telegram', label: 'Telegram' },
+  { value: 'youtube', label: 'YouTube' },
+  { value: 'bilibili', label: '哔哩哔哩' },
+  { value: 'weibo', label: '微博' },
+  { value: 'douyin', label: '抖音' },
+  { value: 'wechat', label: '微信' },
+  { value: 'qq', label: 'QQ' },
+  { value: 'discord', label: 'Discord' },
+  { value: 'reddit', label: 'Reddit' },
   { value: 'link', label: '链接' },
   { value: 'mail', label: '邮箱' },
   { value: 'chat', label: '聊天 / 群组' },
@@ -60,7 +84,7 @@ export const SOCIAL_ICON_OPTIONS: { value: SocialIconName; label: string }[] = [
   { value: 'user', label: '作者' },
 ];
 
-/** 「社交入口」里可直接添加的自动项 */
+/** 「联系我们」里可直接添加的自动项 */
 export const SOCIAL_AUTO_OPTIONS: { value: SocialAutoKind; label: string; icon: SocialIconName; hint: string }[] = [
   { value: 'stars', label: '星标', icon: 'star', hint: '自动取仓库星数' },
   { value: 'repo', label: '仓库', icon: 'link', hint: '自动取仓库地址' },
@@ -118,7 +142,7 @@ export const normalizeSocialLinks = (value: unknown): SocialLinkItem[] => {
       const auto = autos.includes(raw?.auto as SocialAutoKind) ? (raw!.auto as SocialAutoKind) : undefined;
       // 自动项允许留空（前台按当前配置补），手填项必须有合法地址
       if (!auto && !/^https?:\/\//i.test(url)) return null;
-      const label = String(raw?.label ?? '').trim() || url.replace(/^https?:\/\//i, '');
+      const label = String(raw?.label ?? '').trim();
       const icon = icons.includes(raw?.icon as SocialIconName) ? (raw!.icon as SocialIconName) : 'link';
       return auto ? { label, url, icon, auto } : { label, url, icon };
     })
@@ -135,8 +159,12 @@ export interface SocialResolveContext {
 }
 
 /**
- * 把配置好的社交入口解析成可直接渲染的列表。
- * 自动项按当前配置补上地址与默认文案；所需数据缺失的自动项直接丢掉，不留半成品。
+ * 把配置好的联系我们解析成可直接渲染的列表。
+ * 自动项按当前配置补上地址；所需数据缺失的自动项直接丢掉，不留半成品。
+ *
+ * 关于 label：**后台留空就保持空**，前台只渲染图标（悬浮用 hint 提示这是什么）。
+ * 这里不再拿星数 / 仓库名 / 作者名去兜底填字，因为「留空」现在是一个明确的选择，
+ * 而不是「没填 → 帮你猜一个」。
  */
 export const resolveSocialLinks = (
   value: unknown,
@@ -145,24 +173,23 @@ export const resolveSocialLinks = (
   const list = normalizeSocialLinks(value);
   const repo = (context.repoName || '').replace(/^\/+/, '');
   const repoUrl = repo ? `https://github.com/${repo}` : '';
-  const repoLabel = repo ? repo.split('/').pop() || repo : '';
 
   return list
     .map((item) => {
       if (!item.auto) return item;
       if (item.auto === 'stars') {
         if (!repoUrl) return null;
-        const label = item.label || (context.repoStars != null ? String(context.repoStars) : '星标');
-        return { ...item, label, url: `${repoUrl}/stargazers` };
+        const fallback = context.repoStars != null ? `${context.repoStars} 星标` : '星标';
+        return { ...item, url: `${repoUrl}/stargazers`, hint: item.label || fallback };
       }
       if (item.auto === 'repo') {
         if (!repoUrl) return null;
-        return { ...item, label: item.label || repoLabel, url: repoUrl };
+        return { ...item, url: repoUrl, hint: item.label || repo };
       }
       // author：没有主页时仍展示名字（渲染成不可点的胶囊）
       const author = (context.authorName || '').trim();
       if (!author) return null;
-      return { ...item, label: item.label || author, url: (context.authorGithub || '').trim() };
+      return { ...item, url: (context.authorGithub || '').trim(), hint: item.label || author };
     })
     .filter((item): item is SocialLinkItem => item !== null);
 };

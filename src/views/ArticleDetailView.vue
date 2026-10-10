@@ -82,6 +82,7 @@ import { createMarkdownRenderer } from '../utils/markdown';
 import { getPublicBlogBySlug, type Blog } from '../services/api';
 import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
+import { goBackOrHome } from '../utils/route-scroll';
 import { clearPageShareMeta, setPageShareMeta } from '../utils/page-share';
 import MobileAppCard from '../components/MobileAppCard.vue';
 import { User, Calendar, Folder, View } from '@element-plus/icons-vue';
@@ -203,7 +204,8 @@ const fetchDetail = async (password?: string) => {
     
     const title = data.title || '文章详情';
     // 顶栏不显示标题（正文里有），只保留返回按钮；浏览器标签标题照旧
-    layoutStore.setPageInfo('', true, () => router.back());
+    // 深链接直接进来时没有上一页，兜底回文章列表
+    layoutStore.setPageInfo('', true, () => goBackOrHome(router, '/articles'));
     document.title = `OpenStore | ${title}`;
 
     const description = data.seo_description || data.summary || '';

@@ -598,4 +598,59 @@ body.el-popup-parent--hidden {
   overflow: hidden !important;
   width: 100% !important;
 }
+
+/*
+ * 下拉面板统一皮肤：面板本身 + 选项都做圆角，和全站的胶囊 / 卡片形态对齐。
+ *
+ * 覆盖 el-select（前台筛选、后台表单、分页条里的都算）、下拉菜单、级联、自动补全、日期选择。
+ * 这些 popper 都会被 teleport 到 body，组件里的 scoped 样式够不着，所以只能写在这份全局皮肤里。
+ * 以后新增下拉不用再各自写圆角。
+ */
+html .el-select__popper.el-popper,
+html .el-dropdown__popper.el-popper,
+html .el-cascader__dropdown.el-popper,
+html .el-autocomplete__popper.el-popper,
+html .el-picker__popper.el-popper {
+  border-radius: 14px;
+}
+
+html .el-select__popper.el-popper {
+  padding: 0;
+}
+
+html .el-select__popper .el-select-dropdown__list {
+  padding: 6px;
+}
+
+html .el-select__popper .el-select-dropdown__item,
+html .el-dropdown__popper .el-dropdown-menu__item {
+  border-radius: 9px;
+}
+
+/*
+ * 圆角面板不再配那个小三角箭头：
+ * 箭头是贴在面板直边上的，现在边变成圆角，它会戳在圆角外面，看着像边框破了。
+ */
+html .el-select__popper .el-popper__arrow,
+html .el-dropdown__popper .el-popper__arrow,
+html .el-cascader__dropdown .el-popper__arrow,
+html .el-autocomplete__popper .el-popper__arrow,
+html .el-picker__popper .el-popper__arrow {
+  display: none;
+}
+
+/* 面板裁一圈：里面的列表/分隔线不会顶到圆角外面 */
+html .el-select__popper.el-popper,
+html .el-dropdown__popper.el-popper {
+  overflow: hidden;
+}
+
+/*
+ * 下拉菜单（顶栏"进入后台 / 退出登录"这类）：
+ * Element Plus 默认只留上下 10px 内边距，选项会顶到面板左右边缘，
+ * 圆角之后看着像被切了一刀 —— 这里四周都留 6px，选项缩进去。
+ */
+html .el-dropdown__popper .el-dropdown-menu {
+  padding: 6px;
+}
 /* 后台表格：操作列的按钮始终单行右对齐（列宽不足时压缩其它列，不换行） */

@@ -1,23 +1,52 @@
 <template>
   <section class="about-hero" :style="gridVars">
     <!-- 背景纹理：GitHub 贡献图式的圆角格子，缓慢向左滚动 -->
-    <div ref="gridRef" class="hero-grid" aria-hidden="true">
+    <div ref="gridRef" class="hero-grid" :class="{ 'is-text': useText }" aria-hidden="true">
       <div class="hero-grid-scroll">
         <svg
           class="hero-grid-accent"
-          :viewBox="`0 0 ${gridCols + GREEN_PERIOD_COLS} ${gridRows}`"
+          :viewBox="`0 0 ${totalCols} ${gridRows}`"
           preserveAspectRatio="none"
         >
+          <!--
+            底纹和绿格必须落在同一套坐标里。
+            以前底纹是「CSS mask 平铺 public/hero-grid.svg」，绿格是「另一个 SVG 按 viewBox 拉伸」——
+            两条路径各自做子像素取整，在 DPR 不是 1 的设备上格子原点会对不上，
+            绿块就跑到格子外面去了。现在底纹改成同一个 SVG 里的 <pattern>，
+            单位就是 viewBox 的格，和绿格共享同一个变换，任何设备都对得齐。
+          -->
+          <defs>
+            <pattern id="hero-grid-cell" width="1" height="1" patternUnits="userSpaceOnUse">
+              <rect
+                class="hero-grid-base-cell"
+                :x="GREEN_CELL_INSET"
+                :y="GREEN_CELL_INSET"
+                :width="GREEN_CELL_SIZE"
+                :height="GREEN_CELL_SIZE"
+                :rx="GREEN_CELL_RX"
+              />
+            </pattern>
+          </defs>
           <rect
-            v-for="cell in greenCells"
-            :key="cell.key"
-            :x="cell.x + GREEN_CELL_INSET"
-            :y="cell.y + GREEN_CELL_INSET"
-            :width="GREEN_CELL_SIZE"
-            :height="GREEN_CELL_SIZE"
-            :rx="GREEN_CELL_RX"
-            :fill-opacity="cell.opacity"
+            class="hero-grid-base"
+            x="0"
+            y="0"
+            :width="totalCols"
+            :height="gridRows"
+            fill="url(#hero-grid-cell)"
           />
+          <g class="hero-grid-cells">
+            <rect
+              v-for="cell in greenCells"
+              :key="cell.key"
+              :x="cell.x + GREEN_CELL_INSET"
+              :y="cell.y + GREEN_CELL_INSET"
+              :width="GREEN_CELL_SIZE"
+              :height="GREEN_CELL_SIZE"
+              :rx="GREEN_CELL_RX"
+              :fill-opacity="cell.opacity"
+            />
+          </g>
         </svg>
       </div>
     </div>
@@ -39,45 +68,23 @@
       </div>
     </div>
 
-    <!-- 底部胶囊全部由「社交入口」配置决定（星标 / 仓库 / 作者是其中的自动项） -->
-    <div v-if="chips.length" class="hero-links">
-      <component
-        :is="chip.url ? 'a' : 'span'"
-        v-for="chip in chips"
-        :key="chip.key"
-        v-bind="chip.url ? { href: chip.url, target: '_blank', rel: 'noopener' } : {}"
-        class="hero-chip hero-social-chip"
-        :class="{ 'is-link': !!chip.url }"
-        :title="chip.label"
-      >
-        <AboutSocialIcon :name="chip.icon" />
-        <span class="hero-social-label">{{ chip.label }}</span>
-      </component>
-    </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import AboutSocialIcon from './AboutSocialIcon.vue';
-import { resolveSocialLinks, type SocialLinkItem } from '../utils/about';
-import { GREEN_COLOR, GREEN_PERIOD_COLS, greenCellOpacity } from '../utils/hero-grid';
+import { GREEN_COLOR, GREEN_OPACITIES, GREEN_PERIOD_COLS, greenCellOpacity, textToCells } from '../utils/hero-grid';
 
-const props = withDefaults(
-  defineProps<{
+const props = defineProps<{
     siteName?: string;
     tagline?: string;
     version?: string;
-    authorName?: string;
-    authorGithub?: string;
-    /** 已经清洗成 owner/repo 的仓库路径 */
-    repoName?: string;
-    /** 没取到星标时传 null */
-    repoStars?: number | null;
-    socialLinks?: SocialLinkItem[];
-  }>(),
-  { repoStars: null, socialLinks: () => [] }
-);
+    /**
+     * 背景绿格要拼的文字。留空 = 原来的随机贡献图。
+     * 填了之后不再滚动（文字要停在原地），格子也会为它重新算尺寸。
+     */
+    gridText?: string | null;
+  }>();
 
 const displayName = computed(() => props.siteName?.trim() || 'OpenStore');
 
@@ -87,33 +94,27 @@ const displayName = computed(() => props.siteName?.trim() || 'OpenStore');
  */
 const displayVersion = computed(() => (props.version || '').trim().replace(/^v/i, ''));
 
-/*
- * 底部胶囊完全由「社交入口」配置决定：星标 / 仓库 / 作者是其中的自动项，
- * 没有配置就不渲染，保证「后台删掉 = 前台不显示」。
- */
-const chips = computed(() =>
-  resolveSocialLinks(props.socialLinks, {
-    authorName: props.authorName,
-    authorGithub: props.authorGithub,
-    repoName: props.repoName,
-    repoStars: props.repoStars
-  }).map((item, index) => ({ ...item, key: `${item.icon}-${index}` }))
-);
-
 /** 期望的格子步长（实际会按卡片尺寸微调，保证行列都是整数） */
 const GRID_TARGET_CELL = 14;
+/**
+ * 拼文字时用更细的格子：字号是跟着卡片高度走的，格子越细 = 覆盖文字的格子越多、
+ * 字形越准。14px 那种大格只有 10 行，字母会糊成方块。
+ */
+const GRID_TARGET_CELL_TEXT = 6;
 /** 底纹向左滚动的速度（px/秒），实际时长按滚动一个周期的距离换算 */
 const GRID_DRIFT_SPEED = 5;
-/** 格子内部的留白与圆角（单位是「格」，和 hero-grid.svg 的 2.5/14、9/14、2/14 对齐） */
+/** 格子内部的留白与圆角（单位是「格」，和 about-nameplate.ts 的 2.5/14、9/14、2/14 对齐） */
 const GREEN_CELL_INSET = 2.5 / 14;
 const GREEN_CELL_SIZE = 9 / 14;
 const GREEN_CELL_RX = 2 / 14;
 
 const gridRef = ref<HTMLElement | null>(null);
-const gridVars = ref<Record<string, string>>({});
-const gridCols = ref(0);
-const gridRows = ref(0);
+const gridSize = ref({ width: 0, height: 0 });
 let resizeObserver: ResizeObserver | null = null;
+
+/** 后台配置的文字（留空 = 原来的随机格子） */
+const gridText = computed(() => (props.gridText || '').trim());
+const useText = computed(() => gridText.value.length > 0);
 
 /*
  * 格子自适应卡片：按卡片尺寸取整数行列，格子尺寸 = 卡片尺寸 / 行列数，
@@ -126,33 +127,62 @@ const measureGrid = () => {
   if (!el) return;
   const { width, height } = el.getBoundingClientRect();
   if (width <= 0 || height <= 0) return;
-
-  const cols = Math.max(1, Math.round(width / GRID_TARGET_CELL));
-  const rows = Math.max(1, Math.round(height / GRID_TARGET_CELL));
-  gridCols.value = cols;
-  gridRows.value = rows;
-  const cellW = width / cols;
-  const cellH = height / rows;
-  gridVars.value = {
-    '--hero-grid-green': GREEN_COLOR,
-    '--grid-cell-w': `${cellW}px`,
-    '--grid-cell-h': `${cellH}px`,
-    // 滚动一个周期（128 列）的距离
-    '--grid-drift': `${cellW * GREEN_PERIOD_COLS}px`,
-    // 按同一速度换算时长，卡片大小变化时观感一致
-    '--grid-drift-duration': `${Math.round((cellW * GREEN_PERIOD_COLS) / GRID_DRIFT_SPEED)}s`
-  };
+  if (width === gridSize.value.width && height === gridSize.value.height) return;
+  gridSize.value = { width, height };
 };
 
+const targetCell = computed(() => (useText.value ? GRID_TARGET_CELL_TEXT : GRID_TARGET_CELL));
+const gridCols = computed(() => Math.max(1, Math.round(gridSize.value.width / targetCell.value)));
+const gridRows = computed(() => Math.max(1, Math.round(gridSize.value.height / targetCell.value)));
+const cellW = computed(() => gridSize.value.width / gridCols.value);
+const cellH = computed(() => gridSize.value.height / gridRows.value);
+
 /*
- * 点亮格：按 (列, 行) 哈希生成，滚动范围要比可见区多出一个周期。
+ * 横向要多铺一份才够滚动：
+ *   - 随机格子：多铺一个 128 列的周期（哈希本身按 128 列循环）；
+ *   - 拼文字：把文字按「一屏宽」重复一份，滚动一屏后正好接上，同样无缝。
+ */
+const driftCols = computed(() => (useText.value ? gridCols.value : GREEN_PERIOD_COLS));
+const totalCols = computed(() => gridCols.value + driftCols.value);
+
+const gridVars = computed<Record<string, string>>(() => ({
+  '--hero-grid-green': GREEN_COLOR,
+  '--grid-cell-w': `${cellW.value}px`,
+  '--grid-cell-h': `${cellH.value}px`,
+  // 滚动一个周期的距离（随机 = 128 列；文字 = 一屏宽）
+  '--grid-drift': `${cellW.value * driftCols.value}px`,
+  // 按同一速度换算时长，卡片大小变化时观感一致
+  '--grid-drift-duration': `${Math.max(1, Math.round((cellW.value * driftCols.value) / GRID_DRIFT_SPEED))}s`
+}));
+
+/*
+ * 点亮格：
+ *   - 配了文字 → 把文字栅格化成格子（不滚动，文字停在中间）；
+ *   - 没配文字 → 按 (列, 行) 哈希生成的随机贡献图（要多出一个周期用于滚动）。
  * 坐标用「格」为单位（viewBox 也是格数），SVG 拉伸后正好落在底纹的格点上。
  */
-const greenCells = computed(() => {
+const greenCells = computed<{ key: string; x: number; y: number; opacity: number }[]>(() => {
   const cells: { key: string; x: number; y: number; opacity: number }[] = [];
-  const totalCols = gridCols.value + GREEN_PERIOD_COLS;
+  if (!gridCols.value || !gridRows.value) return cells;
+
+  if (useText.value) {
+    /*
+     * 文字统一用最亮那一档，读起来才清楚；再按一屏宽复制一份供无缝滚动。
+     * 起步对齐到格子左边 —— 动画是往左滚的，这样每一份都是从「文字开头」
+     * 从右边滚进来（居中起步的话，一开始看到的就是半截）。
+     */
+    const lit = textToCells(gridText.value, gridCols.value, gridRows.value, { align: 'left', sample: 8 });
+    const brightest = GREEN_OPACITIES[GREEN_OPACITIES.length - 1];
+    for (const offset of [0, gridCols.value]) {
+      for (const { col, row } of lit) {
+        cells.push({ key: `${offset}-${col}-${row}`, x: col + offset, y: row, opacity: brightest });
+      }
+    }
+    return cells;
+  }
+
   for (let row = 0; row < gridRows.value; row += 1) {
-    for (let col = 0; col < totalCols; col += 1) {
+    for (let col = 0; col < totalCols.value; col += 1) {
       const opacity = greenCellOpacity(col, row);
       if (opacity > 0) cells.push({ key: `${col}-${row}`, x: col, y: row, opacity });
     }
@@ -226,6 +256,22 @@ onBeforeUnmount(() => {
   mask-size: 100% 100%;
 }
 
+/*
+ * 拼文字时渐隐要放松一些：
+ * 文字是从最左边起步往左滚的，如果还按原来「左侧 40% 全透明」，
+ * 一进页面看到的就是一张空卡片（文字正走在看不见的那一段）。
+ * 这里只保留一点淡淡的压暗，让 logo/标题仍然清楚。
+ */
+.hero-grid.is-text {
+  --hero-grid-fade: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.18) 0%,
+    rgba(0, 0, 0, 0.6) 16%,
+    #000 34%,
+    #000 100%
+  );
+}
+
 /* 滚动层：比容器多出一个周期，向左平移一个周期后无缝衔接 */
 .hero-grid-scroll {
   position: absolute;
@@ -236,31 +282,25 @@ onBeforeUnmount(() => {
   will-change: transform;
 }
 
-.hero-grid-scroll::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  -webkit-mask-repeat: repeat;
-  mask-repeat: repeat;
-}
-
-/* 均匀底纹 */
-.hero-grid-scroll::before {
-  background-color: var(--el-text-color-primary);
-  opacity: 0.06;
-  -webkit-mask-image: url('/hero-grid.svg');
-  mask-image: url('/hero-grid.svg');
-  /* 格子尺寸由卡片尺寸算出（见 measureGrid），因此总能整列整行铺满 */
-  -webkit-mask-size: var(--grid-cell-w, 14px) var(--grid-cell-h, 14px);
-  mask-size: var(--grid-cell-w, 14px) var(--grid-cell-h, 14px);
-}
-
-/* 绿色贡献格：由 greenCells 按坐标哈希生成，深浅由每格 fill-opacity 决定 */
+/* 底纹 + 绿格都在这一个 SVG 里（见模板），共享同一套 viewBox 坐标 */
 .hero-grid-accent {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+/* 均匀底纹：pattern 里的一格，颜色/透明度保持原来的观感 */
+.hero-grid-base {
+  opacity: 0.06;
+}
+
+.hero-grid-base-cell {
+  fill: var(--el-text-color-primary);
+}
+
+/* 绿色贡献格：由 greenCells 按坐标哈希生成，深浅由每格 fill-opacity 决定 */
+.hero-grid-cells {
   fill: var(--hero-grid-green, #39d353);
   opacity: 0.28;
 }
@@ -339,45 +379,6 @@ onBeforeUnmount(() => {
   color: var(--el-text-color-regular);
 }
 
-/* 虚线下面那一整行：星标 / 仓库 / 作者 / 社交入口，统一样式的胶囊 */
-.hero-links {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px dashed var(--el-border-color-light);
-}
-
-.hero-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 11px;
-  border-radius: 999px;
-  border: 1px solid var(--el-border-color-lighter);
-  background-color: var(--el-bg-color);
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  text-decoration: none;
-  white-space: nowrap;
-  transition: color 0.18s ease, border-color 0.18s ease, background-color 0.18s ease,
-    transform 0.18s ease;
-}
-
-.hero-chip.is-link {
-  color: var(--el-color-primary);
-  border-color: color-mix(in srgb, var(--el-color-primary) 22%, transparent);
-}
-
-.hero-chip.is-link:hover {
-  border-color: var(--el-color-primary);
-  background-color: var(--el-color-primary-light-9);
-  transform: translateY(-1px);
-}
-
 @media (max-width: 640px) {
   .about-hero {
     padding: 20px 16px;
@@ -398,13 +399,5 @@ onBeforeUnmount(() => {
     font-size: 21px;
   }
 
-  /* 窄屏社交胶囊只留图标，文字藏起来避免换行成一堆胶囊 */
-  .hero-social-label {
-    display: none;
-  }
-
-  .hero-social-chip {
-    padding: 0 10px;
-  }
 }
 </style>
