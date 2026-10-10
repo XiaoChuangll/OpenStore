@@ -4,6 +4,26 @@ import vue from '@vitejs/plugin-vue'
 import { compression } from 'vite-plugin-compression2'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import fs from 'node:fs'
+import path from 'node:path'
+
+/*
+ * 构建前把临时目录切到项目内的 build-tmp：Windows Defender / 360 的实时扫描会占住
+ * esbuild 放在系统 %TEMP% 的临时文件，报 `[vite:esbuild-transpile] remove ... Access is denied`。
+ * esbuild 取的是 Node 的 os.tmpdir()（Windows 上是 TEMP / TMP），子进程会继承这套变量；
+ * 去掉这段，构建收尾会复现上面的错误。
+ */
+(function redirectTempDirToProjectLocal() {
+  const tmpRoot = path.resolve(process.cwd(), 'build-tmp')
+  try {
+    fs.mkdirSync(tmpRoot, { recursive: true })
+  } catch (_) {
+    return
+  }
+  for (const key of ['TEMP', 'TMP', 'TMPDIR', 'ESBUILD_TMPDIR']) {
+    process.env[key] = tmpRoot
+  }
+})()
 
 /**
  * KaTeX 的样式表给每个字体都列了 woff2 / woff / ttf 三种格式，
@@ -76,6 +96,8 @@ export default defineConfig(({ mode }) => {
     ],
     test: {
       environment: 'jsdom',
+      // 测试统一放 tests/，与 src 分开
+      include: ['tests/**/*.test.ts'],
       // 内联 element-plus：否则 vitest 把它交给 Node 加载，撞上它按需导入的 .css 会报错
       server: {
         deps: {

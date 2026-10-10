@@ -161,9 +161,9 @@ import AdminSection from '../../components/admin/AdminSection.vue';
 type CardRow = SiteCard & { enabledBoolean: boolean };
 
 const PAGES = [
-  // label 跟前台的叫法对齐：/ 这一页在前台叫「探索」，里面分「首页」「系统」两个页签
-  { key: 'home', label: '探索·首页', hint: '探索页「首页」页签的板块', manageable: true },
-  { key: 'system', label: '探索·系统', hint: '探索页「系统」页签的卡片', manageable: true },
+  // label 跟前台的叫法对齐：/ 这一页在前台叫「探索」，里面分「首页」「推荐」两个页签
+  { key: 'home', label: '探索页', hint: '探索页第一个页签的板块', manageable: true },
+  { key: 'system', label: '推荐页', hint: '探索页第二个页签的卡片', manageable: true },
   { key: 'about', label: '关于', hint: '关于页面的卡片（含页面头部）', manageable: true },
 ];
 

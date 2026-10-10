@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
-// store 初始化会拉一次主题设置，测试里不该打真实请求
-vi.mock('../services/api', () => ({
+// store 初始化会拉一次主题设置，避免真实请求
+vi.mock('../../src/services/api', () => ({
   getThemeSettings: vi.fn().mockResolvedValue({})
 }));
 
-import { useThemeStore } from './theme';
+import { useThemeStore } from '../../src/stores/theme';
 
 /** jsdom 没有 matchMedia，补一个可控的替身 */
 const stubMatchMedia = (systemDark: boolean) => {

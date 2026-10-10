@@ -227,17 +227,18 @@
                   <el-input v-model="feedbackForm.description" type="textarea" :rows="6" placeholder="请描述问题场景、期望结果等" />
                 </el-form-item>
                 <el-form-item label="联系方式">
-                  <el-autocomplete
-                    v-model="feedbackForm.email"
-                    placeholder="邮箱（可选）"
-                    value-key="value"
-                    :fetch-suggestions="getEmailSuggestions"
-                    @select="onEmailSelect"
-                    style="width: 100%;"
-                  />
-                </el-form-item>
-                <el-form-item>
-                  <el-button type="primary" :loading="submitting" @click="submitFeedbackForm">提交反馈</el-button>
+                  <!-- 提交按钮跟在邮箱输入框后面 -->
+                  <div class="contact-row">
+                    <el-autocomplete
+                      v-model="feedbackForm.email"
+                      placeholder="邮箱"
+                      value-key="value"
+                      :fetch-suggestions="getEmailSuggestions"
+                      @select="onEmailSelect"
+                      class="contact-input"
+                    />
+                    <el-button type="primary" :loading="submitting" @click="submitFeedbackForm">提交反馈</el-button>
+                  </div>
                 </el-form-item>
               </el-form>
               <el-alert
@@ -357,7 +358,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed, watch } from 'vue';
+import { onActivated, onMounted, onUnmounted, ref, computed, watch } from 'vue';
 import { useLayoutStore } from '../stores/layout';
 import {
   Link,
@@ -375,6 +376,7 @@ import 'github-markdown-css/github-markdown.css';
 import { useAuthStore } from '../stores/auth';
 import { getPublicSiteCards } from '../services/admin';
 import { contentVersion } from '../services/content-refresh';
+import { usePageActive } from '../utils/page-active';
 import AboutHero from '../components/AboutHero.vue';
 import AboutSocialLinks from '../components/AboutSocialLinks.vue';
 import { DEFAULT_TECH_STACK, githubAvatarUrl, githubProfileUrl, normalizeContributors, normalizeSocialLinks, normalizeTechStack, type Contributor, type SocialLinkItem, type TechStackItem } from '../utils/about';
@@ -447,6 +449,12 @@ const cardStyle = (key: string) => {
     ? { order: config.order }
     : { order: config.order, display: 'none' };
 };
+
+/**
+ * 卡片是否开着：关掉的卡片只是 display:none，取数得靠这个拦掉，
+ * 否则后台关掉了照样发请求。配置没拿到时按「开」处理。
+ */
+const isCardEnabled = (key: string) => aboutCards.value[key]?.enabled !== false;
 
 const layoutStore = useLayoutStore();
 const aboutData = ref<AboutPage>({ id: 0, version: '', author_name: '', author_avatar: '', author_github: '', github_repo: '', content_html: '', content_markdown: '' });
@@ -951,15 +959,43 @@ onMounted(async () => {
   // Initial check
   checkScrollPosition();
   await fetchData();
-  fetchChangelogs();
-  fetchSuccessList();
-  loadAboutCards();
+  // 先定卡片配置，再按「开着」的卡片取数：关闭的卡片不该发请求
+  await loadAboutCards();
+  if (isCardEnabled('changelogs')) fetchChangelogs();
+  if (isCardEnabled('feedback')) fetchSuccessList();
 });
 
-// 后台保存「关于」内容 / 卡片配置后（WS → contentVersion +1）重新取数
-watch(contentVersion, () => {
+/** 卡片从关变开时补一次请求（配置整体换对象但值没变时不重复请求） */
+watch(
+  () => [isCardEnabled('changelogs'), isCardEnabled('feedback')] as [boolean, boolean],
+  (next, previous) => {
+    const [changelogsOn, feedbackOn] = next;
+    const [wasChangelogsOn, wasFeedbackOn] = previous ?? [true, true];
+    if (changelogsOn && !wasChangelogsOn && !changelogsFetched.value) fetchChangelogs();
+    if (feedbackOn && !wasFeedbackOn) fetchSuccessList();
+  }
+);
+
+// 后台保存「关于」内容 / 卡片配置后（WS → contentVersion +1）重新取数。
+// 关于页在 keep-alive 白名单里：不在这一页时先记账、不请求，切回来再补这一次。
+let syncedContentVersion = contentVersion.value;
+const pageActive = usePageActive();
+
+const reloadAboutContent = () => {
+  syncedContentVersion = contentVersion.value;
   fetchData();
   loadAboutCards();
+};
+
+watch(contentVersion, () => {
+  if (!pageActive.value) return;
+  reloadAboutContent();
+});
+
+onActivated(() => {
+  // 离开期间后台改过内容：补上那次被跳过的取数
+  if (syncedContentVersion === contentVersion.value) return;
+  reloadAboutContent();
 });
 
 onUnmounted(() => {
@@ -1293,6 +1329,22 @@ onUnmounted(() => {
 /* 反馈 */
 .feedback-tabs {
   margin-top: 4px;
+}
+
+/* 联系方式：邮箱输入框 + 提交按钮排成一行；窄屏放不下时按钮自动折到下一行 */
+.contact-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+/* 必须用 :deep：el-autocomplete 根节点拿不到 scoped 的 data-v 属性，
+   普通选择器选不中它，输入框就不会收缩，按钮会被挤到下一行 */
+.contact-row :deep(.contact-input) {
+  flex: 1 1 200px;
+  min-width: 0;
 }
 
 .success-alert :deep(.el-alert__content) {

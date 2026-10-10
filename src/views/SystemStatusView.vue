@@ -166,8 +166,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import { useActiveScope } from '../utils/page-active';
 import {
   Connection,
   Refresh,
@@ -375,19 +376,41 @@ const checkSingle = async (probe: Probe) => {
 let autoCheckTimer: number | null = null;
 let countdownTimer: number | null = null;
 
+/**
+ * 自动探测只在本页可见时跑：页面在 keep-alive 里不会卸载，
+ * 不停的话切走后每 30 秒还会把探针打到上游。切走停、切回重启。
+ */
+const startAutoCheck = () => {
+  // 切回来重新计时，免得显示一个在后台早就停走的倒计时
+  resetCountdown();
+  if (autoCheckTimer === null) {
+    autoCheckTimer = window.setInterval(() => {
+      void runAllChecks();
+    }, AUTO_INTERVAL * 1000);
+  }
+  if (countdownTimer === null) {
+    countdownTimer = window.setInterval(() => {
+      if (secondsToNextCheck.value > 0) secondsToNextCheck.value -= 1;
+    }, 1000);
+  }
+};
+
+const stopAutoCheck = () => {
+  if (autoCheckTimer !== null) {
+    window.clearInterval(autoCheckTimer);
+    autoCheckTimer = null;
+  }
+  if (countdownTimer !== null) {
+    window.clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+};
+
 onMounted(() => {
   runAllChecks();
-
-  autoCheckTimer = window.setInterval(runAllChecks, AUTO_INTERVAL * 1000);
-  countdownTimer = window.setInterval(() => {
-    if (secondsToNextCheck.value > 0) secondsToNextCheck.value -= 1;
-  }, 1000);
 });
 
-onUnmounted(() => {
-  if (autoCheckTimer) clearInterval(autoCheckTimer);
-  if (countdownTimer) clearInterval(countdownTimer);
-});
+useActiveScope(startAutoCheck, stopAutoCheck);
 </script>
 
 <style scoped>

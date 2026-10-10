@@ -952,6 +952,10 @@ export interface TopologyData {
     upstreamErrors: number;
     upstreamRequests: number;
   };
+  /** 前台页面发起的请求数（不含后台接口） */
+  frontend?: { requests: number };
+  /** 后台自己的接口（/api/admin/*）汇总 */
+  backend?: { count: number; avgMs: number; errors: number; slow: number };
   apiNodes: TopologyNode[];
   upstreamProxy: {
     count: number;
@@ -1070,6 +1074,17 @@ export const saveScriptGuardPageConfig = async (config: ScriptGuardPageConfig) =
 export const resetScriptGuardPageConfig = async () => {
   const { data } = await api.post('/script-guard/page/reset');
   return data.config as ScriptGuardPageConfig;
+};
+
+/** 放行名单：命中 UA 前缀的客户端不计次、不封禁；名单只存库，为空即不放行 */
+export const getScriptGuardAllowList = async () => {
+  const { data } = await api.get('/script-guard/allow');
+  return data.list as string;
+};
+
+export const saveScriptGuardAllowList = async (list: string) => {
+  const { data } = await api.put('/script-guard/allow', { list });
+  return data.list as string;
 };
 
 /** 一次拦截（封禁）记录 */

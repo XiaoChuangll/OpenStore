@@ -1,14 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ScriptGuardRecordDetail from './ScriptGuardRecordDetail.vue';
-import type { ScriptGuardBlockRecord } from '../services/admin';
+import ScriptGuardRecordDetail from '../../src/components/ScriptGuardRecordDetail.vue';
+import type { ScriptGuardBlockRecord } from '../../src/services/admin';
 
-/*
- * 拦截记录展开详情的内容。
- * 这里主要盯两件事：
- *   1. 库里存的是 UTC，展开后要按东八区显示（和访客日志口径一致）；
- *   2. 「封禁至」是算出来的（记录时间 + 封禁时长），不是直接存在库里的字段。
- */
+// 关注两点：UTC 存储按东八区显示；「封禁至」= 记录时间 + 封禁时长
 const record: ScriptGuardBlockRecord = {
   id: 42,
   ip: '58.212.206.47',

@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { requireAuth, logAction } = require('../middleware/auth.cjs');
 const { DB_FILE_PATH, dbAllAsync, dbGetAsync, dbRunAsync, quoteIdent, listUserTables, countRows } = require('../lib/db-helpers.cjs');
 const { DB_MAINTENANCE_ACTIONS } = require('../lib/db-maintenance.cjs');
@@ -180,6 +181,47 @@ router.post('/api/admin/database/maintenance', requireAuth, async (req, res) => 
   }
 });
 
+/*
+ * 发送备份文件：客户端支持 gzip 就压缩后再传（SQLite 里重复文本多，79MB → 14MB，
+ * 压缩约 0.4 秒；浏览器按 Content-Encoding 透明解压，存下来仍是能直接打开的 .db）。
+ * 没带 Accept-Encoding 的客户端走 res.download，保留 Content-Length / Range 语义。
+ */
+const ACCEPTS_GZIP_RE = /\bgzip\b/i;
+
+/* 清理临时快照：Windows 上句柄可能还没释放，unlink 失败要重试，否则会攒下残留 */
+const removeTempFile = (file, attempt = 0) => {
+  fs.unlink(file, (err) => {
+    if (!err || err.code === 'ENOENT') return;
+    if (attempt >= 5) {
+      console.error('[database] 清理备份临时文件失败:', file, err.message);
+      return;
+    }
+    setTimeout(() => removeTempFile(file, attempt + 1), 200);
+  });
+};
+
+const sendBackupFile = (req, res, file, downloadName) => {
+  // 正常发完或客户端中途断开都清临时文件（重复清理无副作用）
+  res.on('close', () => removeTempFile(file));
+  res.setHeader('Cache-Control', 'no-store');
+
+  if (!ACCEPTS_GZIP_RE.test(String(req.headers['accept-encoding'] || ''))) {
+    res.download(file, downloadName, () => removeTempFile(file));
+    return;
+  }
+
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+  res.setHeader('Content-Encoding', 'gzip');
+  // 同一地址对不同 Accept-Encoding 的响应不同，给中间缓存提示
+  res.setHeader('Vary', 'Accept-Encoding');
+
+  const source = fs.createReadStream(file);
+  source.on('error', () => res.destroy());
+  // 等级 1：压到 18% 已经够，再往上只多省两个百分点、CPU 却翻倍
+  source.pipe(zlib.createGzip({ level: zlib.constants.Z_BEST_SPEED })).pipe(res);
+};
+
 router.get('/api/admin/database/backup', requireAuth, async (req, res) => {
   const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
   const target = path.join(os.tmpdir(), `visitors-backup-${stamp}-${crypto.randomBytes(4).toString('hex')}.db`);
@@ -187,11 +229,9 @@ router.get('/api/admin/database/backup', requireAuth, async (req, res) => {
     // VACUUM INTO 生成一致快照：比起直接发原文件，WAL 里的未合并数据也会包含进去
     await dbRunAsync('VACUUM INTO ?', [target]);
     logAction(req.user?.username, 'backup', 'database', null, { file: path.basename(target) });
-    res.download(target, `visitors-${stamp}.db`, () => {
-      fs.unlink(target, () => {});
-    });
+    sendBackupFile(req, res, target, `visitors-${stamp}.db`);
   } catch (err) {
-    fs.unlink(target, () => {});
+    removeTempFile(target);
     res.status(500).json({ error: err.message });
   }
 });

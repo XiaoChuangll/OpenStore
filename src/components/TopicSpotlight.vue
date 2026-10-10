@@ -126,9 +126,17 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ArrowRight, Picture } from '@element-plus/icons-vue';
 import { getTopics, getTopicDetail, getNewAppsByDateRange, getAppUpdates, type FullSubstanceInfo } from '../services/api';
+import { usePageActive } from '../utils/page-active';
 
 // active：所在页签是否可见；隐藏时不排期，避免在后台切海报、发请求
 const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true });
+
+/*
+ * 页签可见 ≠ 本页可见：首页被 keep-alive 缓存，切到别的路由后 homeTab 仍是 'home'，
+ * 光看 props.active 会在后台一直轮播、还会 refreshAll 重新取数，所以再叠一层路由判断。
+ */
+const pageActive = usePageActive();
+const shouldRun = computed(() => props.active && pageActive.value);
 
 /**
  * 首页的「精选专题」：随机挑一个专题，用专题详情页那套头图展示。
@@ -564,12 +572,12 @@ const ROUND_REFRESH_DELAY_MS = 1000;
 const scheduleRoundRefresh = () => {
   if (roundRefreshTimer) window.clearTimeout(roundRefreshTimer);
   roundRefreshTimer = null;
-  // 只在回到第一张时排一次
-  if (activeIndex.value !== 0) return;
+  // 只在回到第一张时排一次；本页切走或页签隐藏时也不排
+  if (activeIndex.value !== 0 || !shouldRun.value) return;
   refreshedThisRound = false;
   roundRefreshTimer = window.setTimeout(() => {
     roundRefreshTimer = null;
-    if (!props.active || refreshedThisRound) return;
+    if (!shouldRun.value || refreshedThisRound) return;
     refreshedThisRound = true;
     void refreshAll().then(() => {
       // 刷新后预热下一张的图标
@@ -597,8 +605,8 @@ const showSkeleton = computed(() => !(cards.value.length > 0 && currentReady.val
 const scheduleNext = () => {
   if (carouselTimer) window.clearTimeout(carouselTimer);
   carouselTimer = null;
-  // 页签隐藏时不排期
-  if (!props.active) return;
+  // 页签隐藏 / 本页被 keep-alive 挂起时不排期
+  if (!shouldRun.value) return;
 
   carouselTimer = window.setTimeout(async () => {
     if (!paused.value && slides.value.length > 1) {
@@ -618,22 +626,22 @@ const scheduleNext = () => {
   }, dwellOf(current.value));
 };
 
-watch(
-  () => props.active,
-  (on) => {
-    if (on) {
-      scheduleNext();
-    } else if (carouselTimer) {
-      window.clearTimeout(carouselTimer);
-      carouselTimer = null;
-      // 页签隐藏就不再排后台刷新
-      if (roundRefreshTimer) {
-        window.clearTimeout(roundRefreshTimer);
-        roundRefreshTimer = null;
-      }
-    }
+/** 停掉轮播排期和后台刷新排期（页签隐藏 / 本页被 keep-alive 挂起时都走这里） */
+const stopSchedule = () => {
+  if (carouselTimer) {
+    window.clearTimeout(carouselTimer);
+    carouselTimer = null;
   }
-);
+  if (roundRefreshTimer) {
+    window.clearTimeout(roundRefreshTimer);
+    roundRefreshTimer = null;
+  }
+};
+
+watch(shouldRun, (on) => {
+  if (on) scheduleNext();
+  else stopSchedule();
+});
 
 onMounted(async () => {
   await Promise.all([loadWeekly(), loadDaily(), loadSpotlight()]);
@@ -645,10 +653,7 @@ onMounted(async () => {
   scheduleNext();
 });
 
-onUnmounted(() => {
-  if (carouselTimer) window.clearTimeout(carouselTimer);
-  if (roundRefreshTimer) window.clearTimeout(roundRefreshTimer);
-});
+onUnmounted(stopSchedule);
 </script>
 
 <style scoped>

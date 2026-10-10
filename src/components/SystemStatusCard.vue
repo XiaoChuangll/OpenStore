@@ -159,10 +159,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { Connection, Loading, CircleCheck, Refresh } from '@element-plus/icons-vue';
 import { hmApi } from '../services/hm-api';
+import { useActiveScope } from '../utils/page-active';
 import AnimatedNumber from './AnimatedNumber.vue';
 
 const router = useRouter();
@@ -330,6 +331,9 @@ const connectStream = () => {
     isStreamConnecting.value = false;
     eventSource?.close();
     
+    // 页面已经切走（keep-alive 挂起）就不再重连：由 stopStream 收尾，切回来会重新连
+    if (!pageActive.value) return;
+
     // Retry logic
     retryCount.value++;
     const timeout = Math.min(5000 * retryCount.value, 30000);
@@ -341,21 +345,37 @@ const connectStream = () => {
   };
 };
 
-onMounted(() => {
-  connectStream();
-});
-
-onUnmounted(() => {
+/**
+ * 停止这条实时流：关掉 SSE、撤掉重连定时器和本地倒计时。
+ * 卡片在 keep-alive 里不会卸载，不停的话切走后还会按 5s/10s/… 一直重连。
+ */
+const stopStream = () => {
   if (eventSource) {
     eventSource.close();
+    eventSource = null;
   }
   if (retryTimer) {
     clearTimeout(retryTimer);
+    retryTimer = null;
   }
   if (countdownInterval) {
     clearInterval(countdownInterval);
+    countdownInterval = null;
   }
-});
+  isStreamConnected.value = false;
+  isStreamConnecting.value = false;
+};
+
+const startStream = () => {
+  retryCount.value = 0;
+  connectStream();
+};
+
+/**
+ * 首屏连上 / 切走断开 / 切回来重连。
+ * pageActive 也用在 onerror 里，避免「刚切走就收到 error」又把重连排上。
+ */
+const pageActive = useActiveScope(startStream, stopStream);
 </script>
 
 <style scoped>

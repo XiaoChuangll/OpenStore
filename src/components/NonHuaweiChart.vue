@@ -6,13 +6,13 @@
           <span class="card-title" :class="{ 'title-link': route.path !== '/rank/non-huawei' }" @click="goToRank">非华为应用下载榜</span>
           <!-- 两个筛选框单独成组：窄屏时整组占到第二行，不会被挤变形 -->
           <div class="header-filters">
-            <!-- 分类筛选：按榜单口径（分类别名组）筛出该分类下的应用 -->
+            <!-- 分类筛选：按榜单口径（分类别名组）筛出该分类下的应用。
+                 不加 filterable：这是选项不多的分类下拉，能键入反而像是在搜索框里打字 -->
             <el-select
               v-if="categoryOptions.length"
               v-model="category"
               size="small"
               clearable
-              filterable
               placeholder="全部分类"
               class="category-select"
               :style="{ width: categorySelectWidth }"
@@ -128,7 +128,14 @@ interface CategoryOption {
   increase?: number;
 }
 const categoryOptions = ref<CategoryOption[]>([]);
-const category = ref('');
+
+/*
+ * 分类要暴露给父组件（同页堆叠图跟着筛），但取数用本地值：
+ * @change 触发时父组件状态还没回流，直接读 props 会拿到旧分类。
+ */
+const props = withDefaults(defineProps<{ category?: string }>(), { category: '' });
+const emit = defineEmits<{ 'update:category': [string] }>();
+const category = ref(props.category);
 const categorySelectWidth = computed(() =>
   selectWidthOf(['全部分类', ...categoryOptions.value.map((item) => item.name)])
 );
@@ -579,9 +586,22 @@ const fetchData = async () => {
   }
 };
 
+/* 分类双向同步：本卡改动通知父组件，父组件改了本卡也跟着换 */
+watch(category, (value) => {
+  if (value !== props.category) emit('update:category', value);
+});
+watch(
+  () => props.category,
+  (value) => {
+    if (value === category.value) return;
+    category.value = value;
+    void fetchData();
+  }
+);
+
 const handleResize = () => {
+  if (viewMode.value !== 'chart' || !chartRef.value) return;
   const el = chartRef.value;
-  if (viewMode.value !== 'chart' || !el) return;
   if (!el.clientWidth || !el.clientHeight) return;
   // 之前容器还没尺寸、没能建实例的，这里补建
   if (!chartInstance) {

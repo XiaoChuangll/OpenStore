@@ -171,7 +171,7 @@ defineOptions({
   name: 'AppsView'
 });
 
-import { ref, watch, computed, onBeforeUnmount } from 'vue';
+import { ref, watch, computed, onActivated, onBeforeUnmount } from 'vue';
 import { Search, Menu, Connection, CircleClose, ArrowLeft, ArrowRight } from '@element-plus/icons-vue';
 // 分类图标集中在 utils 里，和「分类增长排行」共用同一份
 import { CATEGORY_ICON_MAP } from '../utils/category-icons';
@@ -179,9 +179,11 @@ import { useRouter, useRoute } from 'vue-router';
 import { getCategories, searchApps, getDevices, DEVICE_MAP, getAppsByCategory } from '../services/next-api';
 import AppCard from '../components/AppCard.vue';
 import DeviceIcon from '../components/DeviceIcon.vue';
+import { usePageActive } from '../utils/page-active';
 
 const router = useRouter();
 const route = useRoute();
+const pageActive = usePageActive();
 const searchQuery = ref('');
 const activeDevice = ref('all');
 const categories = ref<any[]>([]);
@@ -198,6 +200,8 @@ const categorySnapshots = new Map<string, any[]>();
 const skeletonProgress = ref(12);
 let skeletonProgressTimer: number | null = null;
 let prewarmStarted = false;
+/** 不在本页时被跳过的 route.query 同步：切回来要补一次 */
+let routeSyncSkipped = false;
 
 const viewMode = computed(() => {
   if (route.query.q) return 'search';
@@ -540,26 +544,44 @@ const handleAppClick = async (app: any) => {
   });
 };
 
+/*
+ * route.query 是全局的，离开 /apps 时它也会变、watch 跟着跑一遍取数；
+ * 页面在 keep-alive 里没卸载，所以要自己判断在不在本页，跳过的那次切回来由 onActivated 补。
+ */
+const syncFromRoute = () => {
+  routeSyncSkipped = false;
+  const routeDevice = route.query.device;
+  if (typeof routeDevice === 'string' && DEVICE_KEYS.has(routeDevice)) {
+    activeDevice.value = routeDevice;
+  } else if (viewMode.value === 'home') {
+    activeDevice.value = 'all';
+  }
+
+  if (viewMode.value === 'home') {
+    fetchCategories();
+    fetchDeviceStats();
+  } else {
+    currentPage.value = 1;
+    fetchApps();
+  }
+};
+
 watch(
   () => route.query,
   () => {
-    const routeDevice = route.query.device;
-    if (typeof routeDevice === 'string' && DEVICE_KEYS.has(routeDevice)) {
-      activeDevice.value = routeDevice;
-    } else if (viewMode.value === 'home') {
-      activeDevice.value = 'all';
+    if (!pageActive.value) {
+      routeSyncSkipped = true;
+      return;
     }
-
-    if (viewMode.value === 'home') {
-      fetchCategories();
-      fetchDeviceStats();
-    } else {
-      currentPage.value = 1;
-      fetchApps();
-    }
+    syncFromRoute();
   },
   { immediate: true }
 );
+
+onActivated(() => {
+  if (!routeSyncSkipped) return;
+  syncFromRoute();
+});
 
 watch(activeDevice, (key) => {
   if (viewMode.value === 'home') {

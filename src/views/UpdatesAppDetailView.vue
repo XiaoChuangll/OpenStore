@@ -98,6 +98,7 @@ import { ArrowDown, Clock, Picture } from '@element-plus/icons-vue';
 import HarmonyShareIcon from '../components/HarmonyShareIcon.vue';
 import { hmApi } from '../services/hm-api';
 import { useLayoutStore } from '../stores/layout';
+import { useActiveScope } from '../utils/page-active';
 import { goBackOrHome } from '../utils/route-scroll';
 import { buildAppShareMeta, clearPageShareMeta, setPageShareMeta, shareCurrentPage } from '../utils/page-share';
 
@@ -330,19 +331,31 @@ const fetchDetail = async () => {
 
 onMounted(() => {
   fetchDetail();
-  // 「开发者 · 包名」与「应用简介」来回切换
+});
+
+/**
+ * 「开发者 · 包名」与「应用简介」来回切换的定时器。
+ * 页面在 keep-alive 里切走只是挂起，不停掉的话定时器会在后台一直改 ref、反复重渲染。
+ */
+const startSubtitleRotate = () => {
+  if (subtitleTimer !== null) return;
   subtitleTimer = window.setInterval(() => {
     if (subtitleLines.value.length > 1) {
       rotateIndex.value = (rotateIndex.value + 1) % subtitleLines.value.length;
     }
   }, SUBTITLE_ROTATE_MS);
-});
+};
 
-onBeforeUnmount(() => {
+const stopSubtitleRotate = () => {
   if (subtitleTimer !== null) {
     window.clearInterval(subtitleTimer);
     subtitleTimer = null;
   }
+};
+
+useActiveScope(startSubtitleRotate, stopSubtitleRotate);
+
+onBeforeUnmount(() => {
   clearPageShareMeta();
 });
 </script>

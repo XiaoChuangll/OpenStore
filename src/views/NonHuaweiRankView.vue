@@ -2,14 +2,15 @@
   <div class="non-huawei-rank-view">
     <!-- 榜单页签条已提到 App.vue（keep-alive 外面），四个榜单页共用同一个 -->
     <div class="content">
-      <TopAppsStackedChart title="非华为应用用量" exclude-huawei />
-      <NonHuaweiChart />
+      <!-- 分类是两张卡共用的：上面这张堆叠用量图跟着下面榜单卡的分类筛选走 -->
+      <TopAppsStackedChart title="非华为应用用量" exclude-huawei :category="category" />
+      <NonHuaweiChart v-model:category="category" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onActivated, onUnmounted } from 'vue';
+import { onActivated, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useLayoutStore } from '../stores/layout';
 import { goBackOrHome } from '../utils/route-scroll';
@@ -22,6 +23,8 @@ defineOptions({
 
 const router = useRouter();
 const layoutStore = useLayoutStore();
+/** 非华为榜的分类筛选：堆叠用量图 + 榜单卡共用 */
+const category = ref('');
 // 返回上一页（通常是首页）：这样首页会从 keep-alive 还原 + 滚动位置也恢复
 const goHome = () => goBackOrHome(router);
 

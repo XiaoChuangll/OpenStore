@@ -272,50 +272,50 @@ html .el-dialog__footer {
   padding: 12px 20px 18px;
 }
 
+/* border-card 页签默认是直角，补上圆角跟全站卡片对齐 */
+html .el-tabs--border-card {
+  border-radius: 12px;
+  /* 页签条自己的直角交给面板圆角裁掉 */
+  overflow: hidden;
+}
+
 html .el-table {
   --el-table-border-color: var(--el-border-color-lighter);
   --el-table-header-bg-color: transparent;
   --el-table-header-text-color: var(--el-text-color-secondary);
   --el-table-row-hover-bg-color: var(--el-fill-color-light);
+  /* 行透明，露出卡片底色（EP 默认给 tr 铺底色） */
+  --el-table-tr-bg-color: transparent;
   background-color: transparent;
   font-size: 13px;
+  /* 整张表是一块圆角卡片 */
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  /* 表头横带的直角交给卡片圆角裁掉 */
+  overflow: hidden;
 }
 
-/*
- * 表格皮肤：行卡片化
- * 去掉表格的网格线，把每一行做成浅底圆角块，与全站的卡片语言保持一致
- */
+/* 表格皮肤：外轮廓由卡片负责，行与行之间只用一条细线分隔 */
+
+/* EP 会在表格底部补一条线，卡片的底边就是边界，不用重复画 */
+html .el-table::before,
+html .el-table__inner-wrapper::before {
+  display: none;
+}
 
 html .el-table__body {
   border-collapse: separate;
-  border-spacing: 0 6px;
+  border-spacing: 0;
 }
 
 html .el-table__body tr > td.el-table__cell {
-  background-color: var(--el-fill-color);
+  background-color: transparent;
   border-bottom: 1px solid var(--el-border-color-extra-light);
-  border-top: 1px solid var(--el-border-color-extra-light);
 }
 
-html .el-table__body tr > td.el-table__cell:first-child {
-  border-top-left-radius: 10px;
-  border-bottom-left-radius: 10px;
-  border-left: 1px solid var(--el-border-color-extra-light);
-}
-
-html .el-table__body tr > td.el-table__cell:last-child {
-  border-top-right-radius: 10px;
-  border-bottom-right-radius: 10px;
-  border-right: 1px solid var(--el-border-color-extra-light);
-}
-
-html .el-table__body tr:hover > td.el-table__cell {
-  background-color: var(--el-fill-color-light);
-}
-
-html .el-table thead th.el-table__cell,
-html .el-table__header-wrapper th.el-table__cell {
-  border-bottom: 1px solid var(--el-border-color-extra-light) !important;
+/* 最后一行不再画线 */
+html .el-table__body tr:last-child > td.el-table__cell {
+  border-bottom: none;
 }
 
 html .el-table th.el-table__cell {
@@ -325,22 +325,8 @@ html .el-table th.el-table__cell {
   color: var(--el-text-color-secondary);
   background-color: var(--el-fill-color-light);
   padding: 11px 0;
-  border-top: 1px solid var(--el-border-color-extra-light);
-  border-bottom: 1px solid var(--el-border-color-extra-light);
-}
-
-/* 表头也做成一条独立的圆角横条，与行卡片呼应 */
-
-html .el-table thead th.el-table__cell:first-child {
-  border-top-left-radius: 10px;
-  border-bottom-left-radius: 10px;
-  border-left: 1px solid var(--el-border-color-extra-light);
-}
-
-html .el-table thead th.el-table__cell:last-child {
-  border-top-right-radius: 10px;
-  border-bottom-right-radius: 10px;
-  border-right: 1px solid var(--el-border-color-extra-light);
+  /* 表头只画下面那条分界线 */
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 html .el-table .el-table__cell {
@@ -569,6 +555,33 @@ html .el-collapse-item__arrow {
 html .el-message,
 html .el-notification {
   border-radius: 10px;
+}
+
+/*
+ * 提示条（ElMessage）贴屏幕右上角：进场从右缘滑入、退场滑出。
+ * EP 默认顶部居中（left: 50% + translateX(-50%)）且自上而下淡入，落点和位移都要改。
+ */
+html .el-message,
+html .el-message.is-center {
+  left: auto;
+  right: 20px;
+  margin: 0;
+  transform: none;
+  max-width: calc(100% - 40px);
+}
+
+/*
+ * 落到顶栏（60px）下面，让开右上角的深浅色切换按钮。
+ * 用 margin-top 而不是改 top：EP 靠每条的 inline top 做多条叠加。56 = 60 + 12 - 16。
+ */
+html .el-message:not(.is-bottom) {
+  margin-top: 56px;
+}
+
+html .el-message.el-message-fade-enter-from,
+html .el-message.el-message-fade-leave-to {
+  /* 先移到屏幕右缘之外再滑回落点；带上 .el-message 才压得过上面那条 transform: none */
+  transform: translateX(calc(100% + 24px));
 }
 
 /* 分段控件（radio-button）更接近国际化产品的观感 */

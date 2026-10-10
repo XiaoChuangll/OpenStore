@@ -42,6 +42,7 @@
         <!-- 图例：内容区顶部居中（宽卡片下居中于图表这一列） -->
         <div class="topology-legend">
           <span class="legend-item"><i class="legend-dot is-frontend"></i>前端</span>
+          <span class="legend-item"><i class="legend-dot is-backend"></i>后台</span>
           <span class="legend-item"><i class="legend-dot is-api"></i>后端接口</span>
           <span class="legend-item"><i class="legend-dot is-upstream"></i>上游</span>
           <span v-if="totals.errors" class="legend-item is-danger">
@@ -84,8 +85,12 @@ import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, 
 import * as echarts from 'echarts';
 import { DataLine, List } from '@element-plus/icons-vue';
 import { getTopology, type TopologyData } from '../services/admin';
+import { buildTopologyOption, liveSignature, nodeColor, type TopologyLive } from '../utils/topology-layout';
 
+// 形态/标签用长窗口；电流另查一个短窗口，只有这段时间真来过请求才亮
 const REFRESH_MS = 15000;
+const LIVE_REFRESH_MS = 5000;
+const LIVE_WINDOW_SECONDS = 15;
 
 const chartRef = ref<HTMLElement | null>(null);
 const loading = ref(false);
@@ -98,7 +103,15 @@ const toggleHealthView = () => {
 let chart: echarts.ECharts | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let timer: number | null = null;
+let liveTimer: number | null = null;
 let resizeTimer: number | null = null;
+
+/** 短窗口内各节点的请求数：决定哪几条链路通电 */
+const liveCounts = ref<TopologyLive>({});
+/** 上一次已画出去的电流档位指纹 */
+let liveSignatureDone = '';
+/** 首次写入必须整份，之后可以只更新节点与连线 */
+let chartReady = false;
 
 // 画布实际尺寸：布局坐标按它来算，窗口缩放时重新排布
 const chartSize = reactive({ width: 0, height: 0 });
@@ -113,12 +126,6 @@ const windowLabel = computed(() => {
   const seconds = data.value?.windowSeconds || 300;
   return seconds >= 60 ? `${Math.round(seconds / 60)} 分钟` : `${seconds} 秒`;
 });
-
-const nodeColor = (node: { errors: number; slow: number; avgMs: number }) => {
-  if (node.errors > 0) return '#d9534f';
-  if (node.slow > 0 || node.avgMs >= 300) return '#c88a2e';
-  return '#4f86f7';
-};
 
 /*
  * 接口健康 Top：按「错误 → 慢请求 → 平均耗时」加权排序，取前 10。
@@ -137,177 +144,53 @@ const healthRows = computed(() => {
     }));
 });
 
-const buildOption = (payload: TopologyData): echarts.EChartsOption => {
-  const apiNodes = payload.apiNodes;
-  const proxyNode = payload.upstreamProxy;
-  const total = Math.max(1, payload.totals.requests);
-
-  // 坐标按容器实际尺寸算：窗口变窄时自动压缩横向间距、缩小字号、把上游标签挪到节点下方，
-  // 避免「上游 API」节点和它的说明被画布右边缘截断（原来三列坐标是写死的 70 / 400 / 780）。
-  const W = Math.max(320, Math.round(chartSize.width || 800));
-  const H = Math.max(240, Math.round(chartSize.height || 380));
-  const compact = W < 640;
-
-  const frontendX = Math.max(30, Math.round(W * 0.05));
-  // 「上游 API」也放左侧：和「前端」同列，标签朝右展开（右侧留出标签宽度即可）
-  const upstreamX = frontendX;
-  const apiX = compact
-    ? Math.round(W * 0.46)
-    : Math.round(Math.max(frontendX + 170, Math.min(W * 0.44, W - 260)));
-
-  const rowCount = apiNodes.length + (proxyNode ? 1 : 0);
-  // 行距随高度自适应，整体垂直居中，行数多时不会超出画布
-  const apiGap = Math.max(28, Math.min(compact ? 40 : 48, (H - 72) / Math.max(1, rowCount - 1)));
-  const apiTop = Math.max(22, (H - (rowCount - 1) * apiGap) / 2);
-
-  const titleFont = compact ? 10 : 11;
-  const labelFont = compact ? 9 : 10;
-  const labelDist = compact ? 5 : 7;
-  const titleLineHeight = compact ? 12 : 14;
-  const labelLineHeight = compact ? 11 : 13;
-
-  /*
-   * 左侧两个球（前端 / 上游 API）的纵向位置：
-   * 以接口列表的垂直中线为基准上下对称分布，整体不会被压到画布下半部分；
-   * 再稍微上抬一点，避开顶部图例占用的空间。
-   */
-  const leftCenterY = apiTop + ((rowCount - 1) * apiGap) / 2;
-  const leftSpread = Math.max(34, Math.round(((rowCount - 1) * apiGap) / 4));
-  const leftLift = Math.round(apiGap * 0.2);
-  const frontendY = leftCenterY - leftSpread - leftLift;
-
-  const nodes: any[] = [
-    {
-      id: 'frontend',
-      name: `前端\n${payload.totals.requests} 次`,
-      x: frontendX,
-      y: frontendY,
-      symbolSize: 46,
-      itemStyle: { color: '#64748b' },
-      label: { show: true, position: 'bottom', distance: 8, color: '#e2e8f0', fontSize: titleFont, lineHeight: titleLineHeight }
-    }
-  ];
-  const links: any[] = [];
-
-  apiNodes.forEach((node, index) => {
-    const y = apiTop + index * apiGap;
-    const size = 14 + Math.min(20, (node.count / total) * 60);
-    nodes.push({
-      id: node.id,
-      name: `${node.name}\n${node.count} 次 · 均 ${node.avgMs}ms`,
-      x: apiX,
-      y,
-      symbolSize: size,
-      itemStyle: { color: nodeColor(node) },
-      label: { show: true, position: 'right', distance: labelDist, align: 'left', color: '#94a3b8', fontSize: labelFont, lineHeight: labelLineHeight }
-    });
-    links.push({
-      source: 'frontend',
-      target: node.id,
-      value: node.count,
-      lineStyle: { width: 1 + Math.min(4, node.count / 20), color: 'rgba(148,163,184,0.35)', curveness: 0.08 }
-    });
-  });
-
-  // 上游代理请求单独成一个节点，保证它不会被 Top8 截断
-  if (proxyNode) {
-    const y = apiTop + apiNodes.length * apiGap;
-    const nodeId = 'proxy:upstream';
-    const proxyIdle = !proxyNode.count;
-    nodes.push({
-      id: nodeId,
-      name: proxyIdle
-        ? '上游接口 (v0)\n本时段无调用'
-        : `上游接口 (v0)\n${proxyNode.count} 次 · 均 ${proxyNode.avgMs}ms`,
-      x: apiX,
-      y,
-      symbolSize: 16 + Math.min(20, (proxyNode.count / total) * 60),
-      itemStyle: { color: proxyNode.errors ? '#d9534f' : proxyNode.slow ? '#c88a2e' : '#4f86f7' },
-      label: { show: true, position: 'right', distance: labelDist, align: 'left', color: '#94a3b8', fontSize: labelFont, lineHeight: labelLineHeight }
-    });
-    links.push({
-      source: 'frontend',
-      target: nodeId,
-      value: proxyNode.count,
-      lineStyle: {
-        width: 1 + Math.min(4, proxyNode.count / 20),
-        color: 'rgba(148,163,184,0.35)',
-        curveness: 0.08
-      }
-    });
-  }
-
-  /*
-   * 「上游 API」和「前端」放在同一列（左侧）：
-   * 前端保持垂直居中（它要扇形连到所有接口），上游落在列表最底部——
-   * 上游代理节点本来就在列表最后一行，两点之间只差一条水平线，不会横穿整个图。
-   */
-  const upstreamY = leftCenterY + leftSpread - leftLift;
-  nodes.push({
-    id: 'upstream',
-    name: `上游 API\n${payload.upstream.calls ? `调用 ${payload.upstream.calls} 次 · 均 ${payload.upstream.avgMs}ms` : '近期无调用'}${payload.upstream.cacheBuilds ? ` · 建缓存 ${payload.upstream.cacheBuilds}` : ''}`,
-    x: upstreamX,
-    y: upstreamY,
-    symbolSize: 40,
-    itemStyle: { color: payload.upstream.errors ? '#d9534f' : '#94a3b8' },
-    label: {
-      show: true,
-      position: compact ? 'bottom' : 'right',
-      distance: compact ? 6 : 8,
-      align: compact ? 'center' : 'left',
-      color: '#e2e8f0',
-      fontSize: titleFont,
-      lineHeight: titleLineHeight
-    }
-  });
-
-  // 上游代理节点 → 上游 API
-  if (proxyNode) {
-    const idle = !proxyNode.count;
-    links.push({
-      source: 'proxy:upstream',
-      target: 'upstream',
-      value: proxyNode.count,
-      lineStyle: {
-        // 本时段没有上游调用时用虚线，仍然把两个节点连起来，避免上游节点孤零零没有连线
-        width: idle ? 1 : 1 + Math.min(3, proxyNode.count / 20),
-        type: idle ? 'dashed' : 'solid',
-        color: idle ? 'rgba(148,163,184,0.22)' : 'rgba(148,163,184,0.3)',
-        curveness: 0.08
-      }
-    });
-  }
-
-  return {
-    tooltip: {
-      formatter: (params: any) =>
-        params.dataType === 'edge'
-          ? `${params.data.value} 次`
-          : String(params.data.name).replace('\n', ' · ')
-    },
-    series: [
-      {
-        type: 'graph',
-        layout: 'none',
-        roam: false,
-        coordinateSystem: undefined,
-        symbol: 'circle',
-        edgeSymbol: ['none', 'arrow'],
-        edgeSymbolSize: 5,
-        data: nodes,
-        links,
-        lineStyle: { opacity: 0.9 },
-        emphasis: { focus: 'adjacency' }
-      }
-    ]
-  };
-};
-
-/** 记录画布实际尺寸，坐标按它计算 */
 const measure = () => {
   if (!chartRef.value) return;
   chartSize.width = chartRef.value.clientWidth;
   chartSize.height = chartRef.value.clientHeight;
+};
+
+/**
+ * 重建配置（布局算法见 utils/topology-layout）。
+ * 用合并而不是 notMerge：整图重建会把正在跑的光点重置回起点；
+ * 只在电流档位变了（full）时才连电流一起更新。
+ */
+const setChartOption = (payload: TopologyData, full = false) => {
+  if (!chart) return;
+  /*
+   * 尺寸用 ECharts 画布尺寸（不是 clientWidth）：布局按「数据范围 = 画布」做 1:1 映射。
+   */
+  const option = buildTopologyOption(
+    payload,
+    { width: chart.getWidth(), height: chart.getHeight() },
+    liveCounts.value
+  );
+  if (full) chart.setOption(option);
+  else chart.setOption({ series: [(option.series as any[])[0]] });
+};
+
+/**
+ * 只查最近十几秒：哪些接口这段时间真的来过请求。
+ * 不能用长窗口累计值（稳定流量下差分恒为 0），也不能看「窗口内有过请求」（会一直通电）。
+ */
+const pollLive = async () => {
+  try {
+    const payload = await getTopology(LIVE_WINDOW_SECONDS);
+    const next: TopologyLive = {};
+    (payload.apiNodes || []).forEach((node) => {
+      next[node.id] = node.count;
+    });
+    if (payload.upstreamProxy) next['proxy:upstream'] = payload.upstreamProxy.count;
+    liveCounts.value = next;
+
+    // 电流档位没变就不重画：否则光点每 5 秒被打回起点
+    const signature = liveSignature(next);
+    const changed = signature !== liveSignatureDone || !chartReady;
+    liveSignatureDone = signature;
+    if (data.value && changed) setChartOption(data.value, true);
+  } catch {
+    // 探测失败就维持上一次的电流状态，不影响主图
+  }
 };
 
 const render = async () => {
@@ -343,17 +226,22 @@ const render = async () => {
         if (nextW === chartSize.width && nextH === chartSize.height) return;
         measure();
         chart?.resize();
-        chart?.setOption(buildOption(data.value), true);
+        // 尺寸变了，坐标全变，这里得整份重画
+        setChartOption(data.value, true);
       }, 120);
     });
     resizeObserver.observe(chartRef.value);
   }
-  chart.setOption(buildOption(data.value as TopologyData), true);
+  // 首次必须整份写入（否则电流那套 series 根本不存在），之后只更新节点与连线
+  setChartOption(data.value as TopologyData, !chartReady);
+  chartReady = true;
 };
 
 const startPolling = () => {
   if (timer) window.clearInterval(timer);
   timer = window.setInterval(render, REFRESH_MS);
+  if (liveTimer) window.clearInterval(liveTimer);
+  liveTimer = window.setInterval(pollLive, LIVE_REFRESH_MS);
 };
 
 const stopPolling = () => {
@@ -361,19 +249,28 @@ const stopPolling = () => {
     window.clearInterval(timer);
     timer = null;
   }
+  if (liveTimer) {
+    window.clearInterval(liveTimer);
+    liveTimer = null;
+  }
 };
 
 // 面板被 KeepAlive 挂起时停掉轮询，切回来再恢复（数据还是上次那份，不用重新请求）
 let mountedOnce = false;
 
 onMounted(() => {
+  // 先取一次短窗口，不必等长窗口的 15 秒
+  pollLive();
   render();
   startPolling();
   mountedOnce = true;
 });
 
 onActivated(() => {
-  if (mountedOnce) startPolling();
+  if (mountedOnce) {
+    pollLive();
+    startPolling();
+  }
 });
 
 onDeactivated(stopPolling);
@@ -579,6 +476,7 @@ onBeforeUnmount(() => {
 }
 
 .legend-dot.is-frontend { background-color: #64748b; }
+.legend-dot.is-backend { background-color: #7c6cf0; }
 .legend-dot.is-api { background-color: #4f86f7; }
 .legend-dot.is-upstream { background-color: #94a3b8; }
 .legend-dot.is-error { background-color: #d9534f; }

@@ -35,3 +35,6 @@ npm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Build temp (Windows: redirect TEMP/TMP to project-local dir to avoid Defender file locks)
+build-tmp/

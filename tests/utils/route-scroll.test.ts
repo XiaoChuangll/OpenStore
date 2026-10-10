@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { goBackOrHome, onlyTrackQueryChanged } from './route-scroll';
+import { goBackOrHome, onlyTrackQueryChanged } from '../../src/utils/route-scroll';
 
 describe('onlyTrackQueryChanged', () => {
   it('只有 track 变了（切歌）=> true，表示不该重置滚动', () => {

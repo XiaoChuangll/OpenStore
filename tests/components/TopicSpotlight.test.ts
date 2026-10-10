@@ -1,16 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
-import TopicSpotlight from './TopicSpotlight.vue';
-import * as spotlightApi from '../services/api';
+import { defineComponent, h, KeepAlive, nextTick, ref } from 'vue';
+import TopicSpotlight from '../../src/components/TopicSpotlight.vue';
+import * as spotlightApi from '../../src/services/api';
 
-// 精选专题海报的「预热 → 轮播」时序：假图片 + 假定时器，逐条钉住关键行为
+// 预热 → 轮播时序：假图片 + 假定时器
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
-// 两张海报：本周上新（weekly）+ 专题（topic）；今日更新没有数据，不出现
-vi.mock('../services/api', () => ({
+// 本周上新 + 专题两张海报；今日更新无数据，不出现
+vi.mock('../../src/services/api', () => ({
   getTopics: vi.fn(async () => ({ data: [{ substance_id: 1, title: '专题' }] })),
   getTopicDetail: vi.fn(async () => ({
     substance_id: 1,
@@ -32,7 +33,7 @@ vi.mock('../services/api', () => ({
   getAppUpdates: vi.fn(async () => ({ data: [] })),
 }));
 
-/** 待「加载」的图片，由测试决定何时完成 */
+/** 待放行的图片 */
 type PendingImage = { src: string; fire: () => void };
 let pendingImages: PendingImage[] = [];
 
@@ -45,7 +46,7 @@ class FakeImage {
 
   set src(value: string) {
     this.currentSrc = value;
-    // 组件先挂 onload 再赋 src，这里可以安全推迟回调
+    // 组件先挂 onload 再赋 src
     pendingImages.push({ src: value, fire: () => this.onload?.() });
   }
 
@@ -57,7 +58,7 @@ class FakeImage {
 const isWeekly = (src: string) => src.includes('week-');
 const isTopic = (src: string) => src.includes('topic-');
 
-/** 放行某一批图片 */
+/** 放行一批图片 */
 const loadImages = async (match: (src: string) => boolean) => {
   const hit = pendingImages.filter((item) => match(item.src));
   pendingImages = pendingImages.filter((item) => !match(item.src));
@@ -65,14 +66,14 @@ const loadImages = async (match: (src: string) => boolean) => {
   await flushPromises();
 };
 
-/** 反复放行直到没有新的预热排上（预热是一张接一张启动的） */
+/** 反复放行，直到没有新的预热排上 */
 const drainImages = async () => {
   for (let i = 0; i < 5 && pendingImages.length; i += 1) {
     await loadImages(() => true);
   }
 };
 
-// 所有海报都是常驻卡片，取前台那张的标题（排除骨架）
+// 海报是常驻卡片，取前台那张的标题（排除骨架）
 const titleOf = (wrapper: VueWrapper<any>) =>
   wrapper.find('.spotlight-card.is-active:not(.spotlight-skeleton) .spotlight-title').text();
 const cardShown = (wrapper: VueWrapper<any>) =>
@@ -89,7 +90,7 @@ describe('TopicSpotlight 预热与轮播', () => {
     pendingImages = [];
     vi.stubGlobal('Image', FakeImage);
     vi.useFakeTimers();
-    // 统一默认数据（本周上新 + 专题），避免用例之间 mock 泄漏
+    // 统一默认数据，避免用例间 mock 泄漏
     vi.mocked(spotlightApi.getTopics).mockResolvedValue({ data: [{ substance_id: 1, title: '专题' }] } as any);
     vi.mocked(spotlightApi.getNewAppsByDateRange).mockResolvedValue({
       data: [
@@ -318,5 +319,48 @@ describe('TopicSpotlight 预热与轮播', () => {
     await vi.advanceTimersByTimeAsync(1);
     await flushPromises();
     expect(weeklyCalls()).toBe(1);
+  });
+
+  // 挂起后不应继续轮播或后台取数
+  it('页面被 keep-alive 挂起后，不再轮播、也不再后台取数', async () => {
+    const show = ref(true);
+    const host = defineComponent({
+      setup: () => () =>
+        h(KeepAlive, null, {
+          default: () => (show.value ? h(TopicSpotlight) : h('div', { class: 'other-page' })),
+        }),
+    });
+
+    const wrapper = mount(host, { global: { stubs: { 'el-icon': true } } });
+    await flushPromises();
+    await drainImages();
+
+    // 清掉首轮计数，只看挂起之后是否还有请求
+    vi.mocked(spotlightApi.getNewAppsByDateRange).mockClear();
+    vi.mocked(spotlightApi.getTopics).mockClear();
+    vi.mocked(spotlightApi.getTopicDetail).mockClear();
+
+    expect(titleOf(wrapper)).toBe('本周上新');
+
+    // 切到别的页面 → 挂起，不卸载
+    show.value = false;
+    await nextTick();
+    await flushPromises();
+
+    // 挂起后 DOM 在缓存容器里读不到，用调用次数判断：一轮跑完才会后台刷新
+    await vi.advanceTimersByTimeAsync(60000);
+    await flushPromises();
+
+    expect(spotlightApi.getNewAppsByDateRange).not.toHaveBeenCalled();
+    expect(spotlightApi.getTopics).not.toHaveBeenCalled();
+    expect(spotlightApi.getTopicDetail).not.toHaveBeenCalled();
+
+    // 切回来：轮播与后台刷新恢复
+    show.value = true;
+    await nextTick();
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(12000 + 7000 + 1500);
+    await flushPromises();
+    expect(spotlightApi.getNewAppsByDateRange).toHaveBeenCalled();
   });
 });

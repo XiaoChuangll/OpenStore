@@ -96,8 +96,6 @@
             @click="handleGroupClick(group)"
           >
             <span>{{ group.title }}</span>
-            <!-- 只有一个菜单项的分类（如“概览”）不是分类，直接进对应页面，不给下拉箭头 -->
-            <el-icon v-if="group.items.length > 1" class="topnav-caret"><ArrowDown /></el-icon>
           </button>
         </div>
 
@@ -176,7 +174,6 @@ import {
   Setting,
   Expand,
   Fold,
-  ArrowDown,
 } from '@element-plus/icons-vue';
 
   import MenuSettingIcon from '../../components/MenuSettingIcon.vue';
@@ -967,7 +964,6 @@ const handleSwitchTab = (tabName: any) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
   height: 32px;
   padding: 0 8px;
   border: 1px solid var(--el-border-color-lighter);
@@ -984,18 +980,16 @@ const handleSwitchTab = (tabName: any) => {
   color: var(--el-color-primary);
 }
 
-.topnav-caret {
-  font-size: 12px;
-  transition: transform 0.2s ease;
-}
-
-.topnav-group.is-open .topnav-caret {
-  transform: rotate(180deg);
-}
-
+/* 当前所在分类：整颗胶囊按「选中」处理 */
 .topnav-group.is-active {
   border-color: var(--el-color-primary);
   background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+
+/* 移动端不放展开箭头：正在展开的分类只改字体，胶囊本身保持常态 */
+.topnav-group.is-open {
   color: var(--el-color-primary);
   font-weight: 600;
 }

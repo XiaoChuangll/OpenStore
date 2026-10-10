@@ -129,10 +129,6 @@
           硬封禁<b>不区分 UA</b>：命中后这个 IP 的<b>一切</b>请求都返回 429，<b>连浏览器也打不开本站</b>。
           名单存在库里，重启服务依然有效。
         </p>
-        <p class="guard-warn">
-          后台 <code>/api/admin/*</code> 与 <code>/admin</code> 不受影响，所以就算误封自己的出口 IP，也还能进后台解除。
-          但同一 NAT 出口下的所有设备都会一起被挡 —— 公网 IP 是动态的，封之前想清楚。
-        </p>
 
         <div class="ban-form">
           <el-input v-model="banForm.ip" placeholder="要封禁的 IP，例如 58.212.206.47" class="ban-ip" clearable />
@@ -160,17 +156,45 @@
         </div>
       </el-tab-pane>
 
+      <!-- ------------------------------ 放行名单 ------------------------------ -->
+      <el-tab-pane label="放行名单" name="allow">
+        <p class="guard-hint">
+          命中名单的客户端<b>不计次、不封禁</b>，用来放行合作方或自家 App
+          （它们的 UA 解析不出浏览器名，本来会被当成脚本）。
+          按前缀匹配：填包名即可，版本号、机型变化都不用改。
+        </p>
+
+        <p class="guard-hint">
+          也可以直接把<b>整条 UA</b> 贴进来，保存时会自动截到开头的包名。
+          名单存在数据库里，没有内置默认值：<b>留空就不放行任何客户端</b>。
+        </p>
+
+        <el-form v-loading="loadingAllow" label-position="top" class="guard-form">
+          <el-form-item label="放行的 UA 前缀">
+            <el-input-tag
+              v-model="allowTags"
+              class="allow-tags"
+              :max="ALLOW_MAX"
+              delimiter=","
+              clearable
+              placeholder="输入包名后回车，例如 top.rayawa.dashboard"
+            />
+            <div class="allow-foot">
+              <span v-if="allowTags.length === 0" class="allow-default muted">
+                名单为空：所有解析不出浏览器名的客户端都会被计入脚本判定
+              </span>
+              <span v-else class="allow-default">保存后立刻生效，无需重启</span>
+              <span class="allow-count">已填 {{ allowTags.length }} 条，上限 {{ ALLOW_MAX }}</span>
+            </div>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+
       <!-- ------------------------------ 自定义 ------------------------------ -->
       <el-tab-pane label="自定义" name="edit">
         <p class="guard-hint">
           改完点「保存」<b>立刻生效</b>，不用重启服务。正文与提示条目支持两个标记：
           <code>**加粗**</code> 和 <code v-pre>{{site}}</code>（自动替换成本站地址）。
-        </p>
-
-        <p class="guard-warn">
-          <b>这段文案会被被拦的客户端原样看到</b>，所以别把判定依据写进去
-          （例如「没有浏览器标识」「没带 User-Agent」「访问太快」这类）。
-          对方照着改一下就能绕过 —— 只说「检测到自动化访问」就够了。
         </p>
 
         <el-form v-loading="loadingConfig" label-position="top" class="guard-form">
@@ -244,7 +268,13 @@
     </el-tabs>
 
     <template #footer>
-      <template v-if="tab === 'edit'">
+      <template v-if="tab === 'allow'">
+        <el-button :loading="loadingAllow" @click="loadAllow">刷新</el-button>
+        <el-button type="primary" :loading="savingAllow" :disabled="!allowLoaded" @click="saveAllow">
+          保存
+        </el-button>
+      </template>
+      <template v-else-if="tab === 'edit'">
         <el-button :loading="resetting" :disabled="!configLoaded" @click="restoreDefaults">恢复默认</el-button>
         <el-button type="primary" :loading="saving" :disabled="!configLoaded" @click="save">保存并预览</el-button>
       </template>
@@ -267,16 +297,19 @@
 </template>
 
 <script setup lang="ts">
-/* 脚本护栏面板：拦截记录 / 硬封禁 / 警告页自定义 / 预览 */
+/* 脚本护栏面板：拦截记录 / 硬封禁 / 放行名单 / 警告页自定义 / 预览 */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ArrowRight } from '@element-plus/icons-vue';
 import ScriptGuardRecordDetail from './ScriptGuardRecordDetail.vue';
+import { decodePercentEncoded } from '../utils/text';
 import {
   getScriptGuardPreview,
   getScriptGuardPageConfig,
   saveScriptGuardPageConfig,
   resetScriptGuardPageConfig,
+  getScriptGuardAllowList,
+  saveScriptGuardAllowList,
   getScriptGuardBlocks,
   clearScriptGuardBlocks,
   unblockScriptGuardIp,
@@ -293,8 +326,8 @@ import {
 defineProps<{ modelValue: boolean }>();
 const emit = defineEmits(['update:modelValue']);
 
-// 默认停在「拦截记录」——它是这个弹窗最常看的一页，另外两页是偶尔调整
-const tab = ref<'preview' | 'edit' | 'records' | 'bans'>('records');
+// 默认停在「拦截记录」（最常看的一页）
+const tab = ref<'preview' | 'edit' | 'records' | 'bans' | 'allow'>('records');
 
 // 模板里的 {{site}} 只能写成 <code v-pre>，写成 {{ '{{site}}' }} 会被 Vue 在第一个 }} 处截断
 const tipsPlaceholder = '如果你是**正常访客**：这大概率是误判，请刷新重试；仍无法访问请通过下面的入口联系我们。';
@@ -354,11 +387,22 @@ const applyConfig = (config: ScriptGuardPageConfig) => {
   tipsText.value = form.tips.join('\n');
 };
 
+/*
+ * 预览帧去掉滚动条：iframe 带 sandbox 是独立源，父页面改不了它的 DOM，
+ * 只能在写进 srcdoc 前插一条规则（只改预览这一份 HTML）。
+ */
+const PREVIEW_HIDE_SCROLLBAR = '<style>html{scrollbar-width:none}html::-webkit-scrollbar{display:none}</style>';
+
+const withHiddenScrollbar = (raw: string) =>
+  raw.includes('</head>')
+    ? raw.replace('</head>', `${PREVIEW_HIDE_SCROLLBAR}</head>`)
+    : PREVIEW_HIDE_SCROLLBAR + raw;
+
 const loadPreview = async () => {
   previewing.value = true;
   previewError.value = '';
   try {
-    html.value = await getScriptGuardPreview();
+    html.value = withHiddenScrollbar(await getScriptGuardPreview());
   } catch (e: any) {
     previewError.value = e?.response?.data?.error || e?.message || '预览加载失败';
   } finally {
@@ -389,7 +433,7 @@ const triggerReal = async () => {
   try {
     const result = await triggerScriptGuardBlock();
     realResult.value = result;
-    html.value = result.html;
+    html.value = withHiddenScrollbar(result.html);
     await loadRecords();
     ElMessage.success(
       `已真实封禁 ${result.ip}：第 ${result.strikes} 次违规，封禁 ${humanMs(result.blockMs)}`
@@ -428,6 +472,7 @@ const handleOpen = () => {
   void loadPreview();
   void loadConfig();
   void loadBans();
+  void loadAllow();
 };
 
 /* ---------------------------- 拦截记录 ---------------------------- */
@@ -470,7 +515,13 @@ const loadRecords = async () => {
   loadingRecords.value = true;
   try {
     const data = await getScriptGuardBlocks(200);
-    records.value = data.items || [];
+    /* UA / 路径里可能带百分号编码（%E4%BC%98%E8%B6%8A%E7%89%88 = 优越版），
+       展示前统一解一次：表格、卡片、展开详情读的都是这份数据 */
+    records.value = (data.items || []).map((row) => ({
+      ...row,
+      ua: decodePercentEncoded(row.ua),
+      path: decodePercentEncoded(row.path)
+    }));
     activeList.value = data.active || [];
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error || e?.message || '拦截记录加载失败');
@@ -651,6 +702,50 @@ const restoreDefaults = async () => {
   }
 };
 
+/* ---------------------------- 放行名单 ---------------------------- */
+
+const allowTags = ref<string[]>([]);
+// 条数上限和后端 normalizeAllowUa 保持一致
+const ALLOW_MAX = 50;
+// 只有成功读到过一次才允许保存，避免用空名单覆盖已有配置
+const allowLoaded = ref(false);
+const loadingAllow = ref(false);
+const savingAllow = ref(false);
+
+const applyAllow = (list: string) => {
+  allowTags.value = list ? list.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  allowLoaded.value = true;
+};
+
+const loadAllow = async () => {
+  loadingAllow.value = true;
+  try {
+    applyAllow(await getScriptGuardAllowList());
+  } catch (e: any) {
+    allowLoaded.value = false;
+    ElMessage.error(e?.response?.data?.error || e?.message || '放行名单加载失败');
+  } finally {
+    loadingAllow.value = false;
+  }
+};
+
+const saveAllow = async () => {
+  if (!allowLoaded.value) {
+    ElMessage.warning('名单还没加载成功，先点「刷新」再试，避免覆盖已有配置');
+    return;
+  }
+  savingAllow.value = true;
+  try {
+    // 用后端返回的规范结果回填（贴整条 UA 会被截成包名）
+    applyAllow(await saveScriptGuardAllowList(allowTags.value.join(', ')));
+    ElMessage.success('已保存，下一个请求就生效');
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || e?.message || '保存失败');
+  } finally {
+    savingAllow.value = false;
+  }
+};
+
 onMounted(() => window.addEventListener('resize', syncViewport));
 onBeforeUnmount(() => window.removeEventListener('resize', syncViewport));
 </script>
@@ -673,20 +768,6 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport));
   border-radius: 4px;
   background: var(--el-fill-color-light);
   color: var(--el-text-color-primary);
-}
-/* 「别把判定依据写进去」的提醒：比普通说明更醒目，但不用错误色，避免显得像出了故障 */
-.guard-warn {
-  margin: 0 0 16px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  border-left: 3px solid var(--el-color-warning);
-  background: var(--el-color-warning-light-9);
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--el-text-color-regular);
-}
-.guard-warn b {
-  color: var(--el-color-warning);
 }
 /* 真实触发结果的标记条：黄色，和示例预览区分开 */
 .guard-real {
@@ -738,6 +819,33 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport));
   max-height: min(56vh, 560px);
   overflow-y: auto;
   padding-right: 6px;
+}
+
+/* ---- 放行名单 ---- */
+.allow-tags {
+  width: 100%;
+}
+/* 贴进来的整条 UA 会很长，先截断显示，保存后被收敛成包名 */
+.allow-tags :deep(.el-tag) {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.allow-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--el-text-color-secondary);
+}
+.allow-default.muted {
+  color: var(--el-text-color-placeholder);
+}
+.allow-count {
+  flex: 0 0 auto;
 }
 
 /* ---- 硬封禁 ---- */
@@ -961,11 +1069,6 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport));
 @media (max-width: 768px) {
   .guard-hint {
     margin-bottom: 12px;
-    font-size: 12px;
-  }
-  .guard-warn {
-    margin-bottom: 12px;
-    padding: 9px 12px;
     font-size: 12px;
   }
   .guard-form {

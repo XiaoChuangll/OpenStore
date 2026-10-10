@@ -17,7 +17,8 @@
               @click="realtime = !realtime"
             >
               <span class="live-dot"></span>
-              {{ realtime ? '实时接收' : '已暂停' }}
+              <!-- 文案要独立标签包着：直接写插值会把缩进空白并进文本节点，文字看着不居中 -->
+              <span class="live-label">{{ realtime ? '实时接收' : '已暂停' }}</span>
             </button>
           </el-tooltip>
           <el-button size="small" :icon="Refresh" :loading="loading" @click="fetchList">刷新</el-button>
@@ -73,11 +74,14 @@
       <!-- 宽屏：表格；中屏：隐藏「操作人 / 详情」两列，信息并入相邻格子 -->
       <el-table
         v-if="!isMobile"
+        ref="tableRef"
         :data="items"
         style="width: 100%"
         v-loading="loading"
         row-key="id"
+        class="log-table"
         @selection-change="handleSelectionChange"
+        @row-click="onLogRowClick"
       >
         <el-table-column type="selection" width="44" />
         <el-table-column type="expand" width="44">
@@ -255,6 +259,14 @@ const toggleExpand = (id: number) => {
   else expandedIds.value.push(id);
 };
 
+// 宽屏表格：展开状态交给 el-table 自己管，点整行就能开合
+const tableRef = ref();
+
+/** 点整行展开 / 收起：勾选框和展开箭头自己 stopPropagation，不会重复触发 */
+const onLogRowClick = (row: SystemLog) => {
+  tableRef.value?.toggleRowExpansion(row);
+};
+
 /** 窄屏卡片没有表格的勾选框，这里自己维护选中状态 */
 const toggleSelect = (id: number, checked: boolean) => {
   const index = selectedIds.value.indexOf(id);
@@ -291,6 +303,8 @@ const applyFilter = () => {
 
 // 输入即搜：停顿 300ms 再查
 let searchTimer: number | undefined;
+/** onWS 的退订函数 */
+let unbindWS: (() => void) | null = null;
 const onSearchInput = () => {
   window.clearTimeout(searchTimer);
   searchTimer = window.setTimeout(applyFilter, 300);
@@ -437,7 +451,7 @@ onMounted(() => {
    * 于是第一个参数拿到的是字符串 'logs:new'，msg.type 恒为 undefined，
    * 每次都直接 return：界面永远收不到新日志，「实时接收」形同虚设。
    */
-  onWS((type: string, payload: any) => {
+  unbindWS = onWS((type: string, payload: any) => {
     if (type !== 'logs:new' || !realtime.value) return;
     // 只在第一页且没有筛选时插入，避免和筛选结果对不上
     if (page.value === 1 && !hasFilter.value) {
@@ -452,6 +466,9 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile);
   window.clearTimeout(searchTimer);
+  // 不退订的话每进一次这个页面就永久多挂一个 handler（拿着已销毁组件的作用域）
+  unbindWS?.();
+  unbindWS = null;
 });
 </script>
 
@@ -506,7 +523,17 @@ onUnmounted(() => {
   background-color: var(--el-color-success-light-9);
 }
 
+/* 状态点：光晕画在 12×12 盒子里（6px 的点居中），用 box-shadow 会只在左边多撑 3px、文字看着不居中 */
 .live-dot {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.live-dot::after {
+  content: '';
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -514,8 +541,16 @@ onUnmounted(() => {
 }
 
 .live-toggle.is-on .live-dot {
+  background-color: var(--el-color-success-light-8);
+}
+
+.live-toggle.is-on .live-dot::after {
   background-color: var(--el-color-success);
-  box-shadow: 0 0 0 3px var(--el-color-success-light-8);
+}
+
+/* 汉字在这条字体链里偏下：align-items 居中时墨迹是上 6.9 / 下 4.1，上推 1px 基本居中 */
+.live-label {
+  transform: translateY(-1px);
 }
 
 .filter-search { width: 260px; max-width: 100%; }
@@ -690,6 +725,11 @@ onUnmounted(() => {
 .log-card-toggle {
   font-size: 12px;
   color: var(--el-color-primary);
+}
+
+/* 整行可点开详情，给个手型提示 */
+.log-table :deep(.el-table__row) {
+  cursor: pointer;
 }
 
 .payload-box {

@@ -14,7 +14,9 @@ const PERF_CHECK_SKIP_PREFIXES = [
   '/api/public/track', // 会写入访问记录
   '/api/screenshot',   // 走外部服务，慢且对体检没意义
   '/api/admin/replay', // 会真的把请求重放一次
-  '/api/admin/auth'
+  '/api/admin/auth',
+  /* 数据库备份：VACUUM INTO 会写整库快照、占临时磁盘并锁住 SQLite，测的是拷库不是接口性能，跳过 */
+  '/api/admin/database/backup'
 ];
 const PERF_CHECK_MAX_ROUTES = 80;
 const PERF_CHECK_TIMEOUT_MS = 5000;

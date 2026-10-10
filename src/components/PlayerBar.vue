@@ -114,7 +114,7 @@ const openPlayer = () => {
   background-color: color-mix(in srgb, var(--el-bg-color) 80%, transparent);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+  /* 不加投影：靠边框 + 毛玻璃分层就够了，投影在深色/彩色背景上会糊出一圈脏影 */
   animation: bar-in 0.24s ease-out;
 }
 

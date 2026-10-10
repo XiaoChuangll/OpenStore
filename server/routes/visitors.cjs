@@ -5,6 +5,7 @@ const express = require('express');
 const db = require('../database.cjs');
 const { requireAuth } = require('../middleware/auth.cjs');
 const { cachedVisitorsAll, cachedVisitorsGet } = require('../lib/visitors-stats.cjs');
+const { buildDayTrendQuery } = require('../lib/visitor-trend.cjs');
 const { UPSTREAM_USER_AGENT } = require('../lib/config.cjs');
 
 const router = express.Router();
@@ -154,9 +155,10 @@ router.post('/api/visitors/batch-delete', requireAuth, (req, res) => {
 });
 
 router.get('/api/visitors/trend', requireAuth, (req, res) => {
-  const days = Number(req.query.days || 30);
+  // days 含今天（days=7 → 今天往前 6 天起），口径见 lib/visitor-trend.cjs
+  const days = Math.min(3650, Math.max(1, Math.floor(Number(req.query.days) || 30)));
   // offset：把窗口整体往回推 N 天，用来跟「上一个周期」做不重叠的对比
-  const offset = Math.max(0, Number(req.query.offset || 0));
+  const offset = Math.max(0, Math.floor(Number(req.query.offset) || 0));
   const granularity = String(req.query.granularity || 'day');
 
   // 小时粒度：给「最近24小时 / 今天」这类短窗口用，按小时分桶
@@ -219,29 +221,23 @@ router.get('/api/visitors/trend', requireAuth, (req, res) => {
     return;
   }
 
-  const whereClause = offset
-    ? "timestamp >= date('now', '-' || ? || ' days') AND timestamp < date('now', '-' || ? || ' days')"
-    : "timestamp >= date('now', '-' || ? || ' days')";
+  /* 天粒度：窗口与分桶按北京时间算（见 lib/visitor-trend.cjs）；days 含今天 */
+  const { where, params, bucket } = buildDayTrendQuery({ days, offset });
   const sql = `
     SELECT
-      strftime('%Y-%m-%d', timestamp) as date,
+      ${bucket} as date,
       COUNT(*) as count,
       COUNT(DISTINCT ip) as unique_ip
     FROM visitors
-    WHERE ${whereClause}
+    WHERE ${where}
     GROUP BY date
     ORDER BY date ASC
   `;
 
-  cachedVisitorsAll(
-    `trend:day:${days}:${offset}`,
-    sql,
-    offset ? [days + offset, offset] : [days],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(rows);
-    }
-  );
+  cachedVisitorsAll(`trend:day:${days}:${offset}`, sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
 });
 
 // Export Visitor Logs
