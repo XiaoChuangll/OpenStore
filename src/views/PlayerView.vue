@@ -274,7 +274,7 @@
           <button
             type="button"
             class="swatch swatch-default"
-            :class="{ 'is-active': !accent }"
+            :class="{ 'is-active': !accent && !followCover }"
             :style="{ backgroundColor: defaultAccent }"
             aria-label="默认（跟随全站主题）"
             title="默认（跟随全站主题）"
@@ -348,6 +348,7 @@ import {
 import { usePlayerStore, type Track } from '../stores/player';
 import MediaIcon from '../components/MediaIcon.vue';
 import { useThemeStore } from '../stores/theme';
+import { usePageActive } from '../utils/page-active';
 import { buildColorVars } from '../utils/theme-color';
 import { extractCoverAccent } from '../utils/cover-color';
 import { setPageShareMeta, clearPageShareMeta } from '../utils/page-share';
@@ -355,6 +356,12 @@ import { setPageShareMeta, clearPageShareMeta } from '../utils/page-share';
 const router = useRouter();
 const route = useRoute();
 const playerStore = usePlayerStore();
+
+/*
+ * 播放页在 keep-alive 白名单里，切走后 watch 仍然有效：在别的页面切歌 / FM 续歌
+ * 会触发拉歌词、封面取色、router.replace 等。这些只在本页可见时做，切回来由 onActivated 补。
+ */
+const pageActive = usePageActive();
 
 const DEFAULT_COVER = 'https://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg';
 
@@ -647,8 +654,8 @@ const ACCENTS: Array<{ value: string; label: string }> = [
 const ACCENT_VALUES = ACCENTS.map((c) => c.value);
 
 const accent = ref(localStorage.getItem('player_accent') || '');
-/** 跟着封面走：换歌就自动切成和封面匹配的颜色 */
-const followCover = ref(localStorage.getItem('player_follow_cover') === '1');
+/* 跟随封面配色：默认开启，只有手动选过色（存 '0'）才算关；旧数据存 '1' 也按开启处理 */
+const followCover = ref(localStorage.getItem('player_follow_cover') !== '0');
 /** 当前封面里取出来的颜色 */
 const coverAccent = ref('');
 /** 自定义取色器里挑的颜色（只在「自定义」里显示，不和预设混在一起） */
@@ -696,7 +703,8 @@ const applyAccent = (value: string, remember = true) => {
 /** 手选颜色（预设 / 自定义）就不再跟封面走了 */
 const pickAccent = (value: string, fromPicker = false) => {
   followCover.value = false;
-  localStorage.removeItem('player_follow_cover');
+  // 显式写 '0' 而不是删键：跟随是默认开，删键等于又回到跟随
+  localStorage.setItem('player_follow_cover', '0');
   customAccent.value = fromPicker ? value : '';
   applyAccent(value);
 };
@@ -706,9 +714,17 @@ const pickerValue = computed({
   set: (value: string | null) => pickAccent(value || '', true),
 });
 
+/** 已按哪张封面 / 哪种明暗取过色：切回来判断要不要补色 */
+let accentCoverUrl: string | null = null;
+let accentIsDark: boolean | null = null;
+
 /** 取当前封面主色；跟着封面走时顺手把主色换过去 */
 const refreshCoverAccent = async () => {
+  // 在别的页面切歌时不用下载封面取色，切回来 onActivated 会补
+  if (!pageActive.value) return;
   const url = cover.value;
+  accentCoverUrl = url;
+  accentIsDark = themeStore.isDark;
   const color = await extractCoverAccent(url, themeStore.isDark);
   // 取色是异步的，回来时如果已经换歌了就不要了
   if (url !== cover.value) return;
@@ -716,11 +732,17 @@ const refreshCoverAccent = async () => {
   if (followCover.value && color) applyAccent(color);
 };
 
+const refreshCoverAccentIfStale = () => {
+  if (accentCoverUrl === cover.value && accentIsDark === themeStore.isDark) return;
+  void refreshCoverAccent();
+};
+
 const toggleFollowCover = async () => {
   // 再点一次 = 退出跟随，回到站点默认色
   if (followCover.value) {
     followCover.value = false;
-    localStorage.removeItem('player_follow_cover');
+    // 同上：显式记成关闭，否则刷新后按默认（开启）又会跟回封面
+    localStorage.setItem('player_follow_cover', '0');
     applyAccent('');
     return;
   }
@@ -767,12 +789,25 @@ const syncPlayerShareMeta = async () => {
   document.title = current.name;
 };
 
-watch(() => track.value?.id, syncPlayerShareMeta, { immediate: true });
+watch(
+  () => track.value?.id,
+  () => {
+    // 在别的页面切歌时不动地址栏和标题（会把用户从当前页面拽走），切回来 onActivated 再同步
+    if (!pageActive.value) return;
+    void syncPlayerShareMeta();
+  },
+  { immediate: true }
+);
 /*
  * 这个页面在 keep-alive 白名单里：第二次进来只是「重新激活」，
- * 歌曲没变就不会触发上面的 watch，标题和分享卡片会退回默认值，所以激活时再同步一次。
+ * 歌曲没变不会触发上面的 watch，标题 / 分享卡片会退回默认值，激活时再同步一次，
+ * 并补上离开期间被跳过的封面取色和歌词。
  */
-onActivated(syncPlayerShareMeta);
+onActivated(() => {
+  void syncPlayerShareMeta();
+  refreshCoverAccentIfStale();
+  refreshLyricsIfStale();
+});
 
 /* ---------- 歌词 ---------- */
 interface LyricLine {
@@ -801,9 +836,13 @@ const parseLrc = (raw: string): LyricLine[] => {
   return lines.sort((a, b) => a.time - b.time);
 };
 
+/** 已经为哪首歌取过歌词：切回来判断要不要补 */
+let lyricsTrackId: Track['id'] | null = null;
+
 const fetchLyrics = async () => {
   lyrics.value = [];
   const id = track.value?.id;
+  lyricsTrackId = id ?? null;
   const base = (playerStore.apiUrl || '').trim().replace(/\/$/, '');
   if (!id || !base) return;
 
@@ -820,7 +859,21 @@ const fetchLyrics = async () => {
   }
 };
 
-watch(() => track.value?.id, fetchLyrics, { immediate: true });
+/** 切回播放页时补歌词：换过歌才重新请求 */
+const refreshLyricsIfStale = () => {
+  if (lyricsTrackId === (track.value?.id ?? null)) return;
+  void fetchLyrics();
+};
+
+watch(
+  () => track.value?.id,
+  () => {
+    // 在别的页面切歌不拉歌词（每首一次、没有任何缓存），切回来再补
+    if (!pageActive.value) return;
+    void fetchLyrics();
+  },
+  { immediate: true }
+);
 
 /** 当前唱到哪一句 */
 const activeLyricIndex = computed(() => {

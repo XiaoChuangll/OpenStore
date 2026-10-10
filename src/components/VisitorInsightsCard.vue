@@ -49,9 +49,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import * as echarts from 'echarts';
 import { getVisitorInsights, type VisitorInsights } from '../services/admin';
+import { useThemeStore } from '../stores/theme';
+import { visitorChartColors } from '../utils/chart-theme';
 
 /** ISO 代码 → echarts 世界地图里的国家名（未收录的国家仍会出现在右侧排行里） */
 const COUNTRY_NAMES: Record<string, string> = {
@@ -78,10 +80,14 @@ const loading = ref(false);
 const data = ref<VisitorInsights | null>(null);
 const mapReady = ref(false);
 const scope = ref<'world' | 'china'>('world');
+const themeStore = useThemeStore();
 
 let mapChart: echarts.ECharts | null = null;
 let heatChart: echarts.ECharts | null = null;
 let resizeObserver: ResizeObserver | null = null;
+
+/** 当前主题下这套图该用的颜色（深浅两套，见 utils/chart-theme） */
+const chartColors = () => visitorChartColors(themeStore.isDark);
 
 const days = computed(() => data.value?.days || 180);
 const total = computed(() => data.value?.total || 0);
@@ -148,9 +154,12 @@ const renderMap = async () => {
 
   mapReady.value = true;
   await nextTick();
-  if (!mapChart) mapChart = echarts.init(mapRef.value);
+  const colors = chartColors();
+  if (!mapChart) mapChart = echarts.init(mapRef.value, colors.isDark ? 'dark' : undefined);
 
   mapChart.setOption({
+    // dark 主题自带 '#100C2A' 底色，会把卡片底色盖住
+    backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
       formatter: (params: any) =>
@@ -163,8 +172,8 @@ const renderMap = async () => {
       bottom: 8,
       itemWidth: 10,
       itemHeight: 70,
-      textStyle: { color: '#94a3b8', fontSize: 10 },
-      inRange: { color: ['#1e293b', '#3b6ea5', '#4f86f7'] }
+      textStyle: { color: colors.text, fontSize: 10 },
+      inRange: { color: colors.mapRange }
     },
     series: [
       {
@@ -172,7 +181,7 @@ const renderMap = async () => {
         map: mapName,
         roam: false,
         zoom: scope.value === 'china' ? 1.15 : 1,
-        itemStyle: { areaColor: '#1a1d23', borderColor: 'rgba(148,163,184,0.25)' },
+        itemStyle: { areaColor: colors.mapArea, borderColor: colors.mapBorder },
         emphasis: { itemStyle: { areaColor: '#4f86f7' }, label: { show: false } },
         data: [...mapData.entries()].map(([name, value]) => ({ name, value }))
       }
@@ -187,7 +196,8 @@ const handleScopeChange = () => {
 const renderHeat = async () => {
   if (!heatRef.value || !data.value) return;
   await nextTick();
-  if (!heatChart) heatChart = echarts.init(heatRef.value);
+  const colors = chartColors();
+  if (!heatChart) heatChart = echarts.init(heatRef.value, colors.isDark ? 'dark' : undefined);
 
   const heatData: Array<[number, number, number]> = [];
   data.value.matrix.forEach((row, weekday) => {
@@ -196,6 +206,8 @@ const renderHeat = async () => {
   const max = Math.max(1, ...heatData.map((item) => item[2]));
 
   heatChart.setOption({
+    // dark 主题自带底色，会把卡片底色盖住
+    backgroundColor: 'transparent',
     tooltip: {
       position: 'top',
       formatter: (params: any) =>
@@ -207,15 +219,15 @@ const renderHeat = async () => {
       data: Array.from({ length: 24 }, (_, i) => `${i}`),
       splitArea: { show: false },
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: 'rgba(148,163,184,0.25)' } },
-      axisLabel: { fontSize: 10, color: '#94a3b8' }
+      axisLine: { lineStyle: { color: colors.axisLine } },
+      axisLabel: { fontSize: 10, color: colors.text }
     },
     yAxis: {
       type: 'category',
       data: WEEKDAYS,
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: 'rgba(148,163,184,0.25)' } },
-      axisLabel: { fontSize: 10, color: '#94a3b8' }
+      axisLine: { lineStyle: { color: colors.axisLine } },
+      axisLabel: { fontSize: 10, color: colors.text }
     },
     visualMap: {
       min: 0,
@@ -226,15 +238,15 @@ const renderHeat = async () => {
       bottom: 0,
       itemWidth: 10,
       itemHeight: 70,
-      textStyle: { color: '#94a3b8', fontSize: 10 },
-      inRange: { color: ['#1a1d23', '#2f4a70', '#4f86f7'] }
+      textStyle: { color: colors.text, fontSize: 10 },
+      inRange: { color: colors.heatRange }
     },
     series: [
       {
         type: 'heatmap',
         data: heatData,
-        itemStyle: { borderRadius: 3, borderColor: 'rgba(0,0,0,0.25)', borderWidth: 1 },
-        emphasis: { itemStyle: { borderColor: '#e2e8f0' } }
+        itemStyle: { borderRadius: 3, borderColor: colors.heatCellBorder, borderWidth: 1 },
+        emphasis: { itemStyle: { borderColor: colors.heatEmphasisBorder } }
       }
     ]
   });
@@ -254,6 +266,20 @@ const render = async () => {
   await renderMap();
   await renderHeat();
 };
+
+/* 主题在 echarts.init 时定死，切换深浅色只能重建图，否则底色 / 渐变 / 文字还是旧主题 */
+watch(
+  () => themeStore.isDark,
+  async () => {
+    mapChart?.dispose();
+    mapChart = null;
+    heatChart?.dispose();
+    heatChart = null;
+    if (!data.value) return;
+    await renderMap();
+    await renderHeat();
+  }
+);
 
 onMounted(() => {
   render();

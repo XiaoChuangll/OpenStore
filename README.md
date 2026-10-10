@@ -151,6 +151,8 @@ npm run build
 npm run test
 ```
 
+测试文件统一放在 `tests/`（按 `utils` / `stores` / `components` / `views` 分类），不参与打包。
+
 #### 3.1 配置 PM2 守护后端服务
 
 打开宝塔面板「PM2 管理器」→「添加项目」：

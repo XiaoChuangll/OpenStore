@@ -85,12 +85,13 @@
  * 榜单的「堆叠用量图」：取下载量最高的几个应用，按天算下载增量，
  * 一条一个颜色堆起来看谁在涨；下面配一份带名次 / 总量 / 变化率的清单。
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ArrowDown, ArrowRight } from '@element-plus/icons-vue';
 import { animateHeightChange } from '../utils/collapse-animate';
 import { useRoute, useRouter } from 'vue-router';
 import * as echarts from 'echarts';
 import { hmApi } from '../services/hm-api';
+import { getAppsByCategory } from '../services/next-api';
 import { selectWidthOf } from '../utils/select-width';
 
 /** 下拉框宽度按「最长的那条选项」算 */
@@ -112,6 +113,7 @@ let lastChartH = 0;
  * - excludeHuawei：候选人里先剔掉华为系应用（“非华为应用下载榜”页签）
  * - mode：increment=每天新增下载（总榜 / 增长对比 / 非华为）
  *         cumulative=累计下载量（“下载量历史”页签，看长期走势）
+ * - category：跟着同页榜单卡的分类筛选走，只统计该分类下的应用（非华为榜页签）
  */
 const props = withDefaults(
   defineProps<{
@@ -121,13 +123,16 @@ const props = withDefaults(
     mode?: 'increment' | 'cumulative';
     /** 默认看多少天（组件默认 30；累计口径的调用方会传 60，走势才看得出来） */
     defaultDays?: number;
+    /** 分类名（上游 kind_name）；空表示不限分类 */
+    category?: string;
   }>(),
   {
     title: '热门应用用量',
     rankBy: 'total',
     excludeHuawei: false,
     mode: 'increment',
-    defaultDays: 30
+    defaultDays: 30,
+    category: ''
   }
 );
 
@@ -378,16 +383,31 @@ const load = async () => {
   loading.value = true;
   try {
     const window = recentDates(days.value);
-    const listResponse = await hmApi.get<any>('/apps/list/1', {
-      // 多取两条：列表里偶尔有缺 pkg_name 的脏数据，裁掉后仍要凑够 topN
-      // 非华为榜要先剔掉华为系应用，所以候选人取多得多
-      page_size: props.excludeHuawei ? 60 : topN.value + 4,
-      sort: 'download_count',
-      desc: true,
-      // 这里确实要用到总量 / 开发者 / 图标，所以取详细字段
-      detail: true
-    });
-    let apps = normalizeList(listResponse).filter((app: any) => app?.pkg_name);
+    // 多取两条：列表里偶尔有缺 pkg_name 的脏数据，裁掉后仍要凑够 topN
+    // 非华为榜要先剔掉华为系应用，所以候选人取多得多
+    const pageSize = props.excludeHuawei ? 60 : topN.value + 4;
+
+    let apps: any[];
+    if (props.category) {
+      // 选了分类：和下面那张榜单卡同一口径（按 kind_name 精确查 + 同样的非华为条件）
+      const categoryRes: any = await getAppsByCategory(props.category, 1, pageSize, undefined, undefined, {
+        sort: 'download_count',
+        desc: true,
+        excludeHuawei: props.excludeHuawei
+      });
+      apps = (categoryRes?.data || []) as any[];
+    } else {
+      const listResponse = await hmApi.get<any>('/apps/list/1', {
+        page_size: pageSize,
+        sort: 'download_count',
+        desc: true,
+        // 这里确实要用到总量 / 开发者 / 图标，所以取详细字段
+        detail: true
+      });
+      apps = normalizeList(listResponse);
+    }
+
+    apps = apps.filter((app: any) => app?.pkg_name);
     if (props.excludeHuawei) apps = apps.filter((app: any) => !isHuaweiApp(app));
     apps = apps.slice(0, topN.value);
 
@@ -464,6 +484,14 @@ const handleResize = () => {
 };
 
 let chartObserver: ResizeObserver | null = null;
+
+// 分类变了（同页榜单卡上的筛选）：重新取数，图跟着换
+watch(
+  () => props.category,
+  () => {
+    void load();
+  }
+);
 
 onMounted(() => {
   load();

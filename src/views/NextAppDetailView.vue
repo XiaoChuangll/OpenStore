@@ -55,32 +55,83 @@
 
       <!-- 正文：左侧介绍，右侧详细信息 -->
       <div class="detail-body">
-        <section ref="introPanelRef" class="panel intro-panel">
-          <h2 class="panel-title">应用介绍</h2>
-          <!-- 桌面端：介绍比右侧「技术信息」底部还长时收住，给展开 / 收起 -->
-          <div
-            ref="introBodyRef"
-            class="intro-body"
-            :class="{ 'is-clamped': isIntroClamped }"
-            :style="introClampStyle"
-          >
-            <p class="panel-text">{{ appDetail.description || appDetail.intro || '暂无介绍' }}</p>
+        <!-- 左栏：应用介绍 + 更新记录竖排（同一容器，介绍不长时不留空隙） -->
+        <div class="detail-main">
+          <section ref="introPanelRef" class="panel intro-panel">
+            <h2 class="panel-title">应用介绍</h2>
+            <!-- 桌面端：介绍比右侧「技术信息」底部还长时收住，给展开 / 收起 -->
+            <div
+              ref="introBodyRef"
+              class="intro-body"
+              :class="{ 'is-clamped': isIntroClamped }"
+              :style="introClampStyle"
+            >
+              <p class="panel-text">{{ appDetail.description || appDetail.intro || '暂无介绍' }}</p>
 
-            <template v-if="newFeatures">
-              <h2 class="panel-title is-spaced">新版本特性</h2>
-              <p class="panel-text">{{ newFeatures }}</p>
-            </template>
-          </div>
+              <template v-if="newFeatures">
+                <h2 class="panel-title is-spaced">新版本特性</h2>
+                <p class="panel-text">{{ newFeatures }}</p>
+              </template>
+            </div>
 
-          <div v-if="introOverflows" ref="introToggleRowRef" class="intro-toggle-row">
-            <button type="button" class="intro-toggle" @click="toggleIntro">
-              <span>{{ introExpanded ? '收起' : '展开' }}</span>
-              <el-icon :size="12" class="intro-toggle-icon" :class="{ 'is-open': introExpanded }">
+            <div v-if="introOverflows" ref="introToggleRowRef" class="intro-toggle-row">
+              <button type="button" class="intro-toggle" @click="toggleIntro">
+                <span>{{ introExpanded ? '收起' : '展开' }}</span>
+                <el-icon :size="12" class="intro-toggle-icon" :class="{ 'is-open': introExpanded }">
+                  <ArrowDown />
+                </el-icon>
+              </button>
+            </div>
+          </section>
+
+          <!-- 更新记录：样式同「更新」页的更新历史，默认两条、按批展开 -->
+          <section v-if="updateRecords.length" class="panel update-panel">
+            <!-- 整条头部可点，箭头指示开合 -->
+            <div
+              class="update-header"
+              role="button"
+              tabindex="0"
+              :aria-expanded="!updatesCollapsed"
+              @click="toggleUpdatesCollapse"
+              @keydown.enter.prevent="toggleUpdatesCollapse"
+              @keydown.space.prevent="toggleUpdatesCollapse"
+            >
+              <h2 class="update-title">
+                <el-icon><Clock /></el-icon>
+                更新记录
+                <span class="update-count">({{ updateRecords.length }})</span>
+              </h2>
+              <el-icon
+                v-if="updateRecords.length > UPDATE_PREVIEW_COUNT"
+                class="update-chevron"
+                :class="{ 'is-open': !updatesCollapsed }"
+              >
                 <ArrowDown />
               </el-icon>
-            </button>
-          </div>
-        </section>
+            </div>
+
+            <div class="update-body">
+              <ol ref="updateListRef" class="update-list" :style="updateListStyle">
+                <li v-for="item in visibleUpdates" :key="item.key" class="update-item">
+                  <div class="update-item-head">
+                    <span class="update-version">{{ item.version }}</span>
+                    <span class="update-date">{{ item.dateText }}</span>
+                  </div>
+                  <p v-if="item.description" class="update-desc">{{ item.description }}</p>
+                </li>
+              </ol>
+
+              <div v-if="!updatesCollapsed && hasMoreUpdates" class="intro-toggle-row">
+                <button type="button" class="intro-toggle" @click="showMoreUpdates">
+                  <span>展开更多</span>
+                  <el-icon :size="12" class="intro-toggle-icon">
+                    <ArrowDown />
+                  </el-icon>
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
 
         <aside ref="sideRef" class="side">
           <!-- 区域一：应用信息 -->
@@ -162,11 +213,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowDown, Picture } from '@element-plus/icons-vue';
+import { ArrowDown, Clock, Picture } from '@element-plus/icons-vue';
 import HarmonyShareIcon from '../components/HarmonyShareIcon.vue';
 import DeviceIcon, { type DeviceKind } from '../components/DeviceIcon.vue';
 import { ElMessage } from 'element-plus';
 import { getAppDetail } from '../services/next-api';
+import { hmApi } from '../services/hm-api';
 import { useLayoutStore } from '../stores/layout';
 import { goBackOrHome } from '../utils/route-scroll';
 import { buildAppShareMeta, clearPageShareMeta, setPageShareMeta, shareCurrentPage } from '../utils/page-share';
@@ -176,9 +228,126 @@ const router = useRouter();
 const layoutStore = useLayoutStore();
 const loading = ref(false);
 const appDetail = ref<any>(null);
+/** 版本快照（apps/metrics/{pkg}）：更新记录取自这里 */
+const metrics = ref<any[]>([]);
+/** 更新记录默认只露两条，之后每次「展开更多」再放一批 */
+const UPDATE_PREVIEW_COUNT = 2;
+const UPDATE_STEP = 5;
+const updatesShown = ref(UPDATE_PREVIEW_COUNT);
 
 /** 新版本说明：上游字段名不固定，兜一下 */
 const newFeatures = computed(() => appDetail.value?.new_features || appDetail.value?.upgrade_msg || '');
+
+/*
+ * 更新记录：上游 apps/metrics/{pkg} 每个版本一条快照（可能重复），
+ * 按版本去重后用 release_date 从新到旧排；created_at 是抓取时刻，不能当发布日期。
+ */
+const metricReleaseMs = (metric: any) => {
+  const raw = metric?.release_date ?? metric?.releaseDate ?? metric?.created_at;
+  const numeric = typeof raw === 'number' || (typeof raw === 'string' && /^\d+$/.test(raw.trim())) ? Number(raw) : NaN;
+  if (Number.isFinite(numeric) && numeric > 0) return numeric < 1e12 ? numeric * 1000 : numeric;
+  const parsed = new Date(String(raw ?? ''));
+  return Number.isFinite(parsed.getTime()) ? parsed.getTime() : 0;
+};
+
+/** 列表里日期只到天 */
+const formatUpdateDay = (ms: number) => {
+  if (!ms) return '—';
+  const date = new Date(ms);
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+};
+
+const updateRecords = computed(() => {
+  const bestByVersion = new Map<string, any>();
+  for (const metric of metrics.value) {
+    const version = String(metric?.version ?? metric?.version_name ?? '').trim();
+    if (!version) continue;
+    const previous = bestByVersion.get(version);
+    if (!previous || metricReleaseMs(previous) < metricReleaseMs(metric)) bestByVersion.set(version, metric);
+  }
+  return Array.from(bestByVersion.entries())
+    .map(([version, metric]) => {
+      const time = metricReleaseMs(metric);
+      return {
+        key: version,
+        version,
+        time,
+        dateText: formatUpdateDay(time),
+        description: String(metric?.new_features ?? metric?.upgrade_msg ?? '').trim()
+      };
+    })
+    .sort((a, b) => b.time - a.time);
+});
+
+const visibleUpdates = computed(() => updateRecords.value.slice(0, updatesShown.value));
+const hasMoreUpdates = computed(() => updatesShown.value < updateRecords.value.length);
+/** 折叠 = 只留最近两条（不是全收起来） */
+const updatesCollapsed = computed(() => updatesShown.value <= UPDATE_PREVIEW_COUNT);
+
+/* 改动条数时给列表钉一个像素高度做过渡（曲线同「应用介绍」），动画结束再放开 */
+const updateListRef = ref<HTMLElement | null>(null);
+/** 过渡用的像素高度；null = 不限高 */
+const updateListHeight = ref<number | null>(null);
+const updateListStyle = computed(() =>
+  updateListHeight.value === null ? {} : { height: `${updateListHeight.value}px` }
+);
+let updateListTimer = 0;
+
+/** 改动展示条数：先钉住当前高度，等新条目进 DOM 之后再过渡到新高度 */
+const showUpdateCount = async (next: number) => {
+  if (next === updatesShown.value) return;
+  const from = updateListRef.value?.offsetHeight ?? 0;
+
+  if (updateListTimer) window.clearTimeout(updateListTimer);
+  updateListHeight.value = from;
+  await nextTick();
+
+  updatesShown.value = next;
+  await nextTick();
+
+  /* 不能用 scrollHeight：收起时列表还钉着旧高度，量不到变矮后的内容高度 */
+  const listEl = updateListRef.value;
+  const lastItem = listEl?.lastElementChild as HTMLElement | null;
+  const target = listEl && lastItem
+    ? Math.round(lastItem.getBoundingClientRect().bottom - listEl.getBoundingClientRect().top)
+    : from;
+  // 强制回流，否则两个高度会被合并成一帧、过渡不生效
+  void listEl?.offsetHeight;
+  updateListHeight.value = target;
+
+  updateListTimer = window.setTimeout(() => {
+    updateListTimer = 0;
+    updateListHeight.value = null;
+  }, 340);
+};
+
+/** 头部按钮：折叠 / 展开（展开先放一批） */
+const toggleUpdatesCollapse = () => {
+  const next = updatesCollapsed.value
+    ? Math.min(updateRecords.value.length, UPDATE_PREVIEW_COUNT + UPDATE_STEP)
+    : UPDATE_PREVIEW_COUNT;
+  void showUpdateCount(next);
+};
+
+/** 底部「展开更多」：再放一批 */
+const showMoreUpdates = () => {
+  void showUpdateCount(Math.min(updateRecords.value.length, updatesShown.value + UPDATE_STEP));
+};
+
+/** 更新记录是次要信息：详情渲染后再补请求，失败按无记录处理 */
+const loadUpdateRecords = async () => {
+  const pkg = appDetail.value?.pkg_name;
+  if (!pkg) return;
+  updatesShown.value = UPDATE_PREVIEW_COUNT;
+  try {
+    const res: any = await hmApi.get<any>(`apps/metrics/${encodeURIComponent(pkg)}`);
+    const data = res?.data ?? res;
+    metrics.value = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+  } catch (error) {
+    console.warn('[app-detail] 更新记录加载失败', error);
+    metrics.value = [];
+  }
+};
 
 /** 设备码 → 名称 + 图标（与应用页设备页签同一套图标；7 = 手表） */
 const DEVICE_CODE_META: Record<string, { key: string; label: string; kind: DeviceKind }> = {
@@ -393,6 +562,8 @@ const fetchDetail = async () => {
       document.title = `OpenStore | ${title}`;
       // 分享卡片带上这个应用自己的图标和文字
       setPageShareMeta(buildAppShareMeta(appDetail.value));
+      // 不 await：不拖住首屏
+      void loadUpdateRecords();
     }
   } catch (error) {
     console.error('Failed to fetch app detail:', error);
@@ -558,6 +729,14 @@ onUnmounted(() => {
   align-items: start;
 }
 
+/* 左栏：应用介绍 + 更新记录竖排 */
+.detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
 /* 右侧两栏区块：应用信息 / 技术信息 */
 .side {
   display: flex;
@@ -668,6 +847,109 @@ onUnmounted(() => {
   transform: rotate(180deg);
 }
 
+/* ---------- 更新记录 ---------- */
+/* 造型同「更新」页的更新历史：卡片不内缩，头部与内容各自带内边距 */
+.update-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.update-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.update-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+
+.update-count {
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+}
+
+.update-chevron {
+  transition: transform 0.2s ease;
+  color: var(--el-text-color-secondary);
+}
+
+.update-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.update-body {
+  border-top: 1px solid var(--el-border-color-lighter);
+  padding: 14px 16px 16px;
+}
+
+.update-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* 展开 / 收起时列表高度过渡 */
+  overflow: hidden;
+  transition: height 0.32s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.update-item {
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-blank);
+}
+
+.update-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.update-version {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+  /* 等宽数字，版本号更整齐 */
+  font-variant-numeric: tabular-nums;
+}
+
+.update-date {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.update-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--el-text-color-regular);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 「展开更多」hover / 按下只变文字色，不点亮整颗胶囊（focus-visible 描边保留） */
+.update-body .intro-toggle:hover,
+.update-body .intro-toggle:active {
+  border-color: var(--el-border-color);
+  background-color: var(--el-fill-color-light);
+  color: var(--el-color-primary);
+}
+
 /* 右侧信息表：标签左、值右，长包名省略号不换行 */
 .info-list {
   margin: 0;
@@ -753,6 +1035,8 @@ onUnmounted(() => {
   height: auto;
   padding: 0;
   background: transparent;
+  /* 公共 .chip 带 1px 描边：盒子只有图标那么大，配上 999px 圆角就成了一个圆圈套着图标 */
+  border: none;
   justify-content: center;
 }
 
@@ -798,6 +1082,23 @@ onUnmounted(() => {
 @media (max-width: 1000px) {
   .detail-body {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 单列时更新记录排到最后：拆开左栏容器（display: contents）后用 order 排序 */
+  .detail-main {
+    display: contents;
+  }
+
+  .intro-panel {
+    order: 0;
+  }
+
+  .side {
+    order: 1;
+  }
+
+  .update-panel {
+    order: 2;
   }
 }
 

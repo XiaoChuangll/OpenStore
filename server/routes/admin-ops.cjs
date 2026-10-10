@@ -13,9 +13,46 @@ const { extractCountryCode, matchCnProvince, CITY_TO_PROVINCE } = require('../li
 const { getAppsOverview, APP_OVERVIEW_CACHE_TTL, appOverviewCache } = require('../lib/apps-overview.cjs');
 const { cachedVisitorsAll, VISITORS_INSIGHTS_TTL, VISITORS_INSIGHTS_STALE_TTL } = require('../lib/visitors-stats.cjs');
 const { invalidateBlockedAppsCache } = require('../lib/blocked-apps.cjs');
-const { previewWarningPage, getPageConfig, savePageConfig, resetPageConfig, DEFAULT_PAGE_CONFIG, listBlockRecords, clearBlockRecords, unblockIp, scriptGuardSnapshot, triggerBlock, hardBanIp, hardUnbanIp, listHardBans } = require('../lib/script-guard.cjs');
+const { previewWarningPage, getPageConfig, savePageConfig, resetPageConfig, DEFAULT_PAGE_CONFIG, getAllowList, saveAllowList, listBlockRecords, clearBlockRecords, unblockIp, scriptGuardSnapshot, triggerBlock, hardBanIp, hardUnbanIp, listHardBans } = require('../lib/script-guard.cjs');
 const { getClientIp } = require('../lib/client-ip.cjs');
 const { PORT } = require('../lib/config.cjs');
+
+// 体检只统计响应大小，最多留这么多字节用来判断「是不是缺参数」
+const PERF_CHECK_SAMPLE_BYTES = 8 * 1024;
+
+/**
+ * 收干一个响应流：只累计字节数，另外留一小段文本给「缺参数」判定。
+ * 不能用 responseType: 'text' —— 备份那种 80MB 的响应会被整个读进内存。
+ */
+const drainStream = (stream) =>
+  new Promise((resolve, reject) => {
+    let bytes = 0;
+    let sampled = 0;
+    const chunks = [];
+    let settled = false;
+
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve({ bytes, sample: Buffer.concat(chunks).toString('utf8') });
+    };
+
+    stream.on('data', (chunk) => {
+      bytes += chunk.length;
+      if (sampled < PERF_CHECK_SAMPLE_BYTES) {
+        chunks.push(chunk);
+        sampled += chunk.length;
+      }
+    });
+    stream.on('end', done);
+    // 被 abort 时不一定有 end，用 close 兜底
+    stream.on('close', done);
+    stream.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
+  });
 
 module.exports = ({ collectPerfCheckRoutes }) => {
   const router = express.Router();
@@ -140,31 +177,35 @@ module.exports = ({ collectPerfCheckRoutes }) => {
       }
 
       const t0 = process.hrtime.bigint();
+      // 用 AbortController 中断还在慢慢吐数据的响应，否则体检会挂在这一条上
+      const controller = new AbortController();
+      const abortTimer = setTimeout(() => controller.abort(), PERF_CHECK_TIMEOUT_MS);
       try {
         const resp = await axios.get(base + path, {
-          timeout: PERF_CHECK_TIMEOUT_MS,
           validateStatus: () => true,
           maxRedirects: 0,
-          responseType: 'text',
+          responseType: 'stream',
+          signal: controller.signal,
           // 打个标记，让实时日志中间件跳过这些请求，避免体检流量污染拓扑 / 健康统计
           headers: { Authorization: `Bearer ${token}`, 'x-openstore-perfcheck': '1' }
         });
-        const body = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data ?? '');
+        const { bytes, sample } = await drainStream(resp.data);
         const ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e6);
         // 400 多半是「缺参数」（这类接口不开参数本来就没法访问），单独标记，不算失败
-        const needsParam =
-          resp.status === 400 && /missing|required|invalid|缺少|参数/i.test(String(body));
+        const needsParam = resp.status === 400 && /missing|required|invalid|缺少|参数/i.test(sample);
         results.push({
           path,
           status: resp.status,
           ms,
-          bytes: Buffer.byteLength(body || '', 'utf8'),
+          bytes,
           ok: resp.status < 400,
           needsParam
         });
       } catch (error) {
         const ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e6);
         results.push({ path, status: 0, ms, bytes: 0, ok: false, error: error.message });
+      } finally {
+        clearTimeout(abortTimer);
       }
     }
 
@@ -254,6 +295,18 @@ module.exports = ({ collectPerfCheckRoutes }) => {
         slow: item.slow
       }));
 
+    /* 后台接口（/api/admin/*）单独汇总：拓扑里「后台」球的调用方是它，不是前台页面 */
+    const adminItems = [...byPath.values()].filter((item) => item.path.startsWith('/api/admin'));
+    const adminCount = adminItems.reduce((sum, item) => sum + item.count, 0);
+    const backend = adminCount
+      ? {
+          count: adminCount,
+          avgMs: Math.round(adminItems.reduce((sum, item) => sum + item.totalMs, 0) / adminCount),
+          errors: adminItems.reduce((sum, item) => sum + item.errors, 0),
+          slow: adminItems.reduce((sum, item) => sum + item.slow, 0)
+        }
+      : { count: 0, avgMs: 0, errors: 0, slow: 0 };
+
     res.json({
       success: true,
       windowSeconds,
@@ -265,7 +318,9 @@ module.exports = ({ collectPerfCheckRoutes }) => {
         upstreamErrors: upstreamErrors.length,
         upstreamRequests: upstreamCalls.length
       },
-      frontend: { requests: requests.length },
+      // 前台请求 = 总请求 - 后台接口；两个球各算各的，不重复计数
+      frontend: { requests: requests.length - adminCount },
+      backend,
       apiNodes,
       upstreamProxy,
       upstream: {
@@ -548,6 +603,22 @@ module.exports = ({ collectPerfCheckRoutes }) => {
       if (err) return res.status(500).json({ error: err.message });
       logAction(req.user?.username, 'update', 'script_guard_page', null, { reset: true });
       res.json({ success: true, config });
+    });
+  });
+
+  /* 放行名单：命中前缀的客户端不计次、不封禁（硬封禁不受影响）；只存库，为空即不放行 */
+  router.get('/api/admin/script-guard/allow', requireAuth, (req, res) => {
+    res.json({ list: getAllowList() });
+  });
+
+  router.put('/api/admin/script-guard/allow', requireAuth, (req, res) => {
+    if (!req.body || typeof req.body.list !== 'string') {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+    saveAllowList(req.body.list, (err, list) => {
+      if (err) return res.status(500).json({ error: err.message });
+      logAction(req.user?.username, 'update', 'script_guard_allow', null, { list });
+      res.json({ success: true, list });
     });
   });
 

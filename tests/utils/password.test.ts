@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validatePasswordComplexity } from './password';
+import { validatePasswordComplexity } from '../../src/utils/password';
 
 describe('validatePasswordComplexity', () => {
   it('accepts complex passwords', () => {

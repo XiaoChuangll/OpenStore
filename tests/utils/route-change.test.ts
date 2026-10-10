@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { waitForRouteChange } from './route-change';
+import { waitForRouteChange } from '../../src/utils/route-change';
 
 describe('waitForRouteChange', () => {
   /** 极简的假 router：afterEach 订阅后，由测试自己触发一次导航完成 */

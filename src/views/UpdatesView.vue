@@ -100,7 +100,7 @@
 
     <div class="apps-container" v-if="activeTab === 'new'">
       <div class="update-group">
-        <h3 class="group-title">
+        <h3 class="group-title group-title-row">
           <div class="group-title-left">
             <!-- 只让「本周 / 上周 / 更早 / 今日 …」这类前缀翻滚；
                  「上新 / 更新」是这一页的性质，固定不动，不跟着切页签一起滚 -->
@@ -117,6 +117,17 @@
                 <span v-else key="dots" class="count-dots" role="status" aria-label="统计中">···</span>
               </Transition>
             </span>
+          </div>
+          <!-- 上新页签同样能搜（两个页签共用同一个搜索框组件） -->
+          <div class="group-title-right">
+            <UpdateSearchBox
+              v-model:open="updateSearchOpen"
+              v-model:query="updateSearchQuery"
+              :active="isUpdateSearchActive"
+              @run="runUpdateSearch"
+              @clear="clearUpdateSearch"
+              @close="closeSearch"
+            />
           </div>
         </h3>
         <div class="apps-grid-container">
@@ -192,49 +203,14 @@
             </span>
           </div>
           <div class="group-title-right">
-            <div
-              class="title-search"
-              :class="{ expanded: updateSearchOpen }"
-            >
-              <div class="search-trigger-wrapper" :class="{ 'is-hidden': updateSearchOpen }">
-                <el-button
-                  class="update-search-trigger"
-                  circle
-                  :icon="Search"
-                  @click="toggleUpdateSearch"
-                />
-              </div>
-
-              <div class="search-expanded-panel" :class="{ 'is-visible': updateSearchOpen }">
-                <button
-                  type="button"
-                  class="search-panel-icon"
-                  aria-label="搜索"
-                  @click="runUpdateSearch"
-                >
-                  <el-icon><Search /></el-icon>
-                </button>
-
-                <el-input
-                  ref="updateSearchInputRef"
-                  v-model="updateSearchQuery"
-                  placeholder="搜索应用"
-                  class="search-input-field"
-                  @keyup.enter="runUpdateSearch"
-                />
-
-                <button
-                  type="button"
-                  class="search-close-btn"
-                  aria-label="关闭搜索"
-                  @click="closeSearch"
-                >
-                  <el-icon><Close /></el-icon>
-                </button>
-              </div>
-            </div>
-
-            <el-button v-if="isUpdateSearchActive && !updateSearchOpen" circle :icon="CircleClose" @click="clearUpdateSearch" />
+            <UpdateSearchBox
+              v-model:open="updateSearchOpen"
+              v-model:query="updateSearchQuery"
+              :active="isUpdateSearchActive"
+              @run="runUpdateSearch"
+              @clear="clearUpdateSearch"
+              @close="closeSearch"
+            />
           </div>
         </h3>
         <div class="apps-grid-container">
@@ -294,11 +270,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, computed, nextTick } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, ArrowRight, Search, CircleClose, Close } from '@element-plus/icons-vue';
+import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue';
 import { getAppUpdates, getNewApps, getNewAppsByDateRange } from '../services/api';
 import AppCard from '../components/AppCard.vue';
+import UpdateSearchBox from '../components/UpdateSearchBox.vue';
 import { hmApi } from '../services/hm-api';
 
 defineOptions({
@@ -327,7 +304,6 @@ const UTC8_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 const updateSearchOpen = ref(false);
 const updateSearchQuery = ref('');
-const updateSearchInputRef = ref<any>(null);
 const updateSearchPerformed = ref(false);
 
 const getQueryString = (v: unknown) => {
@@ -365,10 +341,13 @@ const applyInitialStateFromRoute = () => {
     } else {
       updateFilter.value = 'today';
     }
-    if (searched === '1' && q.trim()) {
-      updateSearchQuery.value = q.trim();
-      updateSearchPerformed.value = true;
-    }
+  }
+
+  // 搜索态跟页签无关，两个页签都可以带 q 进来
+  if (searched === '1' && q.trim()) {
+    updateSearchQuery.value = q.trim();
+    updateSearchPerformed.value = true;
+    updateSearchOpen.value = true;
   }
 
   page.value = initPage;
@@ -376,8 +355,9 @@ const applyInitialStateFromRoute = () => {
 
 applyInitialStateFromRoute();
 
+/* 搜索按应用名走上游接口，与日期筛选无关，两个页签都能用；输入框有词即为搜索态 */
 const isUpdateSearchActive = computed(() => {
-  return activeTab.value === 'update' && updateSearchPerformed.value;
+  return updateSearchPerformed.value && updateSearchQuery.value.trim().length > 0;
 });
 
 const closeSearch = async () => {
@@ -473,7 +453,8 @@ const syncRouteQuery = () => {
   nextQuery.title = activeTab.value === 'new' ? '今日上新' : '今日更新';
 
   const q = updateSearchQuery.value.trim();
-  const shouldIncludeSearch = activeTab.value === 'update' && updateSearchPerformed.value && q;
+  // 两个页签都把搜索态写进 URL，刷新/分享后还能回到同一份搜索结果
+  const shouldIncludeSearch = updateSearchPerformed.value && !!q;
   if (shouldIncludeSearch) {
     nextQuery.q = q;
     nextQuery.searched = '1';
@@ -496,9 +477,6 @@ const syncRouteQuery = () => {
 watch(activeTab, async (newTab) => {
   page.value = 1; // Reset page on tab switch
   if (newTab === 'new') {
-    updateSearchOpen.value = false;
-    updateSearchQuery.value = '';
-    updateSearchPerformed.value = false;
     updateFilter.value = 'thisWeek';
     loadApps();
   } else {
@@ -511,20 +489,14 @@ watch([activeTab, updateFilter, page, updateSearchQuery, updateSearchPerformed],
   syncRouteQuery();
 });
 
-const toggleUpdateSearch = async () => {
-  updateSearchOpen.value = !updateSearchOpen.value;
-  if (updateSearchOpen.value) {
-    await nextTick();
-    updateSearchInputRef.value?.focus?.();
-  }
-};
-
 const runUpdateSearch = async () => {
   const q = updateSearchQuery.value.trim();
   if (!q) return;
   updateSearchQuery.value = q;
   updateSearchPerformed.value = true;
   page.value = 1;
+  // 收起输入框：露出结果标题旁的「退出搜索」按钮（它只在面板收起时显示）
+  updateSearchOpen.value = false;
   await loadApps();
 };
 
@@ -538,11 +510,10 @@ const clearUpdateSearch = async () => {
 const setUpdateFilter = async (filter: string) => {
   if (updateFilter.value === filter) return;
   updateFilter.value = filter;
-  if (activeTab.value === 'update') {
-    updateSearchPerformed.value = false;
-    updateSearchQuery.value = '';
-    updateSearchOpen.value = false;
-  }
+  // 换日期段就退出搜索态（搜索结果与日期段无关，留着会让人以为筛选没生效）
+  updateSearchPerformed.value = false;
+  updateSearchQuery.value = '';
+  updateSearchOpen.value = false;
   page.value = 1; // Reset page on filter change
   await loadApps();
 };
@@ -692,6 +663,36 @@ const loadApps = async () => {
   
   try {
     normalizeFilterForTab();
+
+    /* 搜索态放最前：按名字搜整个应用库，不受页签日期筛选影响 */
+    if (isUpdateSearchActive.value) {
+      const params: any = {
+        page_size: pageSize.value,
+        sort: 'download_count',
+        desc: true,
+        search_key: 'name',
+        search_value: updateSearchQuery.value.trim(),
+        search_exact: false
+      };
+      const response = await hmApi.get<any>(`/apps/list/${page.value}`, params);
+      if (seq !== loadSeq.value) return;
+
+      // API returns { success: true, data: { data: [...], total: ... } }
+      const innerData = response.data || response;
+      const list: any[] = Array.isArray(innerData.data) ? innerData.data : (Array.isArray(innerData) ? innerData : []);
+
+      apps.value = list.map((item: any) => item?.info || item);
+      totalCount.value = innerData.total_count || innerData.total || 0;
+      countReady.value = true;
+
+      if (totalCount.value > 0) {
+        hasMore.value = page.value * pageSize.value < totalCount.value;
+      } else {
+        hasMore.value = list.length >= pageSize.value;
+      }
+      return;
+    }
+
     if (activeTab.value === 'new') {
       const { thisWeekStart, lastWeekStart } = getFilterRange();
       const fetchSize = 50;
@@ -843,34 +844,6 @@ const loadApps = async () => {
       }
 
     } else {
-      if (isUpdateSearchActive.value) {
-        const params: any = {
-          page_size: pageSize.value,
-          sort: 'download_count',
-          desc: true,
-          search_key: 'name',
-          search_value: updateSearchQuery.value.trim(),
-          search_exact: false
-        };
-        const response = await hmApi.get<any>(`/apps/list/${page.value}`, params);
-        if (seq !== loadSeq.value) return;
-
-        // API returns { success: true, data: { data: [...], total: ... } }
-        const innerData = response.data || response;
-        const list: any[] = Array.isArray(innerData.data) ? innerData.data : (Array.isArray(innerData) ? innerData : []);
-        
-        apps.value = list.map((item: any) => item?.info || item);
-        totalCount.value = innerData.total_count || innerData.total || 0;
-        countReady.value = true;
-        
-        if (totalCount.value > 0) {
-          hasMore.value = page.value * pageSize.value < totalCount.value;
-        } else {
-          hasMore.value = list.length >= pageSize.value;
-        }
-        return;
-      }
-
       const targetDateStr = getTargetDateStr();
       
       const checkAndFetch = async () => {
@@ -1333,137 +1306,7 @@ const switchPrevFilter = () => {
   position: relative;
 }
 
-.title-search {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  width: 40px;
-  height: 40px;
-  overflow: hidden;
-  transition: width 0.3s linear;
-  background-color: transparent;
-  border-radius: 20px;
-  border: 1px solid transparent;
-  box-sizing: border-box;
-}
-
-.title-search.expanded {
-  width: 320px;
-  max-width: 100%;
-  background-color: var(--el-bg-color);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-color: var(--el-border-color-lighter);
-}
-
-.title-search.expanded:focus-within {
-  border-color: var(--el-color-primary);
-  box-shadow: 0 0 0 3px var(--el-color-primary-light-9), 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.search-trigger-wrapper {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 40px;
-  height: 40px;
-  transition: opacity 0.2s;
-  opacity: 1;
-  pointer-events: auto;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.search-trigger-wrapper.is-hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.update-search-trigger {
-  flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
-  border: none;
-  background: transparent;
-}
-
-.search-expanded-panel {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 0 6px 0 10px;
-  gap: 4px;
-  height: 100%;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.25s;
-  min-width: 0;
-}
-
-.search-expanded-panel.is-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.search-panel-icon,
-.search-close-btn {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--el-text-color-secondary);
-  cursor: pointer;
-  transition: color 0.2s, background-color 0.2s;
-}
-
-.search-panel-icon:hover {
-  color: var(--el-color-primary);
-  background-color: var(--el-fill-color-light);
-}
-
-.search-close-btn:hover {
-  color: var(--el-text-color-primary);
-  background-color: var(--el-fill-color);
-}
-
-.search-input-field {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.search-input-field :deep(.el-input-group__prepend) {
-  background-color: transparent;
-  padding: 0;
-  box-shadow: none;
-}
-
-.search-input-field :deep(.el-input__wrapper) {
-  padding: 0;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-
-.search-input-field :deep(.el-input__inner) {
-  height: 36px;
-  font-size: 13.5px;
-  color: var(--el-text-color-primary);
-}
-
-.search-input-field :deep(.el-input__inner::placeholder) {
-  color: var(--el-text-color-placeholder);
-}
-
-.search-input-field :deep(.el-select .el-input__wrapper) {
-  box-shadow: none !important;
-}
+/* 搜索框的样式都在 components/UpdateSearchBox.vue 里（两个页签共用） */
 
 /* Flip Animation */
 .title-combo {

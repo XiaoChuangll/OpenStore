@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "concurrently \"node server/index.cjs\" \"vite --port 3000 --host\"",
     "build": "vue-tsc -b && vite build && node scripts/generate-sitemap.js",
+    "build:win": "npm run build",
     "preview": "vite preview",
     "test": "vitest"
   },

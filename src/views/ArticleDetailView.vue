@@ -84,6 +84,7 @@ import { getAppDetail } from '../services/next-api';
 import { useLayoutStore } from '../stores/layout';
 import { goBackOrHome } from '../utils/route-scroll';
 import { clearPageShareMeta, setPageShareMeta } from '../utils/page-share';
+import { usePageActive } from '../utils/page-active';
 import MobileAppCard from '../components/MobileAppCard.vue';
 import { User, Calendar, Folder, View } from '@element-plus/icons-vue';
 import CommentSection from '../components/CommentSection.vue';
@@ -92,6 +93,13 @@ defineOptions({ name: 'ArticleDetailView' });
 
 const route = useRoute();
 const router = useRouter();
+
+/*
+ * 详情页在 keep-alive 里按 route.path 缓存，每篇文章一份实例、watch 都还活着。
+ * route.params 是同一个对象，切文章时所有历史实例的 watcher 会一起触发、各拉一遍，
+ * 只有当前可见的那份需要取数。
+ */
+const pageActive = usePageActive();
 const layoutStore = useLayoutStore();
 
 const loading = ref(true);
@@ -295,6 +303,8 @@ onUnmounted(() => {
 });
 
 watch(() => route.params.slug, () => {
+  // 只有当前可见的实例需要重新取数
+  if (!pageActive.value) return;
   fetchDetail();
 });
 </script>

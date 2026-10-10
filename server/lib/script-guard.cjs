@@ -1,7 +1,8 @@
 /*
  * 脚本护栏：给 /api/v0 这类公开代理加一层反自动化采集。
  *
- * 判定：UA 解析不出浏览器名的一律当脚本（白名单思路，不维护爬虫名单）。
+ * 判定：UA 解析不出浏览器名的一律当脚本（白名单思路，不维护爬虫名单）；
+ *      后台「放行名单」里的前缀直接放行，不受该判定与配额约束。
  * 处置：窗口内先给 FREE_HITS 次宽限，超限返回 429 警告页；屡犯封禁时长按 4 倍递增。
  * 另有硬封禁名单（不区分 UA，见 hardBanGuard）与可后台自定义的警告页文案。
  * 后台「接口体检」「请求重放」带专用 header，直接放行。
@@ -11,6 +12,7 @@ const geoip = require('geoip-lite');
 const db = require('../database.cjs');
 const { getClientIp, normalizeIp } = require('./client-ip.cjs');
 const { pushLiveLog } = require('./live-log.cjs');
+const { compilePatterns, normalizeAllowUa, makeIsAllowedClient } = require('./ua-allowlist.cjs');
 const { SITE_ORIGIN, SITE_NAME } = require('./share-cards.cjs');
 
 /* ------------------------------- 配置 ------------------------------- */
@@ -33,6 +35,59 @@ const CONTACT_URL = String(process.env.SCRIPT_GUARD_CONTACT || '').trim() || `${
 // 后端自己发起的请求：重放（/api/admin/replay）与接口体检（/api/admin/perf-check）
 const INTERNAL_HEADERS = ['x-openstore-replay', 'x-openstore-perfcheck'];
 
+/* --------------------------- 放行名单 --------------------------- */
+
+/* 放行名单：命中的客户端不计次、不封禁（硬封禁只看 IP，不受影响）。
+   只存 system_settings，没有内置默认值，未保存前为空 = 不放行任何客户端。 */
+const ALLOW_KEY = 'script_guard_allow';
+// 与警告页配置同样的兜底 TTL：后台保存立刻生效，这个只用于多实例/外部改库
+const ALLOW_TTL_MS = 5 * 60 * 1000;
+
+let allowUa = '';
+let allowUaAt = 0;
+/* 匹配函数持有的是这个数组本身：更新时原地改，不要重新赋值 */
+const allowPatterns = compilePatterns('');
+const isAllowedClient = makeIsAllowedClient(allowPatterns);
+
+const applyAllowUa = (value) => {
+  allowUa = value;
+  allowPatterns.length = 0;
+  allowPatterns.push(...compilePatterns(value));
+  allowUaAt = Date.now();
+};
+
+const loadAllowList = (cb) => {
+  db.get(`SELECT value FROM system_settings WHERE key = ?`, [ALLOW_KEY], (err, row) => {
+    if (!err) {
+      allowUaAt = Date.now();
+      applyAllowUa(normalizeAllowUa(row ? row.value : ''));
+    }
+    if (cb) cb(err || null);
+  });
+};
+
+/** 同步取当前名单（热路径用）：过期时后台异步刷新，本次先用缓存 */
+const getAllowList = () => {
+  if (Date.now() - allowUaAt > ALLOW_TTL_MS) {
+    allowUaAt = Date.now(); // 先占位，避免并发请求打出一堆同样的查询
+    loadAllowList();
+  }
+  return allowUa;
+};
+
+const saveAllowList = (input, cb) => {
+  const value = normalizeAllowUa(input);
+  db.run(
+    `INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+    [ALLOW_KEY, value],
+    (err) => {
+      if (!err) applyAllowUa(value);
+      if (cb) cb(err || null, value);
+    }
+  );
+};
+
 /* ------------------------------- 状态 ------------------------------- */
 
 // ip -> { hits: number[], strikes: number, blockedUntil: number, ua: string }
@@ -41,10 +96,11 @@ const stats = { scriptRequests: 0, warned: 0, blocked: 0, strikes: 0 };
 
 const isInternal = (req) => INTERNAL_HEADERS.some((h) => req.headers[h] === '1');
 
-/** UA 解析不出浏览器名就认为是脚本 */
+/** UA 解析不出浏览器名就认为是脚本；放行名单里的客户端不参与判定 */
 const looksLikeScript = (ua) => {
   const raw = String(ua || '').trim();
   if (!raw) return true;
+  if (isAllowedClient(raw)) return false;
   try {
     const browser = new UAParser(raw).getBrowser();
     return !browser || !browser.name;
@@ -595,6 +651,7 @@ const scriptGuardSnapshot = () => {
     freeHits: FREE_HITS,
     windowMs: WINDOW_MS,
     baseBlockMs: BASE_BLOCK_MS,
+    allow: getAllowList(),
     contactUrl: getPageConfig().contactUrl,
     stats: { ...stats },
     tracked: state.size,
@@ -619,6 +676,7 @@ setInterval(() => {
 // 启动载入配置与名单
 loadPageConfig();
 loadHardBans();
+loadAllowList();
 
 module.exports = {
   scriptGuard,
@@ -628,6 +686,8 @@ module.exports = {
   getPageConfig,
   savePageConfig,
   resetPageConfig,
+  getAllowList,
+  saveAllowList,
   listBlockRecords,
   clearBlockRecords,
   unblockIp,

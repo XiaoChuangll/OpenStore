@@ -235,7 +235,12 @@
             </div>
           </div>
         </div>
-        <div class="compare-chart-title">趋势对比 · {{ compareLeftLabel }} vs {{ compareRightLabel }}</div>
+        <div class="compare-chart-title">
+          <span>趋势对比 · {{ compareLeftLabel }} vs {{ compareRightLabel }}</span>
+          <span v-if="compareSameLength" class="compare-chart-hint">
+            两个区间等长，按天对齐叠加（基准：{{ compareRecentLabel }}）
+          </span>
+        </div>
         <div ref="compareChartRef" class="chart-container compare-chart"></div>
       </div>
     </el-card>
@@ -243,7 +248,7 @@
     <el-dialog
       v-model="ipHistoryVisible"
       :title="ipHistoryTitle"
-      :width="isMobile ? '92vw' : '620px'"
+      :width="isMobile ? '92vw' : 'min(880px, 92vw)'"
       append-to-body
       class="ip-history-dialog"
     >
@@ -254,7 +259,7 @@
           {{ ipHistory.startText }}
         </span>
       </div>
-      <div class="ip-history-list" v-loading="ipHistoryLoading">
+      <div class="ip-history-list" :class="{ 'has-ua': hasUpstreamUa }" v-loading="ipHistoryLoading">
         <div v-for="row in ipHistory.rows" :key="row.id" class="ip-history-row">
           <span class="ip-history-time">{{ formatTime(null, null, row.timestamp || '') }}</span>
           <span class="ip-history-path" :title="formatPath(null, null, row.path || '')">
@@ -306,6 +311,7 @@ const loadEcharts = async () => {
 };
 
 import { onWS } from '../../services/ws';
+import { daysSinceInclusive, startOfMonth, startOfWeek } from '../../utils/date-range';
 
 const props = defineProps<{ embedded?: boolean }>();
 const embedded = props.embedded === true;
@@ -339,9 +345,25 @@ const trendRanges: TrendRange[] = [
   // 短窗口按小时分桶，长窗口按天：否则「最近24小时」只有两个点、看不出趋势
   { key: 'last_24h', label: '最近24小时', days: 1, granularity: 'hour', hours: 24 },
   { key: 'today', label: '今天', days: 1, granularity: 'hour', scope: 'today' },
-  { key: 'this_week', label: '本周', days: 7 },
+  /*
+   * 「本周 / 本月」是自然周期，天数按当天算（周三时本周 = 周一到今天 3 天）；
+   * 用取值器（get days）让所有 range.days 的读取点自动跟着变。
+   */
+  {
+    key: 'this_week',
+    label: '本周',
+    get days() {
+      return daysSinceInclusive(startOfWeek());
+    }
+  },
   { key: 'last_7', label: '最近7天', days: 7 },
-  { key: 'this_month', label: '本月', days: 30 },
+  {
+    key: 'this_month',
+    label: '本月',
+    get days() {
+      return daysSinceInclusive(startOfMonth());
+    }
+  },
   { key: 'last_30', label: '最近30天', days: 30 },
   { key: 'last_90', label: '最近90天', days: 90 },
   { key: 'last_180', label: '最近180天', days: 180 }
@@ -401,6 +423,9 @@ const rowUa = (row: Visitor) => {
   return { label: '上游 UA', value, title: `转发上游时用的 User-Agent：${value}` };
 };
 
+/** 这批记录有上游 UA 时才给每行留出占位（行高一致），否则不留 */
+const hasUpstreamUa = computed(() => ipHistory.value.rows.some((row) => Boolean(rowUa(row))));
+
 const openIpHistory = async (row: Partial<Visitor>) => {
   const ip = String(row?.ip || '').trim();
   if (!ip || ip === '—') return;
@@ -450,6 +475,14 @@ let unbindWS: (() => void) | null = null;
 const trendLabel = computed(() => trendRanges.find(r => r.key === trendRange.value)?.label || '最近30天');
 const compareLeftLabel = computed(() => compareRanges.find(r => r.key === compareLeftRange.value)?.label || '');
 const compareRightLabel = computed(() => compareRanges.find(r => r.key === compareRightRange.value)?.label || '');
+/** 两段等长区间里更近的那段（结束日更晚、offset 更小），重叠对比以它当基准 */
+const compareRecentKey = computed(() => {
+  const left = compareRanges.find(r => r.key === compareLeftRange.value);
+  const right = compareRanges.find(r => r.key === compareRightRange.value);
+  if (!left || !right) return compareLeftRange.value;
+  return (left.offset || 0) <= (right.offset || 0) ? left.key : right.key;
+});
+const compareRecentLabel = computed(() => compareRanges.find(r => r.key === compareRecentKey.value)?.label || '');
 const activityItems = computed(() => items.value);
 /** el-table 的行类名：给刚新增的那一行加高亮类 */
 const rowClassName = ({ row }: { row: Visitor }) =>
@@ -763,6 +796,19 @@ const formatDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /**
+ * 把窗口展开成从 start 到 end 的每一天（含两端）。
+ * 趋势接口只返回有访问的日期，按「第 N 天」对齐时要用它补齐槽位。
+ */
+const buildDaySlots = (days: number, offsetDays = 0) => {
+  const end = new Date(Date.now() - offsetDays * 86400000);
+  const slots: string[] = [];
+  for (let i = days - 1; i >= 0; i -= 1) {
+    slots.push(formatDay(new Date(end.getTime() - i * 86400000)));
+  }
+  return slots;
+};
+
+/**
  * requestedDays 是请求的窗口长度（分母），不能拿"有数据的日期数"当分母：
  * 趋势接口只返回有访问的日期，窗口内无数据的日期应计为 0。
  */
@@ -794,95 +840,164 @@ const updateCompareChart = async (leftTrend: Array<{ date: string; count: number
   if (!compareChartInstance) {
     compareChartInstance = echarts.init(compareChartRef.value);
   }
-  // 两个窗口长度可能不同：按【日期】对齐，而不是按下标
-  // （按下标会把长窗口最旧的那几天画到短窗口的日期上）
-  const allDates = [...new Set([...leftTrend.map(t => t.date), ...rightTrend.map(t => t.date)])].sort();
-  const leftMap = new Map(leftTrend.map(t => [t.date, t.count]));
-  const rightMap = new Map(rightTrend.map(t => [t.date, t.count]));
-  const labels = allDates.map(d => String(d).slice(5));
+  const leftRange = compareRanges.find(r => r.key === compareLeftRange.value);
+  const rightRange = compareRanges.find(r => r.key === compareRightRange.value);
+  const leftDays = leftRange?.days || 7;
+  const rightDays = rightRange?.days || 30;
 
-  // 两个区间都完整画出来（哪怕长区间包含短区间、尾巴上数值本就相同）
-  const leftCounts = allDates.map(d => leftMap.get(d) ?? null);
-  const rightCounts = allDates.map(d => rightMap.get(d) ?? null);
-
-  // 两条「到今天为止」的区间必然重叠，重叠段本来就是同一份数据 ——
-  // 在图上把那一段框出来，免得被看成"两条线数据一样"
-  const overlapMark = (() => {
-    if (!compareRangesOverlap.value || allDates.length === 0) return null;
-    const leftDays = compareRanges.find(r => r.key === compareLeftRange.value)?.days || 7;
-    const rightDays = compareRanges.find(r => r.key === compareRightRange.value)?.days || 30;
-    const shorter = Math.min(leftDays, rightDays);
-    const startIndex = Math.max(0, allDates.length - shorter);
-    return {
-      start: String(allDates[startIndex]).slice(5),
-      end: String(allDates[allDates.length - 1]).slice(5)
-    };
-  })();
-  const option = {
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' }
-    },
-    legend: {
-      data: [compareLeftLabel.value, compareRightLabel.value]
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: labels,
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: 'rgba(148,163,184,0.25)' } },
-      axisLabel: { rotate: 0, hideOverlap: true, fontSize: 11, color: '#94a3b8' }
-    },
-    yAxis: {
-      type: 'value',
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { fontSize: 11, color: '#94a3b8' },
-      splitLine: { lineStyle: { color: 'rgba(148,163,184,0.12)' } }
-    },
-    series: [
-      {
-        name: compareLeftLabel.value,
-        type: 'bar',
-        // 柱子压在折线之上：万一两个区间有重叠，也不会被折线盖住
-        z: 3,
-        barMaxWidth: 18,
-        data: leftCounts,
-        itemStyle: { color: 'rgba(79,134,247,0.85)', borderRadius: [4, 4, 0, 0] },
-        markArea: overlapMark
-          ? {
-              silent: true,
-              itemStyle: { color: 'rgba(148,163,184,0.10)' },
-              label: {
-                show: true,
-                position: 'insideTop',
-                formatter: '重叠区间 · 同一份数据',
-                color: '#94a3b8',
-                fontSize: 10
-              },
-              data: [[{ xAxis: overlapMark.start }, { xAxis: overlapMark.end }]]
-            }
-          : undefined
-      },
-      {
-        name: compareRightLabel.value,
-        type: 'line',
-        z: 2,
-        smooth: true,
-        data: rightCounts,
-        showSymbol: false,
-        itemStyle: { color: '#94a3b8' },
-        lineStyle: { width: 2 }
-      }
-    ]
+  const yAxis = {
+    type: 'value',
+    axisLine: { show: false },
+    axisTick: { show: false },
+    axisLabel: { fontSize: 11, color: '#94a3b8' },
+    splitLine: { lineStyle: { color: 'rgba(148,163,184,0.12)' } }
   };
-  compareChartInstance.setOption(option);
+  const grid = { left: '3%', right: '4%', bottom: '3%', containLabel: true };
+  const xAxisOf = (data: string[]) => ({
+    type: 'category',
+    data,
+    axisTick: { show: false },
+    axisLine: { lineStyle: { color: 'rgba(148,163,184,0.25)' } },
+    axisLabel: { rotate: 0, hideOverlap: true, fontSize: 11, color: '#94a3b8' }
+  });
+
+  let option;
+
+  if (leftDays === rightDays) {
+    /*
+     * 两段等长：按第 1..N 天直接重叠。更近的那段当基准（X 轴用它的日期、保留柱状），
+     * 另一段用虚线叠上去。
+     */
+    const baseIsLeft = compareRecentKey.value === compareLeftRange.value;
+    const baseTrend = baseIsLeft ? leftTrend : rightTrend;
+    const otherTrend = baseIsLeft ? rightTrend : leftTrend;
+    const baseOffset = (baseIsLeft ? leftRange?.offset : rightRange?.offset) || 0;
+    const otherOffset = (baseIsLeft ? rightRange?.offset : leftRange?.offset) || 0;
+    const baseDates = buildDaySlots(leftDays, baseOffset);
+    const otherDates = buildDaySlots(rightDays, otherOffset);
+    const baseMap = new Map(baseTrend.map(t => [String(t.date), t.count]));
+    const otherMap = new Map(otherTrend.map(t => [String(t.date), t.count]));
+    const baseName = baseIsLeft ? compareLeftLabel.value : compareRightLabel.value;
+    const otherName = baseIsLeft ? compareRightLabel.value : compareLeftLabel.value;
+    // 缺的日期按 0 补，槽位才对得齐
+    const baseValues = baseDates.map(d => baseMap.get(d) ?? 0);
+    const otherValues = otherDates.map(d => otherMap.get(d) ?? 0);
+
+    option = {
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'line', lineStyle: { color: 'rgba(148,163,184,0.4)' } },
+        // 默认 tooltip 只显示 X 轴日期，这里把两段各自的日期都列出来
+        formatter: (params: any) => {
+          const items = Array.isArray(params) ? params : [params];
+          if (!items.length) return '';
+          const index = items[0].dataIndex as number;
+          const rows = items.map((item: any) => {
+            // seriesIndex 0 是基准段、1 是叠加段
+            const date = String((item.seriesIndex === 0 ? baseDates : otherDates)[index] ?? '').slice(5);
+            const value = typeof item.value === 'number' ? item.value.toLocaleString() : item.value;
+            return `${item.marker}${item.seriesName}（${date}）&nbsp;&nbsp;<b>${value}</b>`;
+          });
+          return [`<div style="margin-bottom:4px">第 ${index + 1} 天</div>`, ...rows].join('<br/>');
+        }
+      },
+      legend: { data: [baseName, otherName] },
+      grid,
+      xAxis: xAxisOf(baseDates.map(d => d.slice(5))),
+      yAxis,
+      series: [
+        {
+          // 基准期保留柱状，另一期叠虚线
+          name: baseName,
+          type: 'bar',
+          z: 2,
+          barMaxWidth: 18,
+          data: baseValues,
+          itemStyle: { color: 'rgba(79,134,247,0.85)', borderRadius: [4, 4, 0, 0] }
+        },
+        {
+          name: otherName,
+          type: 'line',
+          smooth: true,
+          showSymbol: false,
+          z: 3,
+          data: otherValues,
+          itemStyle: { color: '#94a3b8' },
+          lineStyle: { width: 2, type: 'dashed', color: '#94a3b8' }
+        }
+      ]
+    };
+  } else {
+    // 长度不同：按日期对齐（按下标会把长窗口最旧的几天画到短窗口的日期上）
+    const allDates = [...new Set([...leftTrend.map(t => t.date), ...rightTrend.map(t => t.date)])].sort();
+    const leftMap = new Map(leftTrend.map(t => [t.date, t.count]));
+    const rightMap = new Map(rightTrend.map(t => [t.date, t.count]));
+
+    // 两个区间都完整画出来
+    const leftCounts = allDates.map(d => leftMap.get(d) ?? null);
+    const rightCounts = allDates.map(d => rightMap.get(d) ?? null);
+
+    // 两条「到今天为止」的区间必然重叠，把重叠段框出来
+    const overlapMark = (() => {
+      if (!compareRangesOverlap.value || allDates.length === 0) return null;
+      const shorter = Math.min(leftDays, rightDays);
+      const startIndex = Math.max(0, allDates.length - shorter);
+      return {
+        start: String(allDates[startIndex]).slice(5),
+        end: String(allDates[allDates.length - 1]).slice(5)
+      };
+    })();
+
+    option = {
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' }
+      },
+      legend: {
+        data: [compareLeftLabel.value, compareRightLabel.value]
+      },
+      grid,
+      xAxis: xAxisOf(allDates.map(d => String(d).slice(5))),
+      yAxis,
+      series: [
+        {
+          name: compareLeftLabel.value,
+          type: 'bar',
+          // 柱子压在折线之上
+          z: 3,
+          barMaxWidth: 18,
+          data: leftCounts,
+          itemStyle: { color: 'rgba(79,134,247,0.85)', borderRadius: [4, 4, 0, 0] },
+          markArea: overlapMark
+            ? {
+                silent: true,
+                itemStyle: { color: 'rgba(148,163,184,0.10)' },
+                label: {
+                  show: true,
+                  position: 'insideTop',
+                  formatter: '重叠区间 · 同一份数据',
+                  color: '#94a3b8',
+                  fontSize: 10
+                },
+                data: [[{ xAxis: overlapMark.start }, { xAxis: overlapMark.end }]]
+              }
+            : undefined
+        },
+        {
+          name: compareRightLabel.value,
+          type: 'line',
+          z: 2,
+          smooth: true,
+          data: rightCounts,
+          showSymbol: false,
+          itemStyle: { color: '#94a3b8' },
+          lineStyle: { width: 2 }
+        }
+      ]
+    };
+  }
+  // notMerge：两种画法的 series / markArea / tooltip 形状不同，合并会残留上一张图的配置
+  compareChartInstance.setOption(option, true);
   if (!compareResizeObserver) {
     compareResizeObserver = new ResizeObserver(() => {
       compareChartInstance?.resize();
@@ -1057,7 +1172,7 @@ const exportCsv = async () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 52vh;
+  max-height: 60vh;
   min-height: 80px;
   overflow-y: auto;
 }
@@ -1084,7 +1199,7 @@ const exportCsv = async () => {
 }
 
 .ip-history-device {
-  max-width: 160px;
+  max-width: 220px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1094,8 +1209,7 @@ const exportCsv = async () => {
 
 /*
  * 上游 UA：单独占一行、最多两行，超出用省略号（完整内容在 title 里）。
- * min-height 固定成两行的高度：没有 UA 的行（非上游请求）靠它占位，
- * 这样列表里每一行的高度一致，不会一高一矮。
+ * 有上游 UA 时（.has-ua）固定两行高度，让列表里每行等高。
  */
 .ip-history-ua {
   grid-column: 1 / -1;
@@ -1104,13 +1218,16 @@ const exportCsv = async () => {
   border-top: 1px dashed var(--el-border-color-lighter);
   font-size: 12px;
   line-height: 1.5;
-  min-height: 3em;
   color: var(--el-text-color-secondary);
   word-break: break-all;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.ip-history-list.has-ua .ip-history-ua {
+  min-height: 3em;
 }
 
 /* 占位但不画出来（连虚线和文字一起隐藏） */
@@ -1413,7 +1530,21 @@ const exportCsv = async () => {
   color: var(--el-text-color-secondary);
 }
 .compare-chart-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+/* 说明这是按天叠加，避免被当成 X 轴错乱 */
+.compare-chart-hint {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: var(--el-fill-color-light);
+  font-size: 12px;
+  line-height: 18px;
   color: var(--el-text-color-secondary);
 }
 .compare-chart {

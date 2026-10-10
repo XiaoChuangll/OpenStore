@@ -21,8 +21,9 @@
       </el-tab-pane>
       <el-tab-pane :label="labels.nonHuawei" name="non-huawei" lazy>
         <div class="pane-stack" :class="{ 'classic-first': classicFirst }">
-          <TopAppsStackedChart v-if="showStacked" class="rank-block-stacked" title="非华为应用用量" exclude-huawei />
-          <NonHuaweiChart v-if="showClassic" class="rank-block-classic" />
+          <!-- 分类两张卡共用：堆叠用量图跟着榜单卡的分类筛选走 -->
+          <TopAppsStackedChart v-if="showStacked" class="rank-block-stacked" title="非华为应用用量" exclude-huawei :category="nonHuaweiCategory" />
+          <NonHuaweiChart v-if="showClassic" v-model:category="nonHuaweiCategory" class="rank-block-classic" />
         </div>
       </el-tab-pane>
       <el-tab-pane :label="labels.category" name="category" lazy>
@@ -60,6 +61,8 @@ const props = withDefaults(
 );
 
 const activeTab = ref('total');
+/** 非华为榜的分类筛选：堆叠用量图 + 榜单卡共用 */
+const nonHuaweiCategory = ref('');
 const showStacked = computed(() => props.rankVariant !== 'classic');
 const showClassic = computed(() => props.rankVariant !== 'stacked');
 /** 只有「两个都显示」时顺序才有意义 */

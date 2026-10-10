@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mustProxy, preferHttps, proxyUrl, upgradeToHttps } from './music-source';
+import { mustProxy, preferHttps, proxyUrl, upgradeToHttps } from '../../src/utils/music-source';
 
 const HTTP_AUDIO = 'http://m701.music.126.net/2026/song.mp3?vuutv=abc';
 const HTTPS_AUDIO = 'https://m701.music.126.net/2026/song.mp3?vuutv=abc';

@@ -1,6 +1,6 @@
 <template>
   <!--
-    首页/系统只通过顶部的页签按钮切换：
+    首页/推荐只通过顶部的页签按钮切换：
     之前这里绑了左右滑动切页签，浏览列表时经常误触发，已经移除。
   -->
   <main class="home-view">
@@ -28,7 +28,7 @@
             @click="homeTab = 'system'"
             :style="{ width: '50%' }"
           >
-            <span class="tab-label">系统</span>
+            <span class="tab-label">推荐</span>
           </div>
         </div>
       </Transition>
@@ -59,7 +59,7 @@
             @click="homeTab = 'system'"
             :style="{ width: '50%' }"
           >
-            <span class="tab-label">系统</span>
+            <span class="tab-label">推荐</span>
           </div>
         </div>
       </div>
@@ -186,7 +186,7 @@
 
       <!-- 板块顺序 / 显示与否由后台「首页配置 → 首页」的卡片列表决定 -->
       <component
-        v-for="card in homeCards"
+        v-for="card in visibleHomeCards"
         :is="HOME_SECTIONS[card.key]"
         :key="card.key"
         v-show="homeTab === 'home'"
@@ -200,7 +200,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, onActivated, onDeactivated, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, onActivated, onDeactivated, watch } from 'vue';
 import type { Component } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -231,9 +231,12 @@ import {
 } from '../services/admin';
 import { getAppIconUrl } from '../utils/app-info';
 import { contentVersion } from '../services/content-refresh';
+import { usePageActive } from '../utils/page-active';
 
 const router = useRouter();
 const layoutStore = useLayoutStore();
+// 首页被 keep-alive 缓存：切走后 WS 广播不该把取数拉起来（见下面的 contentVersion watch）
+const pageActive = usePageActive();
 const toolbarRef = ref<HTMLElement | null>(null);
 
 const greeting = ref('');
@@ -254,7 +257,7 @@ const updateGreeting = () => {
 const siteCards = ref<SiteCard[]>([]);
 
 /*
- * 首页「首页」页签的板块：顺序和显隐都来自后台「首页配置 → 首页」，
+ * 首页「探索」页签的板块：顺序和显隐都来自后台「首页配置 → 首页」，
  * key 对应后台里的卡片标识，取不到配置时用下面的默认顺序兜底。
  */
 const HOME_SECTIONS: Record<string, Component> = {
@@ -272,9 +275,8 @@ const fallbackHomeCards = (): HomeCardConfig[] =>
   HOME_CARD_FALLBACK.map((key) => ({ key, rankVariant: 'classic' as const, rankOrder: 'stacked' as const }));
 
 /*
- * 上次拿到的板块配置。
- * 配置是异步取的：如果首屏先用"全部板块"兜底渲染，后台关掉的那几个会先冒出来、
- * 等接口回来才消失。存一份首屏直接用，接口回来再覆盖（关于页同理）。
+ * 上次拿到的板块配置，只作兜底（配置接口失败时）。
+ * 不能拿它先挂板块：缓存里可能还留着后台已关掉的卡片，挂上去会连数据请求一起发出去。
  */
 const HOME_CARDS_CACHE_KEY = 'openstore:home-cards';
 
@@ -300,8 +302,12 @@ const cacheHomeCards = (value: HomeCardConfig[]) => {
   }
 };
 
-/** 首屏直接用上次的配置渲染，接口回来再覆盖 */
-const homeCards = ref<HomeCardConfig[]>(readCachedHomeCards());
+/** 配置就绪前不放板块：先挂载等于先请求 */
+const homeCardsReady = ref(false);
+/** 首屏渲染用的板块列表：配置没就绪就是空的 */
+const visibleHomeCards = computed(() => (homeCardsReady.value ? homeCards.value : []));
+/** 首屏空着不好看，配置真的拿不到时才用缓存 */
+const homeCards = ref<HomeCardConfig[]>([]);
 
 // 卡片配置重新拉取的底线：页面被 keep-alive 缓存，一分钟内切回来不重复请求；
 // 后台改配置会通过 WS 广播立刻刷新（见下面的 watch）
@@ -319,11 +325,12 @@ const loadHomeCards = async (force = false) => {
       .map((card) => ({ key: card.key, rankVariant: rankVariantOf(card), rankOrder: rankOrderOf(card) }));
     cacheHomeCards(homeCards.value);
   } catch {
-    // 拉不到就沿用上次的配置（没有缓存时才是"全部板块"兜底）
+    // 拉不到配置才退回缓存，否则可能渲染出已关闭的卡片
     homeCards.value = readCachedHomeCards();
   } finally {
     homeCardsLoaded = true;
     homeCardsFetchedAt = Date.now();
+    homeCardsReady.value = true;
   }
 };
 const friendLinks = ref<FriendLink[]>([]);
@@ -411,7 +418,7 @@ let loadedContentKeys = '';
 const loadSiteCards = async (force = false) => {
   if (!force && siteCardsLoaded && Date.now() - siteCardsFetchedAt < SITE_CONFIG_REFRESH_MS) return;
   try {
-    // 「系统」页签的信息卡片（公告 / 音乐 / 应用 / 链接 / 群聊）
+    // 「推荐」页签的信息卡片（公告 / 音乐 / 应用 / 链接 / 群聊）
     siteCards.value = await getPublicSiteCards('system');
   } catch {
     siteCards.value = [];
@@ -529,6 +536,8 @@ watch(contentVersion, () => {
   homeCardsFetchedAt = 0;
   // 卡片组合可能变了（比如刚开启「公告」卡片），清掉比对记录强制重拉那份内容
   loadedContentKeys = '';
+  // 不在首页时先不请求：节流已经作废，切回来 onActivated 那两次取数会真的打出去
+  if (!pageActive.value) return;
   loadSiteCards(true);
   loadHomeCards(true);
 });

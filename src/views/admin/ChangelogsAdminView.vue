@@ -138,17 +138,23 @@ const markdownPreview = computed(() => md.render(contentMarkdown.value || ''));
 
 const isMobile = ref(false);
 const updateIsMobile = () => { isMobile.value = window.innerWidth <= 768; };
+/** onWS 的退订函数：不退订的话每进一次这个页面就永久多挂一个 handler */
+let unbindWS: (() => void) | null = null;
 onMounted(() => { 
   updateIsMobile(); 
   window.addEventListener('resize', updateIsMobile);
   
-  onWS((type, payload) => {
+  unbindWS = onWS((type, payload) => {
     if (type === 'changelogs:update') {
       items.value = payload;
     }
   });
 });
-onUnmounted(() => { window.removeEventListener('resize', updateIsMobile); });
+onUnmounted(() => {
+  window.removeEventListener('resize', updateIsMobile);
+  unbindWS?.();
+  unbindWS = null;
+});
 
 const fetchList = async () => {
   items.value = await getChangelogs();
