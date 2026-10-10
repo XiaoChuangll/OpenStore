@@ -29,6 +29,8 @@ const JWT_SECRET = (() => {
  * 规则：同一 IP + 用户名连续失败 LOGIN_MAX_FAILURES 次后锁定 LOGIN_LOCK_MS，成功即清零。 */
 const LOGIN_MAX_FAILURES = Math.max(Number(process.env.LOGIN_MAX_FAILURES) || 5, 1);
 const LOGIN_LOCK_MS = Math.max(Number(process.env.LOGIN_LOCK_MS) || 15 * 60 * 1000, 1000);
+/** 失败计数表的硬上限，防止大量不同 IP/用户名把内存撑满 */
+const LOGIN_FAILURE_MAP_MAX = Math.max(Number(process.env.LOGIN_FAILURE_MAP_MAX) || 5000, 100);
 const loginFailureMap = new Map(); // key -> { count, firstAt, lockedUntil }
 
 const loginKeyOf = (req, username) =>
@@ -58,11 +60,17 @@ const recordLoginFailure = (key) => {
   loginFailureMap.set(key, entry);
 
   // 防止 map 被大量不同用户名撑爆
-  if (loginFailureMap.size > 5000) {
+  if (loginFailureMap.size > LOGIN_FAILURE_MAP_MAX) {
     for (const [k, v] of loginFailureMap) {
       if (!v.lockedUntil && now - v.firstAt > LOGIN_LOCK_MS) loginFailureMap.delete(k);
-      if (loginFailureMap.size <= 2500) break;
+      if (loginFailureMap.size <= LOGIN_FAILURE_MAP_MAX / 2) break;
     }
+  }
+  // 全都被锁时上面的清理删不掉东西，这里兜底丢最老的几条（宁可少记几个攻击 IP 的次数）
+  while (loginFailureMap.size > LOGIN_FAILURE_MAP_MAX) {
+    const oldest = loginFailureMap.keys().next().value;
+    if (oldest === undefined) break;
+    loginFailureMap.delete(oldest);
   }
 };
 

@@ -88,6 +88,21 @@ const createQueuedLookup = ({ intervalMs = 150, cache = new Map() } = {}) => {
   const queue = [];
   let running = false;
 
+  /*
+   * 缓存条数上限：公网站点上 IP 是无界的，不封顶迟早把内存吃满。
+   * 超了按插入顺序丢最老的。
+   */
+  const cacheMax = Math.max(Number(process.env.IP_LOCATION_CACHE_MAX) || 2000, 32);
+  const rememberLocation = (key, info) => {
+    cache.delete(key);
+    cache.set(key, info);
+    while (cache.size > cacheMax) {
+      const oldest = cache.keys().next().value;
+      if (oldest === undefined) break;
+      cache.delete(oldest);
+    }
+  };
+
   const pump = () => {
     if (running || !queue.length) return;
     running = true;
@@ -95,7 +110,7 @@ const createQueuedLookup = ({ intervalMs = 150, cache = new Map() } = {}) => {
 
     lookupExtraLocation(ip)
       .then((info) => {
-        cache.set(ip, info);
+        rememberLocation(ip, info);
         resolve(info);
       })
       .catch(() => resolve(null))

@@ -13,6 +13,24 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 // 拆分出去的内部模块（注意：必须在 dotenv.config 之后加载，它们会读 process.env）
 const { LIVE_LOG_SNAPSHOT, liveLogBuffer, liveSseClients, liveMetrics, pushLiveLog } = require('./lib/live-log.cjs');
+
+/*
+ * 进程级兜底：未捕获异常 / 未处理的 Promise rejection 默认直接退出进程，
+ * 在 pm2 下就是「服务反复重启」。这里记完整堆栈并让进程继续跑，
+ * 避免一条请求或一个定时器的异常把整个服务带走。
+ */
+const reportFatal = (label, err) => {
+  const detail = err && err.stack ? err.stack : String(err);
+  console.error(`[${label}]`, detail);
+  try {
+    pushLiveLog('error', `${label}: ${detail.split('\n')[0]}`);
+  } catch {
+    /* 日志模块本身出问题时不再套一层 */
+  }
+};
+
+process.on('unhandledRejection', (reason) => reportFatal('unhandledRejection', reason));
+process.on('uncaughtException', (err) => reportFatal('uncaughtException', err));
 const { isViaTrustedFrontProxy, getClientIp } = require('./lib/client-ip.cjs');
 const { collectPerfCheckRoutes: collectPerfCheckRoutesIn } = require('./lib/perf-check.cjs');
 const {

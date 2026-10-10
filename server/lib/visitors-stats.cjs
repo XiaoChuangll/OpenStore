@@ -19,6 +19,21 @@ const VISITORS_STATS_STALE_TTL = 10 * 60 * 1000;
 const VISITORS_INSIGHTS_STALE_TTL = 24 * 60 * 60 * 1000;
 const visitorsStatsCache = new Map();
 
+/*
+ * 缓存条数上限：key 里带筛选条件（agg:筛选 SQL:参数），后台多换几轮筛选就会一直堆。
+ * 超了按插入顺序淘汰最老的（写入时先删再 set，最近用过的自然排到末尾）。
+ */
+const VISITORS_STATS_CACHE_MAX = Math.max(Number(process.env.VISITORS_STATS_CACHE_MAX) || 120, 8);
+const cacheSet = (key, entry) => {
+  visitorsStatsCache.delete(key);
+  visitorsStatsCache.set(key, entry);
+  while (visitorsStatsCache.size > VISITORS_STATS_CACHE_MAX) {
+    const oldest = visitorsStatsCache.keys().next().value;
+    if (oldest === undefined) break;
+    visitorsStatsCache.delete(oldest);
+  }
+};
+
 const cachedVisitorsAll = (
   key,
   sql,
@@ -37,7 +52,7 @@ const cachedVisitorsAll = (
       hit.refreshing = true;
       db.all(sql, params, (err, rows) => {
         if (err) hit.refreshing = false;
-        else visitorsStatsCache.set(key, { t: Date.now(), data: rows });
+        else cacheSet(key, { t: Date.now(), data: rows });
       });
     }
     return cb(null, hit.data);
@@ -45,7 +60,7 @@ const cachedVisitorsAll = (
 
   db.all(sql, params, (err, rows) => {
     if (err) return cb(err);
-    visitorsStatsCache.set(key, { t: Date.now(), data: rows });
+    cacheSet(key, { t: Date.now(), data: rows });
     cb(null, rows);
   });
 };
@@ -60,7 +75,7 @@ const cachedVisitorsGet = (key, sql, params, cb) => {
       hit.refreshing = true;
       db.get(sql, params, (err, row) => {
         if (err) hit.refreshing = false;
-        else visitorsStatsCache.set(key, { t: Date.now(), data: row });
+        else cacheSet(key, { t: Date.now(), data: row });
       });
     }
     return cb(null, hit.data);
@@ -68,7 +83,7 @@ const cachedVisitorsGet = (key, sql, params, cb) => {
 
   db.get(sql, params, (err, row) => {
     if (err) return cb(err);
-    visitorsStatsCache.set(key, { t: Date.now(), data: row });
+    cacheSet(key, { t: Date.now(), data: row });
     cb(null, row);
   });
 };
@@ -107,11 +122,11 @@ setInterval(() => {
 
     if (item.one) {
       db.get(item.sql, [], (err, row) => {
-        if (!err) visitorsStatsCache.set(item.key, { t: Date.now(), data: row });
+        if (!err) cacheSet(item.key, { t: Date.now(), data: row });
       });
     } else {
       db.all(item.sql, [], (err, rows) => {
-        if (!err) visitorsStatsCache.set(item.key, { t: Date.now(), data: rows });
+        if (!err) cacheSet(item.key, { t: Date.now(), data: rows });
       });
     }
   });
@@ -122,6 +137,8 @@ module.exports = {
   VISITORS_STATS_STALE_TTL,
   VISITORS_INSIGHTS_TTL,
   VISITORS_INSIGHTS_STALE_TTL,
+  VISITORS_STATS_CACHE_MAX,
+  visitorsStatsCache,
   cachedVisitorsAll,
   cachedVisitorsGet
 };

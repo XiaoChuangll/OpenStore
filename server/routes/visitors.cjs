@@ -242,24 +242,31 @@ router.get('/api/visitors/trend', requireAuth, (req, res) => {
 
 // Export Visitor Logs
 router.get('/api/visitors/export', requireAuth, (req, res) => {
-  db.all(`SELECT * FROM visitors ORDER BY timestamp DESC`, [], (err, rows) => {
-    if (err) return res.status(500).send('Database Error');
-    
-    // Convert to CSV
-    const header = ['ID', 'IP', 'Location', 'Device', 'Path', 'Time', 'Source'];
-    const csvRows = rows.map(r => {
-      // Escape quotes and handle commas
-      const esc = (val) => `"${String(val || '').replace(/"/g, '""')}"`;
+  const esc = (val) => `"${String(val || '').replace(/"/g, '""')}"`;
+  const header = ['ID', 'IP', 'Location', 'Device', 'Path', 'Time', 'Source'];
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="visitors-${Date.now()}.csv"`);
+  res.write('\uFEFF' + header.join(',') + '\n'); // BOM 让 Excel 认出 UTF-8
+
+  /*
+   * 流式导出：十几万行一次性 SELECT * 全拉进内存再拼成一个大字符串要几百兆，
+   * 2G 的机器上一次导出就可能把进程顶掉。逐行写出去，内存只跟单行有关。
+   */
+  db.each(
+    `SELECT id, ip, location, device, path, timestamp, via_proxy
+       FROM visitors ORDER BY timestamp DESC`,
+    [],
+    (err, row) => {
+      if (err || res.writableEnded) return;
       // Source：proxy = 经前置反代进来的，direct = 直接访问本站
-      return [r.id, r.ip, r.location, r.device, r.path, r.timestamp, r.via_proxy ? 'proxy' : 'direct'].map(esc).join(',');
-    });
-    
-    const csvContent = '\uFEFF' + [header.join(','), ...csvRows].join('\n'); // Add BOM for Excel
-    
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="visitors-${Date.now()}.csv"`);
-    res.send(csvContent);
-  });
+      res.write([row.id, row.ip, row.location, row.device, row.path, row.timestamp, row.via_proxy ? 'proxy' : 'direct'].map(esc).join(',') + '\n');
+    },
+    (err) => {
+      if (err) console.error('[visitors/export] 导出中断:', err.message);
+      res.end();
+    }
+  );
 });
 
 module.exports = router;

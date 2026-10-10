@@ -6,7 +6,7 @@ import type { TopologyData } from '../../src/services/admin';
 /*
  * 布局模块算出来的坐标，必须在真实 ECharts 里就是屏幕像素、并且真的画出来。
  *
- * 这里踩过一次坑：graph 挂到 cartesian2d 上时节点 layout 全是 NaN，
+ * graph 挂到 cartesian2d 上时节点 layout 会是 NaN、
  * 电流还在但球全没了 —— 所以既要断言坐标映射，也要断言 SVG 里确实有节点。
  */
 
