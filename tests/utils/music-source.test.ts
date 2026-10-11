@@ -20,7 +20,7 @@ describe('preferHttps', () => {
     expect(preferHttps(HTTP_AUDIO, true)).toBe(HTTPS_AUDIO);
   });
 
-  it('http 页面（本地开发）保持原样，行为与以前一致', () => {
+  it('http 页面（本地开发）保持原样', () => {
     expect(preferHttps(HTTP_AUDIO, false)).toBe(HTTP_AUDIO);
   });
 

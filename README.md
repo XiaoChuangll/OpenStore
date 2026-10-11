@@ -353,6 +353,34 @@ location ~* \.(sql|bak|config|yml|env)$ {
 - ✅ 性能监控
 - ✅ 错误监控
 
+## 🩺 运维自检：TCP 内存与出站连接
+
+**1. 后台「后端实时」面板**（概览 → 快捷操作 → 实时日志）的指标行会显示
+`TCP 12.3/192MB (6%)`：内核 TCP 内存占用 / `tcp_mem` 硬上限，超过 70% 标红，
+另有 TIME_WAIT 数量与在跑的上游转发条数。
+
+**2. 服务器自检脚本**（可挂宝塔计划任务每分钟执行，退出码非 0 即告警）：
+
+```bash
+bash scripts/tcp-health-check.sh --quiet
+```
+
+检查项：内核 TCP OOM 计数、TCP 内存占 `tcp_mem` 百分比、Recv-Q 积压（含最高几条及进程）、
+TIME_WAIT、node 的 fd 数、`TcpAbortOnMemory` 增量、可用内存与 Swap；阈值可用环境变量覆盖。
+
+内核参数建议值（默认只打印，不加 `--apply` 不会写入）：
+
+```bash
+bash scripts/sysctl-openstore.sh            # 预览
+sudo bash scripts/sysctl-openstore.sh --apply
+```
+
+不要照抄网上「16G 机器优化参数」里的 `tcp_mem` 数值（那正是内核给 16GB 内存自动算出的值），
+脚本会按本机内存算出内核取值供对照，默认不写 `tcp_mem`。
+
+出站请求护栏（连接池、各档超时、并发上限）在 `.env` 里配置，见 `.env.example` 末尾；
+实现见 `server/lib/upstream-http.cjs`。
+
 ## 📂 项目结构
 
 ```

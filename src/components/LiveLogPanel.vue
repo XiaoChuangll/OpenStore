@@ -20,7 +20,9 @@
         <div class="live-actions">
           <span class="live-metric" v-if="metrics">
             运行 {{ formatUptime(metrics.uptime) }} · 内存 {{ formatBytes(metrics.rss) }} ·
-            Node {{ metrics.node }}<template v-if="metrics.clients"> · 在线 {{ metrics.clients }}</template>
+            Node {{ metrics.node }}<template v-if="metrics.clients"> · 在线 {{ metrics.clients }}</template><template
+              v-if="formatTcpMetric(metrics.tcp)"
+            > · <span :class="{ 'is-pressure': isTcpPressure(metrics.tcp) }">{{ formatTcpMetric(metrics.tcp) }}</span></template>
           </span>
           <el-button link size="small" @click="togglePause">{{ paused ? '继续' : '暂停' }}</el-button>
           <el-button link size="small" @click="clearLogs">清空</el-button>
@@ -158,6 +160,20 @@ interface LiveMetrics {
   node: string;
   clients: number;
   time: number;
+  /** 内核 TCP 状态，读不到 /proc 时为 null */
+  tcp?: TcpMetrics | null;
+  /** 正在跑的上游转发条数 */
+  upstream?: { active: number } | null;
+}
+
+interface TcpMetrics {
+  memBytes: number;
+  limitBytes: number | null;
+  highWaterBytes: number | null;
+  ratio: number | null;
+  inuse: number | null;
+  timeWait: number | null;
+  orphan: number | null;
 }
 
 type LevelFilter = 'all' | 'warn' | 'error' | 'slow';
@@ -402,6 +418,19 @@ const formatBytes = (bytes: number) => {
   const mb = bytes / 1024 / 1024;
   return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(0)} MB`;
 };
+
+/** 内核 TCP 内存占用，形如「TCP 12.3/192MB (6%)」 */
+const formatTcpMetric = (tcp?: LiveMetrics['tcp']) => {
+  if (!tcp || !tcp.memBytes) return '';
+  const mem = tcp.memBytes / 1024 / 1024;
+  if (!tcp.limitBytes) return `TCP ${mem.toFixed(1)}MB`;
+  const limit = tcp.limitBytes / 1024 / 1024;
+  const percent = tcp.ratio === null || tcp.ratio === undefined ? '' : ` (${Math.round(tcp.ratio * 100)}%)`;
+  return `TCP ${mem.toFixed(1)}/${limit.toFixed(0)}MB${percent}`;
+};
+
+/** 超过 tcp_mem 硬上限的 70% 标红 */
+const isTcpPressure = (tcp?: LiveMetrics['tcp']) => Boolean(tcp && tcp.ratio !== null && tcp.ratio >= 0.7);
 
 const clearLogs = () => {
   logs.value = [];
@@ -719,6 +748,11 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   font-variant-numeric: tabular-nums;
+}
+
+.live-metric .is-pressure {
+  color: var(--el-color-danger);
+  font-weight: 600;
 }
 
 .live-toolbar {

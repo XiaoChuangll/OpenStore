@@ -236,7 +236,7 @@ describe('TopicSpotlight 预热与轮播', () => {
     await flushPromises();
     expect(titleOf(wrapper)).toBe('本周上新');
 
-    // 全程没有重建：卡片节点、滚动轨道的 DOM 节点都还是原来那批
+    // 全程没有重建：卡片与滚动轨道的 DOM 节点保持不变
     expect(cardEls()).toEqual(originalCards);
     expect(trackEls()).toEqual(originalTracks);
   });

@@ -3,7 +3,6 @@ import { daysSinceInclusive, startOfDay, startOfMonth, startOfWeek } from '../..
 
 /*
  * 「本周 / 本月」是自然周期：周三时本周只有 3 天（周一到今天）。
- * 之前它们被写成固定的 days: 7 / 30，跟「最近7天 / 最近30天」完全一样。
  * 用固定日期测，避免受「今天星期几」影响。
  */
 

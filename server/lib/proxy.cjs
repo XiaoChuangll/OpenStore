@@ -7,6 +7,14 @@
 const axios = require('axios');
 const { pushLiveLog } = require('./live-log.cjs');
 const { UPSTREAM_USER_AGENT } = require('./config.cjs');
+const {
+  UPSTREAM_TIMEOUT_MS,
+  API_STREAM_IDLE_MS,
+  API_STREAM_MAX_MS,
+  PROXY_QUEUE_WAIT_MS,
+  proxyGate,
+  attachStreamGuards
+} = require('./upstream-http.cjs');
 
 // 这些头由 axios / Node 自己管理，不能原样转发给上游
 const PROXY_HOP_BY_HOP_HEADERS = new Set([
@@ -31,6 +39,26 @@ const createProxy = (target, pathRewrite) => async (req, res) => {
   const fullUrl = `${target}${url}`;
   const startedAt = Date.now();
 
+  // 并发闸门：等不到名额就直接 503，避免请求堆在本地
+  const release = await proxyGate.acquire(PROXY_QUEUE_WAIT_MS);
+  if (!release) {
+    pushLiveLog('warn', `上游代理繁忙，已拒绝 ${req.method} ${url}`, { kind: 'upstream', path: url });
+    return res.status(503).json({ error: '服务繁忙，请稍后重试' });
+  }
+  let released = false;
+  const releaseOnce = () => {
+    if (released) return;
+    released = true;
+    release();
+  };
+  // 排队期间客户端可能已断开：那时 'close' 早发过，名额会漏掉
+  if (res.writableEnded || res.destroyed) {
+    releaseOnce();
+    return;
+  }
+  // 名额占到请求彻底结束：流式响应很久，axios 返回时就释放等于没限流
+  res.on('close', releaseOnce);
+
   try {
     // 透传客户端请求头，但 UA 除外 —— 见下面
     const headers = {};
@@ -51,6 +79,8 @@ const createProxy = (target, pathRewrite) => async (req, res) => {
       headers,
       data: (req.method === 'GET' || req.method === 'HEAD') ? undefined : req.body,
       responseType: 'stream',
+      // 建连 + 等响应头；响应体由 attachStreamGuards 管
+      timeout: UPSTREAM_TIMEOUT_MS,
       validateStatus: () => true // Handle all status codes manually
     };
     
@@ -69,8 +99,28 @@ const createProxy = (target, pathRewrite) => async (req, res) => {
       { kind: 'upstream', method: req.method, path: url, status: response.status, ms: upstreamMs }
     );
 
+    // 三道闸：客户端断开即掐断上游、空闲超时、总时长上限
+    const guard = attachStreamGuards(response, res, {
+      idleMs: API_STREAM_IDLE_MS,
+      maxMs: API_STREAM_MAX_MS,
+      label: '上游代理',
+      onAbort: (reason) => pushLiveLog('warn', `上游代理已中断 ${req.method} ${url}：${reason}`, { kind: 'upstream', path: url })
+    });
+
+    response.data.on('error', (error) => {
+      // 护栏掐断时已记过日志，不重复打印
+      if (guard.aborted) return;
+      pushLiveLog('warn', `上游响应中断 ${req.method} ${url}：${error.message}`, { kind: 'upstream', path: url });
+      try {
+        if (!res.writableEnded) res.destroy();
+      } catch {
+        /* 客户端已经没了 */
+      }
+    });
+
     response.data.pipe(res);
   } catch (error) {
+    releaseOnce();
     // 只走 pushLiveLog：它会把「上游代理失败 …」同时送到后台面板和终端，
     // 不再单独 console.error，否则同一件事会打印两遍
     pushLiveLog('error', `上游代理失败 ${req.method} ${url}：${error.message}`, { kind: 'upstream' });
