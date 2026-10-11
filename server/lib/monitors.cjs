@@ -9,6 +9,7 @@
 const axios = require('axios');
 const db = require('../database.cjs');
 const { decrypt } = require('./secret.cjs');
+const { UPSTREAM_TIMEOUT_MS } = require('./upstream-http.cjs');
 
 const MONITORS_CACHE_TTL_MS = Math.max(0, Number(process.env.MONITORS_CACHE_TTL_SECONDS ?? 60)) * 1000;
 let monitorsCache = { at: 0, data: null };
@@ -52,6 +53,8 @@ const fetchMonitorsFromUpstream = async () => {
     params.append('custom_uptime_ranges', ranges.join('-'));
 
     const response = await axios.post('https://api.uptimerobot.com/v2/getMonitors', params.toString(), {
+      // 必须给超时：否则卡住的上游请求会占着 socket 和 single-flight 的 Promise
+      timeout: UPSTREAM_TIMEOUT_MS,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       }

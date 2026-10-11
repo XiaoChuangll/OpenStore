@@ -9,6 +9,9 @@ const LIVE_LOG_SNAPSHOT = 60;
 const liveLogBuffer = [];
 const liveSseClients = new Set();
 
+const { readTcpStats } = require('./system-metrics.cjs');
+const { streamGuardStats } = require('./upstream-http.cjs');
+
 /*
  * 终端镜像。
  *
@@ -45,12 +48,15 @@ const mirrorToConsole = (entry) => {
   else console.log(line);
 };
 
+/* tcp / upstream：内核 TCP 内存占比、TIME_WAIT、在跑的上游转发数 */
 const liveMetrics = () => ({
   uptime: Math.round(process.uptime()),
   rss: process.memoryUsage().rss,
   node: process.version,
   clients: liveSseClients.size,
-  time: Date.now()
+  time: Date.now(),
+  tcp: readTcpStats(),
+  upstream: streamGuardStats()
 });
 
 /**

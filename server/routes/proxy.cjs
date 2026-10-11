@@ -10,6 +10,7 @@ const { isBrowseAppQuery } = require('../lib/browse-query.cjs');
 const { assertPublicOutboundUrl, requestWithSafeRedirects, assertAllowedProxyTarget } = require('../lib/outbound-guard.cjs');
 const { MUSIC_PROXY_MAX_BYTES, acquireMusicProxySlot } = require('../lib/music-proxy.cjs');
 const { scriptGuard } = require('../lib/script-guard.cjs');
+const { MEDIA_STREAM_IDLE_MS, MEDIA_STREAM_MAX_MS, attachStreamGuards } = require('../lib/upstream-http.cjs');
 
 const router = express.Router();
 
@@ -171,6 +172,14 @@ router.get('/api/music-proxy', async (req, res) => {
     });
     response.data.on('error', () => {
       try { res.destroy(); } catch {}
+    });
+
+    // 和 /api/v0 同一套护栏，音频走 media 档的宽松阈值
+    attachStreamGuards(response, res, {
+      idleMs: MEDIA_STREAM_IDLE_MS,
+      maxMs: MEDIA_STREAM_MAX_MS,
+      label: '音乐代理',
+      onAbort: (reason) => console.warn('[music-proxy] 传输中断:', reason, String(url).slice(0, 100))
     });
 
     response.data.pipe(res);

@@ -11,6 +11,9 @@ const db = require('./database.cjs');
 const { createQueuedLookup } = require('./lib/ip-location.cjs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
+// 出站请求统一配置（连接池 / 超时 / 并发闸门），须在 dotenv 之后加载
+require('./lib/upstream-http.cjs').applyAxiosDefaults();
+
 // 拆分出去的内部模块（注意：必须在 dotenv.config 之后加载，它们会读 process.env）
 const { LIVE_LOG_SNAPSHOT, liveLogBuffer, liveSseClients, liveMetrics, pushLiveLog } = require('./lib/live-log.cjs');
 
