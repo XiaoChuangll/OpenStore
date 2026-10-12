@@ -54,7 +54,7 @@ const {
   applyShareCardToHtml
 } = require('./lib/share-cards.cjs');
 const { broadcast, attachWebSocket } = require('./lib/realtime.cjs');
-const { hardBanGuard } = require('./lib/script-guard.cjs');
+const { hardBanGuard, scriptGuard } = require('./lib/script-guard.cjs');
 const { JWT_SECRET, requireAuth } = require('./middleware/auth.cjs');
 const { TRUST_PROXY_HOPS, PORT } = require('./lib/config.cjs');
 const { uploadsDir, UPLOAD_FORCE_DOWNLOAD_EXT } = require('./lib/uploads.cjs');
@@ -112,6 +112,13 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+/*
+ * 脚本护栏：全站生效（静态资源与页面路由也会被挡），后台管理路径在中间件内部豁免。
+ * 放在这里是为了让被拦的 /api 请求仍先记一条实时日志（上面的日志中间件），
+ * 并且排在静态资源与 SPA 兜底之前，/、/apps 这类页面脚本也会撞上警告页。
+ */
+app.use(scriptGuard);
 
 // SSE：EventSource 无法自定义 header，因此同时接受 ?token=
 app.get('/api/admin/live', (req, res) => {

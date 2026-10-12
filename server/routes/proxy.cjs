@@ -9,15 +9,11 @@ const { loadBlockedAppPackages } = require('../lib/blocked-apps.cjs');
 const { isBrowseAppQuery } = require('../lib/browse-query.cjs');
 const { assertPublicOutboundUrl, requestWithSafeRedirects, assertAllowedProxyTarget } = require('../lib/outbound-guard.cjs');
 const { MUSIC_PROXY_MAX_BYTES, acquireMusicProxySlot } = require('../lib/music-proxy.cjs');
-const { scriptGuard } = require('../lib/script-guard.cjs');
 const { MEDIA_STREAM_IDLE_MS, MEDIA_STREAM_MAX_MS, attachStreamGuards } = require('../lib/upstream-http.cjs');
 
 const router = express.Router();
 
-// 三个「转发到外部主机」的公开代理统一挂脚本护栏，详见 lib/script-guard.cjs
-router.use('/api/v0', scriptGuard);
-router.use('/api/proxy-request', scriptGuard);
-router.use('/api/music-proxy', scriptGuard);
+// 脚本护栏已改为 app 级全站挂载（见 server/index.cjs），这里不再单独挂，避免同一请求重复计数。
 
 /*
  * 浏览 / 筛选类查询：把屏蔽名单作为查询条件下推给上游。

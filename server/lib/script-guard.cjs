@@ -1,9 +1,12 @@
 /*
- * 脚本护栏：给 /api/v0 这类公开代理加一层反自动化采集。
+ * 脚本护栏：给全站（后台管理路径除外）加一层反自动化采集。
  *
  * 判定：UA 解析不出浏览器名的一律当脚本（白名单思路，不维护爬虫名单）；
  *      后台「放行名单」里的前缀直接放行，不受该判定与配额约束。
  * 处置：窗口内先给 FREE_HITS 次宽限，超限返回 429 警告页；屡犯封禁时长按 4 倍递增。
+ * 挂载：app 级全站生效（含静态资源与页面路由），/api/admin、/admin、/ws 例外，
+ *      否则误拦自己的出口就进不去后台解封（与硬封禁共用同一份豁免）。
+ * 豁免：官方搜索/社交抓取 UA 与 SEO 元文件（robots.txt 等）放行，不影响收录与分享卡片。
  * 另有硬封禁名单（不区分 UA，见 hardBanGuard）与可后台自定义的警告页文案。
  * 后台「接口体检」「请求重放」带专用 header，直接放行。
  */
@@ -464,8 +467,9 @@ const triggerBlock = (ip, { ua, path } = {}) => {
  * 硬封禁：不区分 UA，命中后该 IP 的一切请求都返回 429（连浏览器也打不开站点）。
  * 名单持久化在 script_guard_bans，启动载入内存，热路径只查 Map。
  * /api/admin/*、/admin、/ws 例外，否则误封自己的出口 IP 就进不去后台解封。
+ * 脚本护栏（scriptGuard）也复用这份豁免，所以提出来定义一个常量。
  */
-const HARD_BAN_EXEMPT_RE = [/^\/api\/admin(\/|$)/, /^\/admin(\/|$)/, /^\/ws$/];
+const ADMIN_EXEMPT_RE = [/^\/api\/admin(\/|$)/, /^\/admin(\/|$)/, /^\/ws$/];
 const hardBans = new Map(); // ip -> { reason, createdAt, expiresAt(ms, 0=永久), hits }
 
 const toSqlUtc = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
@@ -560,7 +564,7 @@ const listHardBans = () => {
 const hardBanGuard = (req, res, next) => {
   if (hardBans.size === 0) return next();
   const path = req.path || '';
-  if (HARD_BAN_EXEMPT_RE.some((re) => re.test(path))) return next();
+  if (ADMIN_EXEMPT_RE.some((re) => re.test(path))) return next();
 
   const ip = getClientIp(req);
   const ban = hardBans.get(ip);
@@ -594,9 +598,25 @@ const hardBanGuard = (req, res, next) => {
 
 /* ------------------------------ 中间件 ------------------------------ */
 
-/** 挂在需要保护的代理前缀上，例如 router.use('/api/v0', scriptGuard) */
+/*
+ * 官方抓取豁免：搜索引擎与社交分享的官方爬虫 UA 放行，保证收录与分享卡片正常。
+ * 不能直接复用 share-cards 的 CRAWLER_UA_RE —— 它把 curl/、wget/、python-requests
+ * 这类通用脚本客户端也算作爬虫，而那些正是本护栏要拦的对象，这里只保留「官方」抓取。
+ */
+const OFFICIAL_CRAWLER_UA_RE =
+  /(googlebot|bingbot|yandex|duckduckbot|baiduspider|sogou|yisou|bytespider|petalbot|applebot|facebookexternalhit|twitterbot|slackbot|telegrambot|whatsapp|discordbot|embedly|pinterest|linkedinbot|skypeuripreview|line-poker|micromessenger|wechat|weibo|qzone|tencent)/i;
+
+// SEO / 站点元文件：按路径豁免，任何 UA 都能取到，不参与计数
+const SEO_EXEMPT_PATHS = new Set(['/robots.txt', '/sitemap.xml', '/site.webmanifest']);
+
+/** 挂在 app 级（index.cjs 里 app.use），全站生效，后台管理路径在内部豁免 */
 const scriptGuard = (req, res, next) => {
   if (!GUARD_ENABLED) return next();
+  // 后台管理路径豁免：与硬封禁一致，保证误伤时仍能进后台处理
+  if (ADMIN_EXEMPT_RE.some((re) => re.test(req.path || ''))) return next();
+  // SEO 文件与官方爬虫放行：不计数、不封禁
+  if (SEO_EXEMPT_PATHS.has(req.path || '')) return next();
+  if (OFFICIAL_CRAWLER_UA_RE.test(String(req.headers['user-agent'] || ''))) return next();
   if (!looksLikeScript(req.headers['user-agent'])) return next();
   if (isInternal(req)) return next();
 
