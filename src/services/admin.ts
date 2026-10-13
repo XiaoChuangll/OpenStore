@@ -392,7 +392,14 @@ export const updateAppSubmission = async (id: number, payload: Partial<AppSubmis
 };
 
 // ENV management
-export type EnvItem = { key: string; value: string; secure: boolean; updated_at: string | null };
+export type EnvItem = {
+  key: string;
+  value: string;
+  /** .env 中该行的行尾注释，由服务端单独返回 */
+  comment?: string;
+  secure: boolean;
+  updated_at: string | null;
+};
 export type EnvMap = Record<string, EnvItem[]>;
 
 export const getEnvMap = async () => {

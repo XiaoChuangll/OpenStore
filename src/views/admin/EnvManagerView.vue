@@ -13,9 +13,17 @@
           <el-table :data="list" @row-click="selectItem">
             <!-- 手机上表格横向滚动：这两列给 min-width，Value 别被挤成一条竖着的字 -->
             <el-table-column prop="key" label="Key" min-width="120" show-overflow-tooltip />
-            <el-table-column label="Value" min-width="240" show-overflow-tooltip>
+            <!-- 值与其行尾注释分两行展示 -->
+            <el-table-column label="Value" min-width="240">
               <template #default="{ row }">
-                <span>{{ row.secure ? '••••••' : row.value }}</span>
+                <div class="env-value-cell">
+                  <span
+                    class="env-value-text"
+                    :class="{ 'is-empty': !row.secure && row.value === '' }"
+                    :title="row.secure ? '已加密存储' : row.value"
+                  >{{ row.secure ? '••••••' : (row.value === '' ? '(空)' : row.value) }}</span>
+                  <span v-if="row.comment" class="env-comment" :title="row.comment">{{ row.comment }}</span>
+                </div>
               </template>
             </el-table-column>
             <el-table-column label="操作" min-width="160">
@@ -46,7 +54,14 @@
     <el-dialog v-model="showDialog" title="编辑变量" :width="isMobile ? '90%' : '600px'">
       <el-form label-position="top" :model="form">
         <el-form-item label="Key"><el-input v-model="form.key" /></el-form-item>
-        <el-form-item label="值"><el-input v-model="form.value" /></el-form-item>
+        <el-form-item label="值">
+          <el-input v-model="form.value" />
+          <!-- 原行的注释作为提示展示，不随值提交 -->
+          <div v-if="form.comment" class="form-comment-hint">
+            <span class="form-comment-label">说明</span>
+            <span class="form-comment-text">{{ form.comment }}</span>
+          </div>
+        </el-form-item>
         <el-form-item label="分类">
           <el-select v-model="form.category" style="width: 200px">
             <el-option label="数据库" value="database" />
@@ -98,7 +113,13 @@ const envMap = ref<Record<string, EnvItem[]>>({});
 const labels: Record<string, string> = { database: '数据库', cache: '缓存', api: '第三方API', other: '其他' };
 
 const showDialog = ref(false);
-const form = ref<{ key: string; value: string; category: string; secure: boolean }>({ key: '', value: '', category: 'other', secure: true });
+const form = ref<{ key: string; value: string; comment: string; category: string; secure: boolean }>({
+  key: '',
+  value: '',
+  comment: '',
+  category: 'other',
+  secure: true
+});
 
 const showHistory = ref(false);
 const history = ref<Array<{ id: number; key: string; updated_at: string }>>([]);
@@ -108,7 +129,14 @@ onMounted(fetchMap);
 
 const selectItem = (row: EnvItem) => { editItem(row); };
 const editItem = (row: EnvItem) => {
-  form.value = { key: row.key, value: row.secure ? '' : row.value, category: guessCategory(row.key), secure: row.secure };
+  form.value = {
+    key: row.key,
+    value: row.secure ? '' : row.value,
+    // comment 仅用于展示，不参与提交
+    comment: row.comment || '',
+    category: guessCategory(row.key),
+    secure: row.secure
+  };
   showDialog.value = true;
 };
 const guessCategory = (key: string) => {
@@ -116,7 +144,7 @@ const guessCategory = (key: string) => {
 };
 const save = async () => {
   if (!form.value.key) return;
-  await setEnv(form.value);
+  await setEnv(buildPayload());
   showDialog.value = false;
   fetchMap();
 };
@@ -156,10 +184,71 @@ const rollback = async (id: number) => {
   fetchMap();
 };
 
+/** 仅提交服务端使用的字段（comment 只用于展示） */
+const buildPayload = () => ({
+  key: form.value.key,
+  value: form.value.value,
+  category: form.value.category,
+  secure: form.value.secure
+});
+
 </script>
 
 <style scoped>
 .mb-4 { margin-bottom: 20px; }
 .toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+
+/* 值与注释分两行：值等宽显示更易读，注释用弱化色区分 */
+.env-value-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.env-value-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--el-text-color-primary);
+  word-break: break-all;
+}
+
+.env-value-text.is-empty {
+  font-family: inherit;
+  color: var(--el-text-color-placeholder);
+}
+
+.env-comment {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--el-text-color-secondary);
+  word-break: break-word;
+}
+
+/* 编辑弹窗里的注释提示 */
+.form-comment-hint {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background-color: var(--el-fill-color-light);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.form-comment-label {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background-color: var(--el-color-info-light-8);
+  color: var(--el-color-info);
+}
+
+.form-comment-text {
+  color: var(--el-text-color-secondary);
+  word-break: break-word;
+}
 </style>

@@ -5,12 +5,18 @@ const express = require('express');
 const db = require('../database.cjs');
 const { requireAuth, logAction } = require('../middleware/auth.cjs');
 const { encrypt, decrypt } = require('../lib/secret.cjs');
-const { readEnvFile, writeEnvKey, categorizeKey } = require('../lib/env-file.cjs');
+const { readEnvFile, readEnvComments, writeEnvKey, categorizeKey } = require('../lib/env-file.cjs');
 
 const router = express.Router();
 
 router.get('/api/env', requireAuth, (req, res) => {
   const envFile = readEnvFile();
+  /*
+   * 行尾注释单独取出来给前端当提示用。
+   * 绝不能混在 value 里返回：那样页面显示的就不是程序实际读到的值，
+   * 而且编辑保存会把注释当成值写回文件（详见 lib/env-file.cjs 顶部说明）。
+   */
+  const envComments = readEnvComments();
   db.all(`SELECT key, value_encrypted, category, updated_at FROM env_vars`, [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     const result = {};
@@ -20,7 +26,7 @@ router.get('/api/env', requireAuth, (req, res) => {
       if (dbKeys.has(k)) return;
       const cat = categorizeKey(k);
       if (!result[cat]) result[cat] = [];
-      result[cat].push({ key: k, value: envFile[k], secure: false, updated_at: null });
+      result[cat].push({ key: k, value: envFile[k], comment: envComments[k] || '', secure: false, updated_at: null });
     });
     rows.forEach(r => {
       const cat = r.category || categorizeKey(r.key);
