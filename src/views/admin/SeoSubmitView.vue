@@ -219,7 +219,12 @@
       </template>
 
       <el-table v-loading="loadingSubmissions" :data="submissions" size="small" max-height="420" empty-text="还没有提交记录">
-        <el-table-column prop="created_at" label="时间" :width="submissionCols.time" />
+        <el-table-column label="时间（北京时间）" :width="submissionCols.time">
+          <template #default="{ row }">
+            <!-- 库中按 UTC 存储，此处转为北京时间展示 -->
+            <span class="time-cell">{{ formatDbTime(row.created_at) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="URL" :min-width="submissionCols.url" show-overflow-tooltip>
           <template #default="{ row }">
             <span class="url-cell">{{ decodeUrl(row.url) }}</span>
@@ -262,6 +267,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { Check, Refresh, Delete, Search, Promotion, DocumentCopy } from '@element-plus/icons-vue';
 import AdminPageHeader from '../../components/admin/AdminPageHeader.vue';
 import AdminSection from '../../components/admin/AdminSection.vue';
+import { formatDbTime } from '../../utils/datetime';
 import {
   getSeoStatus,
   getSeoPending,
@@ -756,6 +762,11 @@ onUnmounted(() => {
 .url-cell {
   font-size: 12px;
   word-break: break-all;
+}
+
+.time-cell {
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .http-code {
