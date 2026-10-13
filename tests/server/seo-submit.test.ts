@@ -55,6 +55,27 @@ describe('SEO URL 归一化', () => {
     expect(norm('/')).toBe(`${SITE}/`);
   });
 
+  it('丢弃不影响渲染的参数，避免同一页面产生多条 URL', () => {
+    // title 是页面标题的展示副本；时间戳与 el-id 是埋点/组件内部产物
+    for (const noisy of [
+      '/apps/C123?title=QQ邮箱',
+      '/?ide_webview_request_time=1768362351837',
+      '/?from=/topics',
+      '/apps/C123?title=x&utm_source=wx&el-id-2212-5=app',
+      '/apps/C123?_t=123&ts=456'
+    ]) {
+      expect(norm(noisy)).toBe(`${SITE}${noisy.split('?')[0]}`);
+    }
+  });
+
+  it('保留影响页面内容的参数', () => {
+    expect(norm('/apps?category=工具')).toBe(`${SITE}/apps?category=${encodeURIComponent('工具')}`);
+    expect(norm('/apps?device=phone')).toBe(`${SITE}/apps?device=phone`);
+    expect(norm('/updates?tab=new&filter=thisWeek&page=2')).toBe(
+      `${SITE}/updates?filter=thisWeek&page=2&tab=new`
+    );
+  });
+
   it('拒绝站外地址与无页面语义的输入', () => {
     expect(norm('https://evil.com/x')).toBe('');
     expect(norm('//evil.com/x')).toBe('');

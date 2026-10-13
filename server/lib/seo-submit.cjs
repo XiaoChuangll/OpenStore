@@ -155,6 +155,37 @@ const redact = (text) =>
 /** 静态资源后缀，不进入提交队列 */
 const STATIC_EXT_RE = /\.(?:js|mjs|css|map|json|xml|txt|png|jpe?g|gif|webp|avif|svg|ico|bmp|woff2?|ttf|eot|otf|mp3|mp4|webm|m4a|wav|ogg|zip|gz|exe|apk|hsp|pdf|csv)$/i;
 
+/**
+ * 归一化时需要丢弃的查询参数。
+ *
+ * 这些参数不影响页面渲染，但会让同一页面产生多个 URL，重复占用提交额度。
+ * 尤其 ide_webview_request_time 这类时间戳，实测单个首页就衍生出 60+ 条 URL。
+ */
+const JUNK_PARAM_EXACT = new Set([
+  // 页面标题的展示副本（detail 页标题本就来自数据，页面另有一份）
+  'title',
+  // 来源/分享类标记
+  'share', 'spm', 'ref', 'referrer', 'source', 'scene', 'src',
+  // 埋点时间戳
+  'ide_webview_request_time', '_t', 't'
+]);
+
+const JUNK_PARAM_RE = [
+  /^utm_/i,            // 投放参数
+  /_request_time$/i,   // 埋点时间戳
+  /^from$/i,           // 站内来源路径
+  /^el-id-/i,          // Element Plus 组件内部 id
+  /_(time|ts|timestamp)$/i,
+  /^(time|ts|timestamp)$/i
+];
+
+/** 纯数字且长度 ≥10 的值按毫秒时间戳处理（用于清理未穷举到的缓存击穿参数） */
+const isTimestampValue = (value) => /^\d{10,}$/.test(String(value || ''));
+
+/** 该查询参数是否应在归一化时丢弃 */
+const isJunkParam = (key, value) =>
+  JUNK_PARAM_EXACT.has(key) || JUNK_PARAM_RE.some((re) => re.test(key)) || isTimestampValue(value);
+
 /** 不应被收录的路径：后台、接口、上传与静态资源、无索引价值的页面 */
 const isExcludedPath = (pathname) => {
   const p = pathname.toLowerCase();
@@ -172,7 +203,7 @@ const isExcludedPath = (pathname) => {
 /**
  * 把访客路径转换为可提交的规范 URL。
  *
- * 处理内容：丢弃追踪参数（utm_* / from / share 等）、参数按字典序排序、
+ * 处理内容：丢弃无业务意义的查询参数（见 JUNK_PARAM_*）、参数按字典序排序、
  * 去掉结尾多余斜杠、拒绝站外地址与非前台路径。
  *
  * @param {string} rawPath 访客原始路径，可为 "/x/y" 或同源绝对地址
@@ -212,8 +243,7 @@ function normalizeUrl(rawPath, siteUrl) {
 
   const keep = [];
   url.searchParams.forEach((value, key) => {
-    if (/^utm_/i.test(key)) return;
-    if (/^(from|share|spm|ref|referrer|source|scene|src)$/i.test(key)) return;
+    if (isJunkParam(key, value)) return;
     keep.push([key, value]);
   });
   keep.sort((a, b) => (a[0] === b[0] ? (a[1] < b[1] ? -1 : 1) : a[0] < b[0] ? -1 : 1));

@@ -175,11 +175,16 @@
 
       <el-table v-loading="loadingPending" :data="pending" size="small" max-height="360" empty-text="今天还没有待提交的新路径">
         <el-table-column type="index" label="#" width="56" />
-        <el-table-column prop="url" label="归一化 URL" min-width="320" show-overflow-tooltip />
+        <el-table-column label="URL" min-width="320" show-overflow-tooltip>
+          <template #default="{ row }">
+            <!-- 显示解码后的可读形式；存储与提交仍用编码形式 -->
+            <span class="url-cell">{{ decodeUrl(row.url) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="hits" label="访问次数" width="100" align="right" />
         <el-table-column label="原始路径" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
-            <span class="path-cell">{{ row.path }}</span>
+            <span class="path-cell">{{ decodeUrl(row.path) }}</span>
           </template>
         </el-table-column>
       </el-table>
@@ -215,7 +220,11 @@
 
       <el-table v-loading="loadingSubmissions" :data="submissions" size="small" max-height="420" empty-text="还没有提交记录">
         <el-table-column prop="created_at" label="时间" width="160" />
-        <el-table-column prop="url" label="URL" min-width="300" show-overflow-tooltip />
+        <el-table-column label="URL" min-width="300" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="url-cell">{{ decodeUrl(row.url) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="通道" width="100">
           <template #default="{ row }">
             <el-tag size="small" :type="row.channel === 'bing' ? 'primary' : 'success'" effect="plain">
@@ -506,6 +515,15 @@ const copyText = async (text: string) => {
 const statusText = (status: string) => (status === 'success' ? '成功' : status === 'failed' ? '失败' : '跳过');
 const statusTagType = (status: string) => (status === 'success' ? 'success' : status === 'failed' ? 'danger' : 'info');
 
+/** 解码为可读形式用于展示；存储与提交仍使用编码后的 URL */
+const decodeUrl = (value: string) => {
+  try {
+    return decodeURI(String(value || ''));
+  } catch {
+    return String(value || '');
+  }
+};
+
 onMounted(async () => {
   await loadAll();
   pollTimer = window.setInterval(() => {
@@ -671,6 +689,11 @@ onUnmounted(() => {
 .path-cell {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+
+.url-cell {
+  font-size: 12px;
+  word-break: break-all;
 }
 
 .http-code {
