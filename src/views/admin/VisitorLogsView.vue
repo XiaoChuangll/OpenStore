@@ -77,7 +77,7 @@
         </div>
         <div ref="chartRef" class="chart-container"></div>
       </div>
-      <div v-show="activeTrendTab === 'activity'" class="trend-panel">
+      <div v-show="activeTrendTab === 'activity'" ref="activityPanelRef" class="trend-panel">
         <!-- 窄屏用卡片列表，避免列被挤压/截断 -->
         <div v-if="isMobile" v-loading="loading">
           <!-- 新访客记录是 WS 推来后 unshift 到最前面的，这里让它"冒出来" -->
@@ -324,6 +324,8 @@ const total = ref(0);
 const page = ref(1);
 const pageSize = ref(20);
 const loading = ref(false);
+/** 「行为类别」列表容器：翻页后平滑滚到这里（表格表头 / 卡片首条） */
+const activityPanelRef = ref<HTMLElement | null>(null);
 const chartRef = ref<HTMLElement | null>(null);
 const compareChartRef = ref<HTMLElement | null>(null);
 const activeTrendTab = ref<'overview' | 'activity' | 'compare'>('overview');
@@ -558,7 +560,7 @@ onMounted(() => {
   window.addEventListener('resize', checkMobile);
   fetchList();
   refreshTrend();
-  
+
   unbindWS = onWS((type: string, payload: any) => {
     if (type === 'visitors:new') {
       const hasFilters = filterLocation.value || filterDevice.value || filterPath.value;
@@ -636,8 +638,40 @@ const onSearch = () => {
   fetchList();
 };
 
+/**
+ * 平滑滚动到「行为类别」列表顶部（表格表头 / 卡片首条）。
+ *
+ * 翻页后列表整体重排，视口会瞬间弹回页顶，表现为「内容闪现」。
+ * 这里改用 requestAnimationFrame + 缓动函数把视口平滑带到列表顶部：
+ * 时长固定 400ms（落在 300-500ms 区间），缓动走 easeInOutCubic，起止都不生硬。
+ * 连点翻页时用递增的 scrollAnimId 作废上一段动画，保证始终只有最新一段在跑。
+ */
+let scrollAnimId = 0;
+const smoothScrollToActivityTop = () => {
+  const el = activityPanelRef.value;
+  if (!el) return;
+  const from = window.scrollY;
+  const to = Math.max(0, from + el.getBoundingClientRect().top);
+  const distance = to - from;
+  const myId = ++scrollAnimId;
+  if (Math.abs(distance) < 1) return;
+  const duration = 400;
+  const startTime = performance.now();
+  const easeInOutCubic = (t: number) =>
+    t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const step = (now: number) => {
+    if (myId !== scrollAnimId) return;
+    const progress = Math.min(1, (now - startTime) / duration);
+    window.scrollTo(0, from + distance * easeInOutCubic(progress));
+    if (progress < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+};
+
 const onPageChange = (p: number) => {
   page.value = p;
+  // 先起动画：既把视口平滑带到列表顶部，也压住后面重排造成的瞬跳
+  smoothScrollToActivityTop();
   fetchList();
 };
 
@@ -1551,17 +1585,37 @@ const exportCsv = async () => {
   height: 320px;
 }
 
+/* 移动端分页：首页 / 上一页·跳页·下一页 / 尾页 居中排布，窄屏放不下时整体换行 */
 .mobile-pagination-container {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  flex-wrap: wrap;
 }
 .mobile-pagination-controls {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+/* 跳页器只留输入框，去掉 Element Plus 默认的「Go to」文案与多余的「页」后缀 */
+.mobile-pagination-controls :deep(.el-pagination__goto),
+.mobile-pagination-controls :deep(.el-pagination__classifier) {
+  display: none;
+}
+/* 分页控件外边距交给外层 gap 统一控制，避免窄屏下间距忽大忽小 */
+.mobile-pagination-controls :deep(.el-pagination) {
+  margin: 0;
+}
+/*
+ * 隐藏 goto/classifier 后，跳页器只剩输入框：Element Plus 默认只给 .el-pagination__jump 加了
+ * 16px 左边距（右边靠「页」后缀撑开），此时输入框会贴着下一页，左右间距不对称。
+ * 这里给成左右各 8px，与外围 gap 一致，整组按钮左右对称。
+ */
+.mobile-pagination-controls :deep(.el-pagination__jump) {
+  margin: 0 8px;
 }
 @media (max-width: 768px) {
   .pagination {
