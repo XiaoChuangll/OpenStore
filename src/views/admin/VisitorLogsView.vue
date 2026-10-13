@@ -30,6 +30,15 @@
       />
 
       <el-input
+        v-model="filterIp"
+        placeholder="筛选 IP"
+        class="filter-ip"
+        clearable
+        @keyup.enter="onSearch"
+        @clear="onSearch"
+      />
+
+      <el-input
         v-model="filterPath"
         placeholder="搜索路径"
         class="filter-input"
@@ -78,6 +87,12 @@
         <div ref="chartRef" class="chart-container"></div>
       </div>
       <div v-show="activeTrendTab === 'activity'" ref="activityPanelRef" class="trend-panel">
+        <!-- 筛选状态条：显示生效条件与命中条数，可一键清除 -->
+        <div v-if="hasActiveFilters" class="filter-status">
+          <span class="filter-status-count">筛选后命中 {{ total }} 条</span>
+          <span v-for="part in activeFilterSummary" :key="part" class="filter-status-chip">{{ part }}</span>
+          <el-button link type="primary" size="small" @click="clearAllFilters">清除筛选</el-button>
+        </div>
         <!-- 窄屏用卡片列表，避免列被挤压/截断 -->
         <div v-if="isMobile" v-loading="loading">
           <!-- 新访客记录是 WS 推来后 unshift 到最前面的，这里让它"冒出来" -->
@@ -108,7 +123,7 @@
               </div>
             </div>
           </TransitionGroup>
-          <p v-if="activityItems.length === 0" class="activity-empty">暂无访问记录</p>
+          <p v-if="activityItems.length === 0" class="activity-empty">{{ emptyListText }}</p>
         </div>
 
         <!-- 宽屏保留表格；中等宽度允许横向滚动，不再截断内容 -->
@@ -120,6 +135,7 @@
               v-loading="loading"
               class="activity-table"
               :row-class-name="rowClassName"
+              :empty-text="emptyListText"
               @row-click="openIpHistory"
             >
             <el-table-column prop="timestamp" label="时间" min-width="124" show-overflow-tooltip :formatter="formatTime" />
@@ -397,6 +413,35 @@ const compareRightStats = ref(emptySummary());
 const filterLocation = ref('');
 const filterDevice = ref('');
 const filterPath = ref('');
+const filterIp = ref('');
+
+/** 是否存在生效的筛选项；有筛选时 WS 推来的新记录不直接插入列表 */
+const hasActiveFilters = computed(() =>
+  Boolean(filterLocation.value || filterDevice.value || filterPath.value || filterIp.value)
+);
+
+/** 空列表文案：区分「无记录」与「筛选无匹配」 */
+const emptyListText = computed(() =>
+  hasActiveFilters.value ? '没有符合筛选条件的访问记录' : '暂无访问记录'
+);
+
+/** 当前筛选条件的可读描述，用于列表上方的状态条 */
+const activeFilterSummary = computed(() => {
+  const parts = [];
+  if (filterLocation.value) parts.push(`地区：${filterLocation.value}`);
+  if (filterDevice.value) parts.push(`设备：${filterDevice.value}`);
+  if (filterPath.value) parts.push(`路径含「${filterPath.value}」`);
+  if (filterIp.value) parts.push(`IP 含「${filterIp.value}」`);
+  return parts;
+});
+
+const clearAllFilters = () => {
+  filterLocation.value = '';
+  filterDevice.value = '';
+  filterPath.value = '';
+  filterIp.value = '';
+  onSearch();
+};
 
 /* 单个 IP 的最近访问记录：点卡片 / 表格行展开 */
 const ipHistoryVisible = ref(false);
@@ -563,7 +608,8 @@ onMounted(() => {
 
   unbindWS = onWS((type: string, payload: any) => {
     if (type === 'visitors:new') {
-      const hasFilters = filterLocation.value || filterDevice.value || filterPath.value;
+      // 有筛选时新记录不一定满足条件，不直接插入列表
+      const hasFilters = hasActiveFilters.value;
       if (page.value === 1 && !hasFilters) {
         items.value.unshift(payload);
         total.value++;
@@ -617,15 +663,26 @@ let compareResizeObserver: ResizeObserver | null = null;
 
 const fetchList = async () => {
   loading.value = true;
+  const filters = {
+    location: filterLocation.value,
+    device: filterDevice.value,
+    path: filterPath.value,
+    ip: filterIp.value
+  };
   try {
-    const data = await getVisitorStats(page.value, pageSize.value, {
-      location: filterLocation.value,
-      device: filterDevice.value,
-      path: filterPath.value
-    });
+    const data = await getVisitorStats(page.value, pageSize.value, filters);
     items.value = data.visitors;
     total.value = data.total;
-    
+
+    // 结果变少导致当前页越界时回到最后一页重取，避免表格空白被误认为「搜不到」
+    const lastPage = Math.max(1, Math.ceil((data.total || 0) / pageSize.value));
+    if (page.value > lastPage) {
+      page.value = lastPage;
+      const retry = await getVisitorStats(page.value, pageSize.value, filters);
+      items.value = retry.visitors;
+      total.value = retry.total;
+    }
+
     if (data.locationStats) locationOptions.value = data.locationStats;
     if (data.deviceStats) deviceOptions.value = data.deviceStats;
   } finally {
@@ -633,8 +690,10 @@ const fetchList = async () => {
   }
 };
 
+/** 搜索、回车、清空筛选均走此处；结果列表在「行为类别」页签，故同时切换页签 */
 const onSearch = () => {
   page.value = 1;
+  if (activeTrendTab.value !== 'activity') activeTrendTab.value = 'activity';
   fetchList();
 };
 
@@ -1443,11 +1502,43 @@ const exportCsv = async () => {
   width: auto;
 }
 
+/* IP 框定宽：IP 字符串长度有限，没必要跟着路径框一起拉长 */
+.filter-ip {
+  flex: 0 1 190px;
+  width: 190px;
+}
+
 .filter-actions {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-left: auto;
+}
+
+/* 筛选状态条 */
+.filter-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background-color: var(--el-fill-color-light);
+  font-size: 12px;
+}
+
+.filter-status-count {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.filter-status-chip {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background-color: var(--el-bg-color-overlay);
+  color: var(--el-text-color-secondary);
 }
 
 .compare-toolbar-label {
@@ -1519,6 +1610,7 @@ const exportCsv = async () => {
 
 @media (max-width: 768px) {
   .filter-select,
+  .filter-ip,
   .filter-input {
     width: 100%;
   }

@@ -54,7 +54,7 @@ router.get('/api/visitors', requireAuth, (req, res) => {
   // 访客记录含真实 IP / 设备 / 访问路径，只对后台开放；limit 必须夹紧，避免被人一次性拖走整张表
   const limit = Math.min(Math.max(Number(req.query.limit || req.query.pageSize) || 50, 1), 200);
   const page = req.query.page ? Number(req.query.page) : null;
-  const { location, device, path } = req.query;
+  const { location, device, path, ip } = req.query;
 
   let whereClauses = [];
   let whereParams = [];
@@ -70,6 +70,11 @@ router.get('/api/visitors', requireAuth, (req, res) => {
   if (path) {
     whereClauses.push(`path LIKE ?`);
     whereParams.push(`%${path}%`);
+  }
+  // IP 筛选：LIKE 匹配，支持完整 IP、网段前缀与任意片段（前置通配不走索引，量级可接受）
+  if (ip) {
+    whereClauses.push(`ip LIKE ?`);
+    whereParams.push(`%${String(ip).trim()}%`);
   }
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';

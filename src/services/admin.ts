@@ -549,13 +549,19 @@ export interface VisitorStats {
   deviceStats?: Array<{ name: string; count: number }>;
 }
 
-export const getVisitorStats = async (page?: number, pageSize?: number, filters?: { location?: string; device?: string; path?: string }) => {
+export const getVisitorStats = async (
+  page?: number,
+  pageSize?: number,
+  filters?: { location?: string; device?: string; path?: string; ip?: string }
+) => {
   const params: any = {};
   if (page) params.page = page;
   if (pageSize) params.pageSize = pageSize;
   if (filters?.location) params.location = filters.location;
   if (filters?.device) params.device = filters.device;
   if (filters?.path) params.path = filters.path;
+  // IP 支持片段匹配（完整 IP / 网段前缀 / 任意片段都能搜）
+  if (filters?.ip) params.ip = filters.ip;
   const { data } = await api.get('/visitors', { params });
   return data as VisitorStats;
 };
