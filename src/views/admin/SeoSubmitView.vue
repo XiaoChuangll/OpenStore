@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-page seo-page">
+  <div class="admin-page seo-page" :class="{ 'is-mobile': isMobile }">
     <AdminPageHeader :embedded="embedded" title="SEO 收录" />
 
     <!-- 概览数字：一眼看出「今天有多少要提、提了多少、额度还剩多少」 -->
@@ -40,7 +40,7 @@
         </div>
       </template>
 
-      <el-form label-width="132px" class="config-form" @submit.prevent>
+      <el-form label-width="132px" :label-position="isMobile ? 'top' : 'right'" class="config-form" @submit.prevent>
         <el-form-item label="启用收录提交">
           <el-switch v-model="form.enabled" :active-value="1" :inactive-value="0" />
           <span class="form-hint">关闭后访客路径仍会进队列，只是不再提交</span>
@@ -175,14 +175,14 @@
 
       <el-table v-loading="loadingPending" :data="pending" size="small" max-height="360" empty-text="今天还没有待提交的新路径">
         <el-table-column type="index" label="#" width="56" />
-        <el-table-column label="URL" min-width="320" show-overflow-tooltip>
+        <el-table-column label="URL" :min-width="pendingCols.url" show-overflow-tooltip>
           <template #default="{ row }">
             <!-- 显示解码后的可读形式；存储与提交仍用编码形式 -->
             <span class="url-cell">{{ decodeUrl(row.url) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="hits" label="访问次数" width="100" align="right" />
-        <el-table-column label="原始路径" min-width="220" show-overflow-tooltip>
+        <el-table-column prop="hits" label="访问次数" :width="isMobile ? 84 : 100" align="right" />
+        <el-table-column label="原始路径" :min-width="pendingCols.path" show-overflow-tooltip>
           <template #default="{ row }">
             <span class="path-cell">{{ decodeUrl(row.path) }}</span>
           </template>
@@ -219,13 +219,13 @@
       </template>
 
       <el-table v-loading="loadingSubmissions" :data="submissions" size="small" max-height="420" empty-text="还没有提交记录">
-        <el-table-column prop="created_at" label="时间" width="160" />
-        <el-table-column label="URL" min-width="300" show-overflow-tooltip>
+        <el-table-column prop="created_at" label="时间" :width="submissionCols.time" />
+        <el-table-column label="URL" :min-width="submissionCols.url" show-overflow-tooltip>
           <template #default="{ row }">
             <span class="url-cell">{{ decodeUrl(row.url) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="通道" width="100">
+        <el-table-column label="通道" :width="submissionCols.channel">
           <template #default="{ row }">
             <el-tag size="small" :type="row.channel === 'bing' ? 'primary' : 'success'" effect="plain">
               {{ row.channel === 'bing' ? '必应' : row.channel === 'indexnow' ? 'IndexNow' : row.channel }}
@@ -242,8 +242,10 @@
       </el-table>
 
       <div class="pager-row">
+        <!-- 窄屏去掉页码列表，控制在 320px 内不换行 -->
         <el-pagination
-          layout="prev, pager, next, total"
+          :layout="isMobile ? 'prev, next' : 'prev, pager, next, total'"
+          :small="isMobile"
           :total="submissionTotal"
           :page-size="PAGE_SIZE"
           :current-page="filters.page"
@@ -347,6 +349,11 @@ const submitHourText = computed(() => {
 
 let pollTimer: number | null = null;
 
+/** 窄屏布局开关；表格、表单标签与操作栏据此调整 */
+const isMobile = ref(window.innerWidth < 768);
+const checkMobile = () => {
+  isMobile.value = window.innerWidth < 768;
+};
 const applyConfig = (next: SeoConfig) => {
   config.value = next;
   form.enabled = next.enabled;
@@ -515,6 +522,19 @@ const copyText = async (text: string) => {
 const statusText = (status: string) => (status === 'success' ? '成功' : status === 'failed' ? '失败' : '跳过');
 const statusTagType = (status: string) => (status === 'success' ? 'success' : status === 'failed' ? 'danger' : 'info');
 
+/** 待提交表的列宽：窄屏收窄下限，减少横向滚动 */
+const pendingCols = computed(() => ({
+  url: isMobile.value ? 220 : 320,
+  path: isMobile.value ? 150 : 220
+}));
+
+/** 提交记录表的列宽；窄屏把时间列压到只够放日期时间 */
+const submissionCols = computed(() => ({
+  time: isMobile.value ? 118 : 160,
+  url: isMobile.value ? 200 : 300,
+  channel: isMobile.value ? 84 : 100
+}));
+
 /** 解码为可读形式用于展示；存储与提交仍使用编码后的 URL */
 const decodeUrl = (value: string) => {
   try {
@@ -525,6 +545,7 @@ const decodeUrl = (value: string) => {
 };
 
 onMounted(async () => {
+  window.addEventListener('resize', checkMobile);
   await loadAll();
   pollTimer = window.setInterval(() => {
     // 提交进行中时状态变化快，轮询照常；手动提交会自己刷新，避免打架
@@ -533,6 +554,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile);
   if (pollTimer) window.clearInterval(pollTimer);
   pollTimer = null;
 });
@@ -585,12 +607,52 @@ onUnmounted(() => {
   max-width: 760px;
 }
 
-/* 提示文字跟在控件后面，窄屏自动换行 */
+/* 每项之间留出间距：输入框高度小、卡片密，太挤会看串行 */
+.config-form :deep(.el-form-item) {
+  margin-bottom: 28px;
+}
+
+/* 分组标题与上下内容都留白 */
+.config-form :deep(.el-divider) {
+  margin: 6px 0 22px;
+}
+
+/*
+ * 表单内容改为纵向排布：控件一行，提示说明另起一行。
+ * 提示原先是 inline，会和开关/输入框挤在同一行紧贴着，长句还会被折成几段。
+ * 现在由 .form-hint 的 width:100% 触发换行，提示独占一行。
+ */
+.config-form :deep(.el-form-item__content) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+/* 输入框类控件占满整行，指示数字控件不拉伸（否则点击区域不自然） */
+.config-form :deep(.el-form-item__content > .el-input),
+.config-form :deep(.el-form-item__content > .el-select) {
+  flex: 1 1 100%;
+}
+
+/* 提示文字：整行 + 左侧留白条，与上方控件形成清楚的分隔 */
 .form-hint {
-  margin-left: 10px;
+  width: 100%;
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--el-border-color);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.65;
   color: var(--el-text-color-secondary);
+}
+
+/* key 行内部自带 flex，整行占满，其按钮不再被拉伸 */
+.config-form :deep(.key-row) {
+  flex: 1 1 100%;
+}
+
+.config-form :deep(.key-row .el-button) {
+  flex: 0 0 auto;
 }
 
 .key-row {
@@ -708,35 +770,108 @@ onUnmounted(() => {
   margin-top: 12px;
 }
 
-/* 窄屏：控件占满整行，避免提示文字被挤成一列竖排 */
-@media (max-width: 900px) {
-  .config-form {
-    max-width: 100%;
-  }
+/* 窄屏：由 is-mobile 类驱动，避免依赖各元素自身的媒体查询 */
+.seo-page.is-mobile .stat-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
 
-  .config-form :deep(.el-form-item) {
-    display: block;
-  }
+.seo-page.is-mobile .stat-card {
+  padding: 10px 12px;
+}
 
-  .config-form :deep(.el-form-item__label) {
-    width: auto !important;
-    justify-content: flex-start;
-  }
+.seo-page.is-mobile .stat-value {
+  font-size: 20px;
+}
 
-  .form-hint {
-    display: block;
-    margin: 4px 0 0;
-  }
+.seo-page.is-mobile .stat-hint {
+  /* 卡片变窄后说明文字会换三四行，窄屏隐藏，信息在下方配置区仍可看到 */
+  display: none;
+}
 
-  .key-row,
-  .head-right {
-    flex-wrap: wrap;
-  }
+/* 表单：标签上移后主副标题与说明都占满整行 */
+.seo-page.is-mobile .config-form {
+  max-width: 100%;
+}
 
-  .filter-select,
-  .filter-input,
-  .limit-input {
-    width: 100%;
-  }
+.seo-page.is-mobile .config-form :deep(.el-form-item) {
+  display: block;
+  margin-bottom: 24px;
+}
+
+.seo-page.is-mobile .config-form :deep(.el-form-item__label) {
+  width: auto !important;
+  padding: 0 0 8px;
+  justify-content: flex-start;
+  line-height: 1.4;
+}
+
+.seo-page.is-mobile .config-form :deep(.el-form-item__content) {
+  /* 标签上移后内容不再需要左侧偏移 */
+  margin-left: 0 !important;
+}
+
+.seo-page.is-mobile .form-hint {
+  padding-left: 9px;
+  line-height: 1.6;
+}
+
+/* 输入框类控件占满整行，指示数字控件不拉满（否则点击区域怪） */
+.seo-page.is-mobile .config-form :deep(.el-input),
+.seo-page.is-mobile .config-form :deep(.el-select) {
+  width: 100%;
+}
+
+.seo-page.is-mobile .key-row,
+.seo-page.is-mobile .head-right {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.seo-page.is-mobile .key-row :deep(.el-input),
+.seo-page.is-mobile .head-right :deep(.el-input) {
+  flex: 1 1 100%;
+}
+
+/* 标题行按钮换行后靠左，避免挤压区块标题（.section-card 是子组件根元素） */
+.seo-page.is-mobile :deep(.section-card) {
+  padding: 12px 14px;
+}
+
+.seo-page.is-mobile :deep(.section-head) {
+  flex-wrap: wrap;
+}
+
+.seo-page.is-mobile :deep(.section-left) {
+  flex-wrap: wrap;
+}
+
+/* 长 key 与长 URL 必须能断行，否则撑破容器 */
+.seo-page.is-mobile .key-text {
+  display: inline-block;
+  max-width: 100%;
+  word-break: break-all;
+}
+
+.seo-page.is-mobile .result-channels {
+  padding-left: 16px;
+}
+
+.seo-page.is-mobile .limit-input {
+  width: 100%;
+}
+
+/* 表格：窄屏给列更小的下限，让内容横向滚动而不是被压成一列竖字 */
+.seo-page.is-mobile :deep(.el-table .cell) {
+  word-break: break-word;
+}
+
+.seo-page.is-mobile .filter-select,
+.seo-page.is-mobile .filter-input {
+  width: 100%;
+}
+
+.seo-page.is-mobile .pager-row {
+  justify-content: center;
 }
 </style>
