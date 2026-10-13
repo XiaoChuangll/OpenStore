@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 
 // 服务端模块是 CJS 且无类型声明，按 CJS 引入
 const require = createRequire(import.meta.url);
@@ -70,6 +71,25 @@ describe('SEO URL 归一化', () => {
     for (const good of ['/apps/com.foo', '/articles/hello', '/rank/category', '/topics/t1', '/about']) {
       expect(norm(good)).not.toBe('');
     }
+  });
+});
+
+describe('SEO 后台路由的中间件挂载方式', () => {
+  // vitest 的 cwd 即项目根
+  const routeSource = () => readFileSync('server/routes/seo.cjs', 'utf8');
+
+  it('不得使用 router.use 声明鉴权（挂根路径时会拦截全站请求）', () => {
+    // 本路由经 app.use(router) 挂在根路径，router.use 的中间件会对所有请求执行。
+    // 曾因此把 /api/auth/login 一并拦成 401，导致全站无法登录。
+    const code = routeSource().replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(code).not.toMatch(/router\.use\s*\(/);
+  });
+
+  it('每条后台路由都挂了鉴权中间件', () => {
+    const routes = [...routeSource().matchAll(/router\.(get|put|post)\('(\/api\/admin\/seo[^']*)',\s*([A-Za-z_$][\w$]*)/g)];
+    expect(routes.length).toBeGreaterThanOrEqual(9);
+    const withoutAuth = routes.filter((m) => m[3] !== 'auth').map((m) => m[2]);
+    expect(withoutAuth).toEqual([]);
   });
 });
 

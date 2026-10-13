@@ -1,8 +1,10 @@
 /*
  * SEO 收录提交：后台接口（/api/admin/seo/*）。
  *
- * 鉴权在路由内部声明（router.use(requireAuth)），不依赖 index.cjs 的 /api/admin 闸门 ——
- * 本路由挂在该闸门之前，闸门拦不到它。位置原因见 index.cjs 的挂载注释。
+ * 鉴权逐路由挂载（每条路由的第二个参数 auth），不用 router.use。
+ * 本路由经 app.use(router) 挂在根路径，router.use 会成为全局中间件拦截所有请求
+ * （会把 /api/auth/login 一并拦掉导致无法登录）。
+ * 也不能依赖 index.cjs 的 /api/admin 闸门：本路由挂在该闸门之前，闸门不会执行。
  *
  * 返回给前端的 key 一律脱敏（maskKey）；明文仅用于服务端出站请求。
  */
@@ -19,7 +21,8 @@ const seo = require('../lib/seo-submit.cjs');
 module.exports = ({ onConfigChange } = {}) => {
   const router = express.Router();
 
-  router.use(requireAuth);
+  /** 逐路由挂载的鉴权中间件 */
+  const auth = requireAuth;
 
   /** 配置转前端可见形态：剔除明文 key，补充 key 是否已配置 */
   const publicConfig = (config) => ({
@@ -82,7 +85,7 @@ module.exports = ({ onConfigChange } = {}) => {
   /* ---------------------------- 读取 ---------------------------- */
 
   /** 配置、统计与运行状态 */
-  router.get('/api/admin/seo/status', async (req, res) => {
+  router.get('/api/admin/seo/status', auth, async (req, res) => {
     try {
       const config = await seo.loadConfig();
       const [stats, schedule] = await Promise.all([queueStats(config), seo.schedulerState(config)]);
@@ -104,7 +107,7 @@ module.exports = ({ onConfigChange } = {}) => {
   });
 
   /** 下一轮将提交的 URL 明细 */
-  router.get('/api/admin/seo/pending', async (req, res) => {
+  router.get('/api/admin/seo/pending', auth, async (req, res) => {
     try {
       const config = await seo.loadConfig();
       const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 2000);
@@ -116,7 +119,7 @@ module.exports = ({ onConfigChange } = {}) => {
   });
 
   /** 提交记录，支持按状态、通道、URL 筛选与分页 */
-  router.get('/api/admin/seo/submissions', (req, res) => {
+  router.get('/api/admin/seo/submissions', auth, (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
     const page = Math.max(Number(req.query.page) || 1, 1);
     const clauses = [];
@@ -150,7 +153,7 @@ module.exports = ({ onConfigChange } = {}) => {
   });
 
   /** 队列中最近入队的路径 */
-  router.get('/api/admin/seo/queue', (req, res) => {
+  router.get('/api/admin/seo/queue', auth, (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
     db.all(`SELECT * FROM seo_url_queue ORDER BY last_seen DESC LIMIT ?`, [limit], (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -159,7 +162,7 @@ module.exports = ({ onConfigChange } = {}) => {
   });
 
   /** 查询必应当日剩余额度；查询不可用时返回 available:false */
-  router.get('/api/admin/seo/quota', async (req, res) => {
+  router.get('/api/admin/seo/quota', auth, async (req, res) => {
     try {
       const config = await seo.loadConfig();
       const quota = await seo.fetchBingQuota(config, {});
@@ -184,7 +187,7 @@ module.exports = ({ onConfigChange } = {}) => {
   /* ---------------------------- 写入 ---------------------------- */
 
   /** 保存配置。bingApiKey 传空串表示清除，不传表示保持原值 */
-  router.put('/api/admin/seo/config', async (req, res) => {
+  router.put('/api/admin/seo/config', auth, async (req, res) => {
     const body = req.body || {};
     const patch = {};
 
@@ -226,7 +229,7 @@ module.exports = ({ onConfigChange } = {}) => {
   });
 
   /** 重新生成 IndexNow key（旧 key 文件随即失效） */
-  router.post('/api/admin/seo/indexnow-key', async (req, res) => {
+  router.post('/api/admin/seo/indexnow-key', auth, async (req, res) => {
     const next = crypto.randomBytes(16).toString('hex');
     const result = await seo.saveSettings({ indexnow_key: next });
     if (result.error) return res.status(500).json({ error: result.error });
@@ -237,7 +240,7 @@ module.exports = ({ onConfigChange } = {}) => {
   });
 
   /** 手动执行一轮提交；limit 可临时指定 */
-  router.post('/api/admin/seo/submit', async (req, res) => {
+  router.post('/api/admin/seo/submit', auth, async (req, res) => {
     if (seo.isRunning()) {
       return res.status(409).json({ error: '已有一轮提交正在进行，请稍后再试' });
     }
@@ -256,7 +259,7 @@ module.exports = ({ onConfigChange } = {}) => {
   });
 
   /** 清理队列中已提交且不在保留期内的条目 */
-  router.post('/api/admin/seo/queue/cleanup', (req, res) => {
+  router.post('/api/admin/seo/queue/cleanup', auth, (req, res) => {
     db.run(
       `DELETE FROM seo_url_queue
         WHERE submit_status = 'submitted'
