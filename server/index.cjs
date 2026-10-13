@@ -58,6 +58,8 @@ const { hardBanGuard, scriptGuard } = require('./lib/script-guard.cjs');
 const { JWT_SECRET, requireAuth } = require('./middleware/auth.cjs');
 const { TRUST_PROXY_HOPS, PORT } = require('./lib/config.cjs');
 const { uploadsDir, UPLOAD_FORCE_DOWNLOAD_EXT } = require('./lib/uploads.cjs');
+const seoSubmit = require('./lib/seo-submit.cjs');
+const { getSitemap, invalidateSitemapCache } = require('./lib/sitemap.cjs');
 
 /** 体检要枚举的就是「当前这个 app」上已注册的路由 */
 const collectPerfCheckRoutes = () => collectPerfCheckRoutesIn(app);
@@ -302,6 +304,32 @@ app.get('/articles/:slug', (req, res, next) => {
   });
 });
 
+/** IndexNow key 文件：内容为 key 本身，搜索引擎据此验证站点归属。须排在 express.static 之前 */
+app.get('/indexnow-key.txt', async (req, res) => {
+  try {
+    const config = await seoSubmit.loadConfig();
+    res.type('text/plain; charset=utf-8');
+    res.send(String(config.indexNowKey || '').trim());
+  } catch {
+    res.status(500).type('text/plain; charset=utf-8').send('indexnow key unavailable');
+  }
+});
+
+/** 动态 sitemap.xml：含应用与文章详情页，须排在 express.static 之前以覆盖构建期文件。生成失败时回退静态文件 */
+app.get('/sitemap.xml', async (req, res, next) => {
+  try {
+    const config = await seoSubmit.loadConfig();
+    const { xml, count } = await getSitemap(config.siteUrl);
+    res.type('application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=600');
+    res.send(xml);
+    if (process.env.SITEMAP_LOG === '1') console.log(`[sitemap] 输出 ${count} 条 URL`);
+  } catch (error) {
+    pushLiveLog('warn', `[sitemap] 动态生成失败，回退静态文件：${error.message}`, { kind: 'seo' });
+    next();
+  }
+});
+
 
 app.use(async (req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
@@ -505,6 +533,9 @@ app.use((req, res, next) => {
                 };
                 broadcast('visitors:new', newVisitor);
 
+                // SEO 收录：记录本次访问的前台路径（内部做过滤与归一，失败不影响访客统计）
+                seoSubmit.enqueuePath(requestPath);
+
                 // geoip 查不到城市时（国内移动 / 宽带 IP 很常见）异步补省市，不阻塞请求
                 if (!geo || !geo.city) {
                   const countryCode = geo?.country || 'CN';
@@ -583,6 +614,15 @@ mountRouter('diagnostics', require('./routes/diagnostics.cjs'));   // 客户端 
 mountRouter('submissions', require('./routes/submissions.cjs'));   // 应用投稿与问题反馈
 mountRouter('site', require('./routes/site.cjs'));           // 站点卡片 / 关于页
 mountRouter('env-logs', require('./routes/env-logs.cjs'));    // 环境变量 / 操作日志
+/*
+ * SEO 收录提交（/api/admin/seo/*）。
+ *
+ * 必须挂在下面 `/api/admin` 闸门之前：闸门自身不响应，只是改写 req.url 后二次分发，
+ * 业务路由要在它之前才能匹配到完整路径。挂在闸门之后会因前缀被重复补写而自我重入，
+ * 直至 RangeError: Maximum call stack size exceeded。
+ * 代价是闸门拦不到本路由，故鉴权在路由内部声明（routes/seo.cjs）。
+ */
+mountRouter('seo', require('./routes/seo.cjs')({ onConfigChange: invalidateSitemapCache }));
 
 // Scheduled publish job
 setInterval(() => {
@@ -643,6 +683,13 @@ attachWebSocket(server, { jwtSecret: JWT_SECRET });
 server.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
   printStartupSummary();
+
+  /*
+   * SEO 收录提交的定时任务：每 60 秒检查一次是否到达配置的提交时刻（submitHour），
+   * 因此改配置无需重启进程。总开关或自动提交关闭时不做任何出站请求。
+   */
+  seoSubmit.startScheduler();
+  console.log('[startup] SEO 收录提交定时任务已启动（可在后台「SEO 收录」面板调整频率或关闭）');
 });
 
 
@@ -671,6 +718,15 @@ db.get(`SELECT id FROM users WHERE username=?`, ['admin'], (err, row) => {
 mountRouter('auth', require('./routes/auth.cjs'));            // 登录 / 刷新 token / 改密码 / 后台概览
 mountRouter('music-settings', require('./routes/music-settings.cjs'));  // 音乐 API 配置 / 站点设置
 
+/*
+ * /api/admin 的兜底鉴权闸门：处理未被前面业务路由接住的 /api/admin 请求。
+ *
+ * 仅作兜底 —— 排在它前面的业务路由会先响应，闸门不会执行，
+ * 因此对外的后台路由（music-settings、seo）各自在路由内声明 requireAuth。
+ *
+ * req.url 只补回 /api：app.use 已剥掉 /api/admin。若补全 /api/admin，
+ * 二次分发时 router 会再剥一次同一前缀，导致自我重入至栈溢出。
+ */
 app.use('/api/admin', (req, res, next) => {
   if (req.url.startsWith('/auth/')) return next();
   return requireAuth(req, res, () => {

@@ -200,6 +200,12 @@ const router = createRouter({
       meta: { title: '主题设置', requiresAuth: true, description: '管理全站主题配色' }
     },
     {
+      path: '/admin/seo',
+      name: 'admin-seo',
+      component: () => import('../views/admin/SeoSubmitView.vue'),
+      meta: { title: 'SEO 收录', requiresAuth: true, description: '访客路径提交与 sitemap 管理' }
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: NotFoundView,

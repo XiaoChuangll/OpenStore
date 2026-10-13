@@ -171,6 +171,7 @@ import {
   Key,
   Warning,
   Memo,
+  Promotion,
   Setting,
   Expand,
   Fold,
@@ -202,6 +203,7 @@ import {
   const IncidentsAdminView = defineAsyncComponent(() => import('./IncidentsAdminView.vue'));
   const ChangelogsAdminView = defineAsyncComponent(() => import('./ChangelogsAdminView.vue'));
   const SystemSettingsView = defineAsyncComponent(() => import('./SystemSettingsView.vue'));
+  const SeoSubmitView = defineAsyncComponent(() => import('./SeoSubmitView.vue'));
 
 type PaneKey =
   | 'overview'
@@ -221,12 +223,13 @@ type PaneKey =
   | 'music-apis'
   | 'feedbacks'
   | 'database'
+  | 'seo'
   | 'settings';
 
 const PANE_KEYS: PaneKey[] = [
   'overview', 'links', 'groups', 'apps', 'announcements', 'articles', 'comments', 'env',
   'visitors', 'logs', 'changelogs', 'site-cards', 'about', 'incidents', 'music-apis',
-  'feedbacks', 'database', 'settings'
+  'feedbacks', 'database', 'seo', 'settings'
 ];
 
 const route = useRoute();
@@ -261,6 +264,7 @@ const PANE_COMPONENTS: Record<PaneKey, Component> = {
   database: DatabaseAdminView,
   logs: SystemLogsView,
   feedbacks: FeedbackAdminView,
+  seo: SeoSubmitView,
   settings: SystemSettingsView
 };
 
@@ -318,6 +322,7 @@ const SECTIONS: Record<string, { title: string; hint: string }> = {
   env: { title: '环境变量', hint: '.env 配置项' },
   incidents: { title: '故障维护', hint: '故障与维护公告' },
   changelogs: { title: '更新日志', hint: '版本更新记录' },
+  seo: { title: 'SEO 收录', hint: '访客路径提交、IndexNow 与 sitemap' },
   settings: { title: '主题设置', hint: '配色变量与组件预览' },
 };
 
@@ -360,6 +365,7 @@ const MENU_GROUPS: { title: string; items: { key: string; label: string; icon: C
       { key: 'env', label: '环境变量', icon: Key },
       { key: 'incidents', label: '故障维护', icon: Warning },
       { key: 'changelogs', label: '更新日志', icon: Memo },
+      { key: 'seo', label: 'SEO 收录', icon: Promotion },
       { key: 'settings', label: '主题设置', icon: Setting },
     ],
   },

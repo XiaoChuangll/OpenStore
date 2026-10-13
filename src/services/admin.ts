@@ -1176,3 +1176,131 @@ export const removeScriptGuardBan = async (ip: string) => {
   const { data } = await api.post('/script-guard/bans/remove', { ip });
   return (data.items || []) as ScriptGuardHardBan[];
 };
+
+/* ---------------------------------------------------------------------------
+ * SEO 收录提交
+ *
+ * 后端把「访客今日访问过的前台路径」攒进队列，再分批提交给必应与 IndexNow。
+ * 注意 bingApiKey 是只写的：读接口永远只返回脱敏后的 bingKeyMasked。
+ * ------------------------------------------------------------------------- */
+
+export interface SeoConfig {
+  enabled: number;
+  autoSubmit: number;
+  bingEnabled: number;
+  indexNowEnabled: number;
+  siteUrl: string;
+  batchSize: number;
+  dailyLimit: number;
+  /** 每天几点（北京时间 0~23）跑自动提交，默认 0 = 每天 0 点提交前一天的 URL */
+  submitHour: number;
+  minHits: number;
+  requestDelayMs: number;
+  bingKeyMasked: string;
+  bingKeyConfigured: boolean;
+  indexNowKey: string;
+  indexNowKeyLocation: string;
+}
+
+export interface SeoStats {
+  pending: number;
+  totalQueued: number;
+  submittedToday: number;
+  failedToday: number;
+  successRecent: number;
+}
+
+export interface SeoStatus {
+  config: SeoConfig;
+  stats: SeoStats;
+  runtime: {
+    running: boolean;
+    /** 最近一次自动提交的北京日期（YYYY-MM-DD） */
+    lastRunDay: string | null;
+    ranToday: boolean;
+    /** 下一轮的说明文案，例如「明天 00:00（北京时间）」 */
+    nextRunText: string;
+    siteOrigin: string;
+  };
+}
+
+export interface SeoPendingItem {
+  id: number;
+  path: string;
+  url: string;
+  hits: number;
+}
+
+export interface SeoSubmission {
+  id: number;
+  url: string;
+  channel: string;
+  status: string;
+  http_status: number | null;
+  message: string;
+  batch_size: number | null;
+  key_masked: string;
+  created_at: string;
+}
+
+export interface SeoBatchResult {
+  skipped?: boolean;
+  reason?: string;
+  error?: string;
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  channels: { channel: string; status: string; httpStatus?: number | null; message?: string; size: number }[];
+}
+
+export const getSeoStatus = async () => {
+  const { data } = await api.get('/seo/status');
+  return data as SeoStatus;
+};
+
+export const getSeoPending = async (limit = 200) => {
+  const { data } = await api.get('/seo/pending', { params: { limit } });
+  return data as { items: SeoPendingItem[]; minHits: number; siteUrl: string };
+};
+
+export const getSeoSubmissions = async (params: { page?: number; limit?: number; status?: string; channel?: string; url?: string }) => {
+  const { data } = await api.get('/seo/submissions', { params });
+  return data as { total: number; page: number; limit: number; items: SeoSubmission[] };
+};
+
+export const getSeoQueue = async (limit = 100) => {
+  const { data } = await api.get('/seo/queue', { params: { limit } });
+  return (data.items || []) as { id: number; path: string; normalized_url: string; hits: number; last_seen: string; submit_status: string }[];
+};
+
+export const getSeoQuota = async () => {
+  const { data } = await api.get('/seo/quota');
+  return data as {
+    available: boolean;
+    message?: string;
+    dailyQuota?: number;
+    monthlyQuota?: number | null;
+    dailyLimit?: number;
+    selfLimit?: number;
+  };
+};
+
+export const updateSeoConfig = async (payload: Record<string, unknown>) => {
+  const { data } = await api.put('/seo/config', payload);
+  return data as { updated: number; config: SeoConfig };
+};
+
+export const regenerateIndexNowKey = async () => {
+  const { data } = await api.post('/seo/indexnow-key', {});
+  return data as { indexNowKey: string; indexNowKeyLocation: string };
+};
+
+export const runSeoSubmit = async (limit?: number) => {
+  const { data } = await api.post('/seo/submit', limit ? { limit } : {});
+  return data as SeoBatchResult;
+};
+
+export const cleanupSeoQueue = async () => {
+  const { data } = await api.post('/seo/queue/cleanup', {});
+  return data as { deleted: number };
+};
