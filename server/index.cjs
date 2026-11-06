@@ -51,7 +51,8 @@ const {
   fetchTopicShareCard,
   fetchAppShareCard,
   readShareShell,
-  applyShareCardToHtml
+  applyShareCardToHtml,
+  applyCanonicalToHtml
 } = require('./lib/share-cards.cjs');
 const { broadcast, attachWebSocket } = require('./lib/realtime.cjs');
 const { hardBanGuard, scriptGuard } = require('./lib/script-guard.cjs');
@@ -60,6 +61,8 @@ const { TRUST_PROXY_HOPS, PORT } = require('./lib/config.cjs');
 const { uploadsDir, UPLOAD_FORCE_DOWNLOAD_EXT } = require('./lib/uploads.cjs');
 const seoSubmit = require('./lib/seo-submit.cjs');
 const { getSitemap, invalidateSitemapCache } = require('./lib/sitemap.cjs');
+const { canonicalPathFor } = require('./lib/canonical.cjs');
+const { applyJsonLdToHtml, buildAppJsonLd, buildArticleJsonLd } = require('./lib/json-ld.cjs');
 
 /** 体检要枚举的就是「当前这个 app」上已注册的路由 */
 const collectPerfCheckRoutes = () => collectPerfCheckRoutesIn(app);
@@ -213,7 +216,10 @@ app.get('/articles/:slug', (req, res, next) => {
 
   if (!slug) return serveDefault();
 
-  db.get('SELECT title, summary, cover_url, seo_description, seo_keywords FROM blogs WHERE slug = ?', [slug], (err, row) => {
+  db.get(
+    'SELECT title, summary, cover_url, seo_description, seo_keywords, author_names, created_at, updated_at, published_at FROM blogs WHERE slug = ?',
+    [slug],
+    (err, row) => {
     if (err || !row) return serveDefault();
 
     fs.readFile(indexPath, 'utf8', (err, html) => {
@@ -299,6 +305,18 @@ app.get('/articles/:slug', (req, res, next) => {
         modifiedHtml = modifiedHtml.replace('</head>', `<meta name="twitter:description" content="${description}" />\n</head>`);
       }
 
+      // 结构化数据 + canonical（文章页此前两者都缺）
+      const articleUrl = `${SITE_ORIGIN}/articles/${encodeURIComponent(slug)}`;
+      const articleJsonLd = buildArticleJsonLd(row, {
+        url: articleUrl,
+        name: row.title,
+        description: row.seo_description || row.summary,
+        image,
+        siteName: SITE_NAME
+      });
+      modifiedHtml = applyCanonicalToHtml(modifiedHtml, articleUrl);
+      modifiedHtml = applyJsonLdToHtml(modifiedHtml, articleJsonLd);
+
       res.send(modifiedHtml);
     });
   });
@@ -330,7 +348,6 @@ app.get('/sitemap.xml', async (req, res, next) => {
   }
 });
 
-
 app.use(async (req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   const accept = String(req.headers.accept || '');
@@ -342,15 +359,19 @@ app.use(async (req, res, next) => {
 
   const cleanPath = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : '/';
   const appMatch = /^\/(?:apps|updates\/app)\/([^/]+)$/.exec(cleanPath);
+  // 旧版应用卡片路由 /app/:id，内容与应用详情页同源
+  const appCardMatch = /^\/app\/([^/]+)$/.exec(cleanPath);
   const topicMatch = /^\/topics\/([^/]+)$/.exec(cleanPath);
   const isAppDashboard = cleanPath === '/dashboard';
   const pageMeta = PAGE_SHARE_META[cleanPath];
 
   const appId = appMatch
     ? decodeURIComponent(appMatch[1])
-    : isAppDashboard
-      ? String(req.query.app_id || '')
-      : '';
+    : appCardMatch
+      ? decodeURIComponent(appCardMatch[1])
+      : isAppDashboard
+        ? String(req.query.app_id || '')
+        : '';
   const topicId = topicMatch ? decodeURIComponent(topicMatch[1]) : '';
   // 正在播放 / 音乐页：地址上带 ?track=<歌曲 id> 时，分享卡片用这首歌
   const trackId =
@@ -360,7 +381,7 @@ app.use(async (req, res, next) => {
   const musicSection =
     cleanPath === '/music' && MUSIC_SECTION_TITLES[requestedView] ? requestedView : '';
 
-  if (!appId && !topicId && !trackId && !pageMeta) return next();
+  if (!appId && !appCardMatch && !topicId && !trackId && !pageMeta) return next();
 
   const shell = await readShareShell();
   if (!shell) return next();
@@ -371,11 +392,13 @@ app.use(async (req, res, next) => {
   let card;
   if (appId) {
     const appCard = isCrawler ? await fetchAppShareCard(appId) : null;
-    card = appCard || {
-      title: `应用详情 - ${SITE_NAME}`,
-      description: '查看应用详细信息、评分、版本与更新历史。',
-      image: SITE_LOGO_URL
-    };
+    // 拿不到上游数据时用路径专属的兜底文案，不要退化成站点首页标题
+    const fallback = appCardMatch
+      ? { title: `应用卡片 - ${SITE_NAME}`, description: '查看应用卡片信息。' }
+      : isAppDashboard
+        ? { title: `应用数据面板 - ${SITE_NAME}`, description: '查看应用的下载、评分与版本趋势。' }
+        : { title: `应用详情 - ${SITE_NAME}`, description: '查看应用详细信息、评分、版本与更新历史。' };
+    card = appCard || { ...fallback, image: SITE_LOGO_URL };
   } else if (musicSection) {
     const sectionCard = isCrawler ? await fetchMusicSectionShareCard(musicSection) : null;
     card = sectionCard || {
@@ -411,7 +434,23 @@ app.use(async (req, res, next) => {
   }
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(applyShareCardToHtml(shell, { ...card, url }));
+  /*
+   * canonical：同一个应用有多个等价入口（/apps/X、/dashboard?app_id=X、/app/X），
+   * 且常带 ?title= 这类展示参数，不声明权威地址会被当成重复内容。
+   * 这三者统一指向 sitemap 使用的 /apps/<id>；/updates/app/X 是更新记录，指向自身。
+   */
+  const canonicalUrl = `${SITE_ORIGIN}${canonicalPathFor(cleanPath, appId)}`;
+  // 结构化数据：用上游原始信息补上「这是什么、谁做的、评分多少」
+  const appJsonLd = card.upstreamInfo
+    ? buildAppJsonLd(card.upstreamInfo, {
+        url: canonicalUrl,
+        name: card.title,
+        description: card.description,
+        image: card.image
+      })
+    : null;
+  const htmlWithCard = applyShareCardToHtml(shell, { ...card, url });
+  res.send(applyJsonLdToHtml(applyCanonicalToHtml(htmlWithCard, canonicalUrl), appJsonLd));
 });
 
 // 静态资源排在 /uploads 之后，否则 /uploads 会被 SPA 兜底或这里的静态中间件截走

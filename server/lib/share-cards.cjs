@@ -149,6 +149,8 @@ const fetchAppShareCard = async (appId) => {
     const payload = data && data.data ? data.data : data;
     const info = payload?.full_info || payload?.info || payload || {};
     card = buildAppShareCard(info);
+    // 原始信息供结构化数据使用（评分、开发者、分类等），避免再次请求上游
+    if (card) card.upstreamInfo = info;
   } catch (error) {
     console.warn('[share-card] 应用信息查询失败：', appId, error.message);
   }
@@ -377,4 +379,20 @@ const applyShareCardToHtml = (html, card) => {
   return out;
 };
 
-module.exports = { SITE_ORIGIN, SITE_LOGO_URL, SITE_NAME, SITE_DEFAULT_DESCRIPTION, PAGE_SHARE_META, CRAWLER_UA_RE, absoluteSiteAsset, MUSIC_SECTION_TITLES, musicHomeShareCard, fetchMusicSectionShareCard, fetchTrackShareCard, fetchTopicShareCard, fetchAppShareCard, readShareShell, applyShareCardToHtml };
+/**
+ * 写入 `<link rel="canonical">`。
+ *
+ * 详情页存在多种等价 URL（同一个应用可由 /apps/X、/dashboard?app_id=X、
+ * /app/X 进入，还常带 ?title= 之类展示参数），不声明权威地址会被视为重复内容。
+ *
+ * @param {string} url 权威地址（绝对 URL）
+ */
+const applyCanonicalToHtml = (html, url) => {
+  if (!url) return html;
+  const tag = `<link rel="canonical" href="${escapeHtmlAttr(url)}" />`;
+  const re = /<link\s+rel="canonical"\s+href="[\s\S]*?"\s*\/?>/i;
+  if (re.test(html)) return html.replace(re, tag);
+  return html.replace('</head>', `${tag}\n</head>`);
+};
+
+module.exports = { SITE_ORIGIN, SITE_LOGO_URL, SITE_NAME, SITE_DEFAULT_DESCRIPTION, PAGE_SHARE_META, CRAWLER_UA_RE, absoluteSiteAsset, MUSIC_SECTION_TITLES, musicHomeShareCard, fetchMusicSectionShareCard, fetchTrackShareCard, fetchTopicShareCard, fetchAppShareCard, readShareShell, applyShareCardToHtml, applyCanonicalToHtml };
